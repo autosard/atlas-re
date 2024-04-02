@@ -1,16 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module Parser where
+module Parser(run) where
 
 import Control.Monad 
 import Control.Applicative hiding (many, some)
 import Data.List(singleton)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Void
+import Data.Void ( Void )
 import Control.Monad.Combinators.Expr
 import Data.Char (isAlphaNum, isLetter)
+import qualified Data.Map as Map
+import Data.Ratio((%))
 
 import Prelude hiding (LT, EQ, GT)
 
@@ -21,49 +23,98 @@ import Text.Megaparsec.Error(errorBundlePretty)
 
 import Ast
 
-import Text.Megaparsec.Debug(dbg)
-
-type Parser = Parsec Void Text 
-
-sc :: Parser ()
-sc = L.space
-  space1                        
-  (L.skipLineComment "(*)")       
-  (L.skipBlockComment "(*" "*)")
-  
-lexeme :: Parser a -> Parser a
-lexeme = L.lexeme sc
-
-symbol :: Text -> Parser ()
-symbol = void . L.symbol sc
-
---
-
-pIdentifier :: Parser Text
-pIdentifier = lexeme
-  (T.cons <$> letterChar <*> takeWhileP Nothing isAlphaNum <?> "identifier")
+type Parser = Parsec Void Text
 
 
-pBExpr :: Parser Expr
-pBExpr = makeExprParser pExpr boolOperatorTable 
+pProgram :: Parser [FunctionDefinition]
+pProgram = sc *> manyTill pFunc eof
 
-binaryBool :: Text -> Op -> Operator Parser Expr
-binaryBool name op = InfixN (BExpr op <$ symbol name)
+pFunc :: Parser FunctionDefinition
+pFunc = do
+  funSignature <- optional pSignature
+  funName <- pIdentifier
+  funArgs <- manyTill pIdentifier (symbol "=")
+  funBody <- pExpr
+  return FunctionDefinition {..}
 
-boolOperatorTable :: [[Operator Parser Expr]]
-boolOperatorTable =
-  [
-    [
-      binaryBool "<" LT,
-      binaryBool "=" EQ,
-      binaryBool ">" GT
-    ]
-  ]
+pSignature :: Parser FunctionSignature
+pSignature = do
+  sigName <- pIdentifier <?> "function name"
+  void pDoubleColon2
+  sigConstraints <- optional (pConstraints <* pDoubleArrow <?> "type constraint(s)")
+  (from, to) <- (,) <$> pType <* pArrow <*> pType
+  let fromSize = countTreeTypes from
+  let toSize = countTreeTypes to
+  let sigType = (from, to)
+  let pFunctionAnnotation' = pFunctionAnnotation fromSize toSize
+  sigAnnotation <- optional $ symbol "|" *> pSqParens (do
+    withCost <- pFunctionAnnotation'
+    costFree <- optional $ symbol "," *> pCurlyParens pFunctionAnnotation'
+    return (withCost, costFree))
+  return FunctionSignature {..}
 
-pNumber = Number <$> lexeme L.decimal
+pConstraints :: Parser [TypeConstraint]
+pConstraints = pParens (some pConstraint)
+  <|> (singleton <$> pConstraint)
+  <|> pure []
 
-pTreeNode = TreeNode <$ symbol "node" <*> pIdentifier <*> pIdentifier <*> pIdentifier
-  
+pConstraint :: Parser TypeConstraint
+pConstraint = (,) <$> pTypeClass <*> pIdentifier
+
+pTypeClass :: Parser TypeClass
+pTypeClass
+  = (Eq <$ symbol "Eq")
+  <|> (Ord <$ symbol "Ord")
+
+pType :: Parser Type 
+pType
+  = TypeConstructor <$> pTypeConstructor 
+  <|> TypeVariable <$> pIdentifier
+  <?> "type"
+
+pTypeConstructor :: Parser TypeConstructor
+pTypeConstructor
+  = Bool <$ symbol "Bool"
+  <|> Tree <$ symbol "Tree" <*> pType
+  <|> Product <$> pParens (sepBy1 pType pCross)
+
+pFunctionAnnotation :: Int -> Int -> Parser FunctionAnnotation
+pFunctionAnnotation fromSize toSize = (,) <$> pAnnotation <* pArrow <*> pAnnotation
+  <|> pure (zeroAnnotation fromSize, zeroAnnotation toSize)
+
+pAnnotation :: Parser Annotation
+pAnnotation = Map.fromList <$> pCoefficients 
+
+pCoefficients :: Parser [([Int], Coefficient)]
+pCoefficients = pSqParens $ sepBy pCoefficient (symbol ",")
+
+pCoefficient :: Parser ([Int], Coefficient)
+pCoefficient = do
+  index <- (singleton <$> pInt) <|> pNumberList
+  void pMapsTo
+  coefficient <- try pRational <|> toRational <$> pInt
+  return (index, coefficient)
+
+pExpr :: Parser Expr 
+pExpr = pKeywordExpr
+  <|> try pApplication
+  <|> try pBExpr 
+  <?> "expression"
+
+pExprShortest :: Parser Expr
+pExprShortest = pKeywordExpr
+  <|> try pBExpr 
+  <|> try pApplication
+
+pKeywordExpr :: Parser Expr
+pKeywordExpr
+  = ConstructorExpr <$> pDataConstructor
+  <|> pParens pExpr
+  <|> Ite <$ symbol "if" <*> pExpr <* symbol "then" <*> pExpr <* symbol "else" <*> pExpr
+  <|> Match <$ symbol "match" <*> pExpr <* symbol "with" <* symbol "|" <*> sepBy1 pMatchArm (symbol "|")
+  <|> Let <$ symbol "let" <*> pIdentifier <* symbol "=" <*> pExpr <* symbol "in" <*> pExpr
+  <|> Tick <$ symbol "~" <*> optional pRational <*> pExpr
+
 pDataConstructor :: Parser DataConstructor
 pDataConstructor
   = pNumber
@@ -72,70 +123,93 @@ pDataConstructor
   <|> TreeConstructor TreeLeaf <$ symbol "leaf"
   <|> TreeConstructor <$> pTreeNode
 
+pTreeNode = TreeNode <$ symbol "node" <*> pExprShortest <*> pExprShortest <*> pExprShortest
+
 pMatchArm :: Parser MatchArm
-pMatchArm = (,) <$> pDataConstructor <* pArrow <*> pExpr
+pMatchArm = (,) <$> pPattern <* pArrow <*> pExpr
+
+pPattern :: Parser Pattern
+pPattern = pTreePattern
+  <|> (LeafPattern <$ symbol "leaf")
+  <|> pTuplePattern
+  <|> Alias <$> pIdentifier
+
+pTreePattern :: Parser Pattern
+pTreePattern = TreePattern <$ symbol "node" <*> pPatternVar <*> pPatternVar <*> pPatternVar
+
+pTuplePattern :: Parser Pattern
+pTuplePattern =  pParens (TuplePattern <$> pPatternVar <* symbol "," <*> pPatternVar)
+
+pPatternVar :: Parser PatternVar
+pPatternVar = (Wildcard <$ symbol "_")
+  <|> (Identifier <$> pIdentifier)
+
+pApplication :: Parser Expr
+pApplication = App <$> pIdentifier <*> some pExprShortest
+
+pBTerm :: Parser Expr
+pBTerm = pParens pExpr <|> Var <$> pIdentifier
+
+pBExpr :: Parser Expr
+pBExpr = makeExprParser pBTerm boolOperatorTable 
+
+binaryBool :: Parser () -> Op -> Operator Parser Expr
+binaryBool parser op = InfixL (BExpr op <$ parser)
+
+boolOperatorTable :: [[Operator Parser Expr]]
+boolOperatorTable =
+  [
+    [
+      binaryBool (symbol "<") LT,
+      binaryBool (symbol "==" <|> symbol "⩵") EQ,
+      binaryBool (symbol ">") GT
+    ]
+  ]
+
+keywords = [ "if", "then", "else", "match", "with", "let", "in"]
+
+pIdentifier :: Parser Text
+pIdentifier = do
+  ident <- lexeme (T.cons <$> letterChar <*>
+                   takeWhileP Nothing (\x -> isAlphaNum x || (x == '_') || (x == '.')) <?> "identifier")
+  if ident `elem` keywords
+    then fail $ "Use of reserved keyword " ++ T.unpack ident
+    else return ident
+
+pNumberList :: Parser [Int]
+pNumberList = pParens $ some pInt 
+
+pInt :: Parser Int
+pInt = lexeme L.decimal
+
+pNumber = Number <$> lexeme L.decimal
+
+pInteger :: Parser Integer
+pInteger = lexeme L.decimal
+
+pRational :: Parser Rational
+pRational = (%) <$> pInteger <* symbol "/" <*> pInteger
 
 pParens = between (symbol "(") (symbol ")")
+pSqParens = between (symbol "[") (symbol "]")
+pCurlyParens = between (symbol "{") (symbol "}")
 pArrow = symbol "->" <|> symbol "→"
 pDoubleArrow = symbol "=>" <|> symbol "⇒"
 pDoubleColon2 = symbol "::" <|> symbol "∷"
 pCross = symbol "⨯" <|> symbol "*"
+pMapsTo = symbol "↦" <|> symbol "|->"
 
+symbol :: Text -> Parser ()
+symbol = void . L.symbol sc
 
-pProgram :: Parser [FunctionDefinition]
-pProgram = sc *> manyTill pFunc eof
+lexeme :: Parser a -> Parser a
+lexeme = L.lexeme sc
 
-pTypeClass :: Parser TypeClass
-pTypeClass
-  = (Eq <$ symbol "Eq")
-  <|> (Ord <$ symbol "Ord")
-
-pConstraint :: Parser TypeConstraint
-pConstraint = (,) <$> pTypeClass <*> pIdentifier
-
-pTypeConstructor :: Parser TypeConstructor
-pTypeConstructor
-  = Bool <$ symbol "Bool"
-  <|> Tree <$ symbol "Tree" <*> pType
-  <|> Product <$> pParens (sepBy1 pType pCross)
-
-pType :: Parser Type 
-pType
-  = TypeConstructor <$> pTypeConstructor 
-  <|> TypeVariable <$> pIdentifier
-  <?> "type"
-
-pSignature :: Parser FunctionSignature
-pSignature = do
-  sigName <- pIdentifier
-  void pDoubleColon2
-  sigConstraints <- pParens (some pConstraint)
-    <|> (singleton <$> pConstraint)
-    <|> pure []
-  void pDoubleArrow
-  sigFrom <- pType
-  void pArrow
-  sigTo <- pType
-  return FunctionSignature {..}
-  
-
-pFunc :: Parser FunctionDefinition
-pFunc = do
-  funSignature <- optional pSignature
-  funName <- dbg "function name" pIdentifier
-  funBody <- pExpr
-  return FunctionDefinition {..}
-
-  
-pExpr :: Parser Expr 
-pExpr 
-  = ConstructorExpr <$> pDataConstructor
-  <|> Ite <$ symbol "if" <*> pExpr <* symbol "then" <*> pExpr <* symbol "else" <*> pExpr
-  <|> Match <$ symbol "match" <*> pExpr <* symbol "with" <*> sepBy1 pMatchArm (symbol "|")
-  <|> Let <$ symbol "let" <*> pIdentifier <* symbol "=" <*> pExpr <* symbol "in" <*> pExpr
-  <|> pBExpr -- boolean expression
-  <|> Var <$> pIdentifier
-  <?> "expression"
+sc :: Parser ()
+sc = L.space
+  space1                        
+  (L.skipLineComment "(*)")       
+  (L.skipBlockComment "(*" "*)")
 
 run fileName contents = case parse pProgram fileName contents of
   Left errs -> error $ errorBundlePretty errs
