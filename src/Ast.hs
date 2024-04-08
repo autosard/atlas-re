@@ -1,12 +1,19 @@
+{-# LANGUAGE RecordWildCards   #-}
+
 module Ast where
 
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Map(Map)
 import qualified Data.Map as M
 import Data.List(singleton)
 
+type Module = [FunctionDefinition]
+
 type Identifier = Text
 type Number = Int
+
+type Fqn = (String, String)
 
 data TypeClass
   = Eq
@@ -45,14 +52,31 @@ data FunctionSignature = FunctionSignature
   }
   deriving (Eq, Show)
 
+
+
 data FunctionDefinition = FunctionDefinition
   {
     funName :: Identifier,
+    funModuleName :: String,
     funSignature :: Maybe FunctionSignature,
     funArgs :: [Identifier],
     funBody :: Expr
   }
   deriving (Eq, Show)
+
+definitionFqn :: FunctionDefinition -> Fqn
+definitionFqn FunctionDefinition{..} = (funModuleName, T.unpack funName)
+
+-- calledFunctions :: FunctionDefinition -> [Fqn]
+-- calledFunctions FunctionDefinition{..} = calledFunctions' funBody
+
+-- calledFunctions' :: Expr -> [Fqn]
+-- calledFunctions' (App fqn exps) = fqn : concatMap calledFunctions' exps
+-- calledFunctions' (Ite e1 e2 e3) = concatMap calledFunctions' [e1, e2, e3]
+-- calledFunctinos' (Match e1 arms) = concatMap (calledFunctions' . snd) arms
+-- calledFunctions' (BExpr _ e1 e2) = concatMap calledFunctions' [e1, e2]
+
+
 
 data PatternVar = Identifier Identifier | Wildcard
   deriving (Eq, Show)
@@ -93,10 +117,11 @@ data Expr
   | ConstructorExpr DataConstructor
   | Ite Expr Expr Expr
   | Match Expr [MatchArm]
-  | App Identifier [Expr]
+  | App Fqn [Expr]
   | BExpr Op Expr Expr
   | Let Identifier Expr Expr
   | Tick (Maybe Rational) Expr
+  | Coin Rational
   deriving (Eq, Show)
 
 

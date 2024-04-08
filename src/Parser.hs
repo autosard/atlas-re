@@ -5,6 +5,7 @@ module Parser(run) where
 
 import Control.Monad 
 import Control.Applicative hiding (many, some)
+
 import Data.List(singleton)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -17,17 +18,24 @@ import Data.Ratio((%))
 import Prelude hiding (LT, EQ, GT)
 
 import Text.Megaparsec
-import Text.Megaparsec.Char
+import Text.Megaparsec.Char ( letterChar, space1 )
 import qualified Text.Megaparsec.Char.Lexer as L
 import Text.Megaparsec.Error(errorBundlePretty)
 
 import Ast
+import Control.Monad.Reader (Reader, runReader, asks, MonadTrans (lift))
 
-type Parser = Parsec Void Text
+defaultCoinPropability :: Rational
+defaultCoinPropability = 1 % 2
+
+newtype ParserContext = ParserContext { ctxModuleName :: String }
+  
+
+type Parser = ParsecT Void Text (Reader ParserContext)
 
 
-pProgram :: Parser [FunctionDefinition]
-pProgram = sc *> manyTill pFunc eof
+pModule :: Parser Module
+pModule = sc *> manyTill pFunc eof
 
 pFunc :: Parser FunctionDefinition
 pFunc = do
@@ -35,13 +43,14 @@ pFunc = do
   funName <- pIdentifier
   funArgs <- manyTill pIdentifier (symbol "=")
   funBody <- pExpr
+  funModuleName <- asks ctxModuleName
   return FunctionDefinition {..}
 
 pSignature :: Parser FunctionSignature
 pSignature = do
   sigName <- pIdentifier <?> "function name"
   void pDoubleColon2
-  sigConstraints <- optional (pConstraints <* pDoubleArrow <?> "type constraint(s)")
+  sigConstraints <- optional ((pConstraints <* pDoubleArrow) <?> "type constraint(s)")
   (from, to) <- (,) <$> pType <* pArrow <*> pType
   let fromSize = countTreeTypes from
   let toSize = countTreeTypes to
@@ -54,7 +63,7 @@ pSignature = do
   return FunctionSignature {..}
 
 pConstraints :: Parser [TypeConstraint]
-pConstraints = pParens (some pConstraint)
+pConstraints = try $ pParens (some pConstraint)
   <|> (singleton <$> pConstraint)
   <|> pure []
 
@@ -114,6 +123,8 @@ pKeywordExpr
   <|> Match <$ symbol "match" <*> pExpr <* symbol "with" <* symbol "|" <*> sepBy1 pMatchArm (symbol "|")
   <|> Let <$ symbol "let" <*> pIdentifier <* symbol "=" <*> pExpr <* symbol "in" <*> pExpr
   <|> Tick <$ symbol "~" <*> optional pRational <*> pExpr
+  <|> Coin <$ symbol "coin" <*> ((pRational <?> "coin probability") <|> pure defaultCoinPropability)
+
 
 pDataConstructor :: Parser DataConstructor
 pDataConstructor
@@ -122,8 +133,11 @@ pDataConstructor
   <|> BooleanConstructor BFalse <$ symbol "false"
   <|> TreeConstructor TreeLeaf <$ symbol "leaf"
   <|> TreeConstructor <$> pTreeNode
+  <|> TupleConstructor <$> try (pParens pTuple)
 
 pTreeNode = TreeNode <$ symbol "node" <*> pExprShortest <*> pExprShortest <*> pExprShortest
+
+pTuple = (,) <$> pExprShortest <* symbol "," <*> pExprShortest
 
 pMatchArm :: Parser MatchArm
 pMatchArm = (,) <$> pPattern <* pArrow <*> pExpr
@@ -144,8 +158,19 @@ pPatternVar :: Parser PatternVar
 pPatternVar = (Wildcard <$ symbol "_")
   <|> (Identifier <$> pIdentifier)
 
+
+resolveFunId :: String -> Identifier -> Fqn
+resolveFunId currentModule identifier = case suffix of
+  [] -> (currentModule, prefix)
+  _ -> (prefix, suffix)
+  where (prefix, suffix) = break (== '.') $ T.unpack identifier
+
 pApplication :: Parser Expr
-pApplication = App <$> pIdentifier <*> some pExprShortest
+pApplication = do
+  identifier <- pIdentifier
+  currentModule <- asks ctxModuleName
+  let fqn = resolveFunId currentModule identifier
+  App fqn <$> some pExprShortest
 
 pBTerm :: Parser Expr
 pBTerm = pParens pExpr <|> Var <$> pIdentifier
@@ -211,6 +236,7 @@ sc = L.space
   (L.skipLineComment "(*)")       
   (L.skipBlockComment "(*" "*)")
 
-run fileName contents = case parse pProgram fileName contents of
+run fileName moduleName contents = case runReader reader (ParserContext moduleName) of
   Left errs -> error $ errorBundlePretty errs
   Right prog -> prog
+  where reader = runParserT pModule fileName contents
