@@ -40,10 +40,11 @@ pModule = sc *> manyTill pFunc eof
 pFunc :: Parser FunctionDefinition
 pFunc = do
   funSignature <- optional pSignature
-  funName <- pIdentifier
+  name <- T.unpack <$> pIdentifier
   funArgs <- manyTill pIdentifier (symbol "=")
   funBody <- pExpr
-  funModuleName <- asks ctxModuleName
+  modName <- asks ctxModuleName
+  let funFqn = (modName, name)
   return FunctionDefinition {..}
 
 pSignature :: Parser FunctionSignature

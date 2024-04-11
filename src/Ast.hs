@@ -7,13 +7,15 @@ import qualified Data.Text as T
 import Data.Map(Map)
 import qualified Data.Map as M
 import Data.List(singleton)
+import Data.Set(Set)
+import qualified Data.Set as S
 
 type Module = [FunctionDefinition]
 
+type Fqn = (String, String)
+
 type Identifier = Text
 type Number = Int
-
-type Fqn = (String, String)
 
 data TypeClass
   = Eq
@@ -56,27 +58,30 @@ data FunctionSignature = FunctionSignature
 
 data FunctionDefinition = FunctionDefinition
   {
-    funName :: Identifier,
-    funModuleName :: String,
+    funFqn :: Fqn,
     funSignature :: Maybe FunctionSignature,
     funArgs :: [Identifier],
     funBody :: Expr
   }
   deriving (Eq, Show)
 
-definitionFqn :: FunctionDefinition -> Fqn
-definitionFqn FunctionDefinition{..} = (funModuleName, T.unpack funName)
+calledFunctions :: FunctionDefinition -> Set Fqn
+calledFunctions FunctionDefinition{..} = calledFunctions' funBody
 
--- calledFunctions :: FunctionDefinition -> [Fqn]
--- calledFunctions FunctionDefinition{..} = calledFunctions' funBody
+unionMap :: (Ord b) => (a -> Set b) -> [a] -> Set b
+unionMap f xs = S.unions $ map f xs
 
--- calledFunctions' :: Expr -> [Fqn]
--- calledFunctions' (App fqn exps) = fqn : concatMap calledFunctions' exps
--- calledFunctions' (Ite e1 e2 e3) = concatMap calledFunctions' [e1, e2, e3]
--- calledFunctinos' (Match e1 arms) = concatMap (calledFunctions' . snd) arms
--- calledFunctions' (BExpr _ e1 e2) = concatMap calledFunctions' [e1, e2]
-
-
+calledFunctions' :: Expr -> Set Fqn
+calledFunctions' (App fqn exps) = S.insert fqn $ unionMap calledFunctions' exps
+calledFunctions' (Ite e1 e2 e3) = unionMap calledFunctions' [e1, e2, e3]
+calledFunctions' (Match e1 arms) = calledFunctions' e1 `S.union` unionMap (calledFunctions' . snd) arms
+calledFunctions' (BExpr _ e1 e2) = unionMap calledFunctions' [e1, e2]
+calledFunctions' (Let _ e1 e2) = unionMap calledFunctions' [e1, e2]
+calledFunctions' (Tick _ e) = calledFunctions' e
+calledFunctions' (ConstructorExpr (TreeConstructor (TreeNode e1 e2 e3)))
+  = unionMap calledFunctions' [e1, e2, e3]
+calledFunctions' (ConstructorExpr (TupleConstructor (e1, e2))) = unionMap calledFunctions' [e1, e2]
+calledFunctions' _ = S.empty
 
 data PatternVar = Identifier Identifier | Wildcard
   deriving (Eq, Show)
@@ -134,4 +139,5 @@ zeroAnnotation :: Int -> Annotation
 zeroAnnotation size = M.fromList $ zip (map singleton [0..]) (replicate size 0) 
   
 type FunctionAnnotation = (Annotation, Annotation)
+
 

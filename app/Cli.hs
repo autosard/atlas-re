@@ -3,7 +3,7 @@
 
 module Cli(Options(..), Command(..), RunOptions(..), optionsP) where
 
-import Module(Fqn)
+import Ast(Fqn)
 
 import Options.Applicative
 

@@ -14,12 +14,10 @@ import Data.Maybe(fromMaybe)
 import qualified Iris
 import qualified Options.Applicative as Opt
 
-
-import Prelude hiding (readFile)
-import Data.Text.IO(readFile, putStr)
 import System.FilePath(FilePath)
 import System.Environment(lookupEnv)
 
+import qualified Data.Map as M
 
 import qualified Parser
 import qualified Module
@@ -27,6 +25,7 @@ import qualified Module
 import Cli
 
 import qualified Paths_atlas_revisited as Autogen
+import Module (prettyPrintSCC)
 
 
 newtype App a = App
@@ -58,7 +57,10 @@ app = do
     Run RunOptions{..} -> do
       searchPathfromEnv <- liftIO $ lookupEnv "ATLAS_SEARCH"
       let path = (`fromMaybe` searchPath) . (`fromMaybe` searchPathfromEnv) $ "."
-      liftIO $ putStrLn =<< Module.load path fqns
+      liftIO $ do
+        prog@Module.Program{..} <- Module.load path fqns
+        print $ M.keys progFunDefs
+        putStrLn $ prettyPrintSCC prog
   
 
 main :: IO ()
