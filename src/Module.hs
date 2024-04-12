@@ -41,13 +41,14 @@ data LoaderState = LoaderState {
   dependents :: Map Fqn (Set Fqn), -- depedency fqdn -> [dependent fqdn]
   loadedDefinitions :: Map Fqn FunctionDefinition,
   loadedModules :: Set String,
+  processedDefinitions :: Set Fqn,
   todo :: [Fqn]
                                }
 
 
 load :: FilePath -> [Fqn] -> IO Program
 load loadPath rootFqns = do
-  evalStateT (buildProgram loadPath) $ LoaderState rootFqns M.empty M.empty S.empty rootFqns
+  evalStateT (buildProgram loadPath) $ LoaderState rootFqns M.empty M.empty S.empty S.empty rootFqns
 
 
 buildProgram :: FilePath -> StateT LoaderState IO Program
@@ -67,8 +68,9 @@ buildProgram loadPath = do
   addVertex fqn
   let dependencies = calledFunctions def
   addDependencyEdges fqn dependencies
-  loaded <- gets (M.keysSet . loadedDefinitions)
+  loaded <- gets processedDefinitions
   pushTodos $ dependencies `S.difference` loaded
+  markAsProcessed fqn
 
   ifM someTodos (buildProgram loadPath) programFromLoaderState
 
@@ -82,7 +84,9 @@ programFromLoaderState = do
         = G.graphFromEdges edgeList
   let progCallGraphSCC = G.scc g
   return Program{..}
-  
+
+markAsProcessed :: Fqn -> StateT LoaderState IO ()
+markAsProcessed fqn = modify (\s -> s {processedDefinitions = S.insert fqn (processedDefinitions s)})
   
 someTodos :: StateT LoaderState IO Bool
 someTodos = gets ((/=[]) . todo)
