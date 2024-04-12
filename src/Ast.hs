@@ -83,7 +83,7 @@ calledFunctions' (ConstructorExpr (TreeConstructor (TreeNode e1 e2 e3)))
 calledFunctions' (ConstructorExpr (TupleConstructor (e1, e2))) = unionMap calledFunctions' [e1, e2]
 calledFunctions' _ = S.empty
 
-data PatternVar = Identifier Identifier | Wildcard
+data PatternVar = Identifier Identifier | WildcardVar
   deriving (Eq, Show)
 
 data Pattern 
@@ -91,6 +91,7 @@ data Pattern
   | LeafPattern 
   | TuplePattern PatternVar PatternVar
   | Alias Identifier
+  | WildcardPattern
   deriving (Eq, Show)
 
 type MatchArm = (Pattern, Expr)

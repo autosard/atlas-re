@@ -111,21 +111,21 @@ pExpr = pKeywordExpr
   <|> try pBExpr 
   <?> "expression"
 
-pExprShortest :: Parser Expr
-pExprShortest = pKeywordExpr
-  <|> try pBExpr 
-  <|> try pApplication
-
 pKeywordExpr :: Parser Expr
 pKeywordExpr
-  = ConstructorExpr <$> pDataConstructor
-  <|> pParens pExpr
+  = pConstructorExpr
+  <|> pParenExpr
   <|> Ite <$ symbol "if" <*> pExpr <* symbol "then" <*> pExpr <* symbol "else" <*> pExpr
   <|> Match <$ symbol "match" <*> pExpr <* symbol "with" <* symbol "|" <*> sepBy1 pMatchArm (symbol "|")
   <|> Let <$ symbol "let" <*> pIdentifier <* symbol "=" <*> pExpr <* symbol "in" <*> pExpr
   <|> Tick <$ symbol "~" <*> optional pRational <*> pExpr
   <|> Coin <$ symbol "coin" <*> ((pRational <?> "coin probability") <|> pure defaultCoinPropability)
 
+pParenExpr :: Parser Expr
+pParenExpr = pParens pExpr
+
+pConstructorExpr :: Parser Expr
+pConstructorExpr = ConstructorExpr <$> pDataConstructor
 
 pDataConstructor :: Parser DataConstructor
 pDataConstructor
@@ -136,9 +136,9 @@ pDataConstructor
   <|> TreeConstructor <$> pTreeNode
   <|> TupleConstructor <$> try (pParens pTuple)
 
-pTreeNode = TreeNode <$ symbol "node" <*> pExprShortest <*> pExprShortest <*> pExprShortest
+pTreeNode = TreeNode <$ symbol "node" <*> pArg <*> pArg <*> pArg
 
-pTuple = (,) <$> pExprShortest <* symbol "," <*> pExprShortest
+pTuple = (,) <$> pArg <* symbol "," <*> pArg
 
 pMatchArm :: Parser MatchArm
 pMatchArm = (,) <$> pPattern <* pArrow <*> pExpr
@@ -147,6 +147,7 @@ pPattern :: Parser Pattern
 pPattern = pTreePattern
   <|> (LeafPattern <$ symbol "leaf")
   <|> pTuplePattern
+  <|> WildcardPattern <$ symbol "_"
   <|> Alias <$> pIdentifier
 
 pTreePattern :: Parser Pattern
@@ -156,7 +157,7 @@ pTuplePattern :: Parser Pattern
 pTuplePattern =  pParens (TuplePattern <$> pPatternVar <* symbol "," <*> pPatternVar)
 
 pPatternVar :: Parser PatternVar
-pPatternVar = (Wildcard <$ symbol "_")
+pPatternVar = (WildcardVar <$ symbol "_")
   <|> (Identifier <$> pIdentifier)
 
 
@@ -166,15 +167,25 @@ resolveFunId currentModule identifier = case suffix of
   _ -> (prefix, suffix)
   where (prefix, suffix) = break (== '.') $ T.unpack identifier
 
+
 pApplication :: Parser Expr
 pApplication = do
   identifier <- pIdentifier
   currentModule <- asks ctxModuleName
   let fqn = resolveFunId currentModule identifier
-  App fqn <$> some pExprShortest
+  App fqn <$> some pArg
 
+pArg :: Parser Expr
+pArg = pParenExpr
+  <|> pConstructorExpr
+  <|> try (pVar <* notFollowedBy (symbol "=" <|> pDoubleColon2))
+  <?> "function argument"
+
+pVar :: Parser Expr
+pVar = Var <$> pIdentifier
+  
 pBTerm :: Parser Expr
-pBTerm = pParens pExpr <|> Var <$> pIdentifier
+pBTerm = pParenExpr <|> pVar
 
 pBExpr :: Parser Expr
 pBExpr = makeExprParser pBTerm boolOperatorTable 
@@ -198,6 +209,7 @@ pIdentifier :: Parser Text
 pIdentifier = do
   ident <- lexeme (T.cons <$> letterChar <*>
                    takeWhileP Nothing (\x -> isAlphaNum x || (x == '_') || (x == '.')) <?> "identifier")
+           
   if ident `elem` keywords
     then fail $ "Use of reserved keyword " ++ T.unpack ident
     else return ident
