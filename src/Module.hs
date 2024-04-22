@@ -66,7 +66,7 @@ buildProgram loadPath = do
 
   def <- retrieveDefinition fqn
   addVertex fqn
-  let dependencies = calledFunctions def
+  let dependencies = calledFunctions def moduleName
   addDependencyEdges fqn dependencies
   loaded <- gets processedDefinitions
   pushTodos $ dependencies `S.difference` loaded

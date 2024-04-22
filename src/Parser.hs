@@ -12,7 +12,8 @@ import qualified Data.Text as T
 import Data.Void ( Void )
 import Control.Monad.Combinators.Expr
 import Data.Char (isAlphaNum, isLetter)
-import qualified Data.Map as Map
+import qualified Data.Map as M
+import Data.Map(Map)
 import Data.Ratio((%))
 
 import Prelude hiding (LT, EQ, GT)
@@ -23,15 +24,33 @@ import qualified Text.Megaparsec.Char.Lexer as L
 import Text.Megaparsec.Error(errorBundlePretty)
 
 import Ast
-import Control.Monad.Reader (Reader, runReader, asks, MonadTrans (lift))
+import Types
+import Control.Monad.RWS
+import Primitive(Id)
 
 defaultCoinPropability :: Rational
 defaultCoinPropability = 1 % 2
 
 newtype ParserContext = ParserContext { ctxModuleName :: String }
-  
+data ParserState = ParserState { varIdGen :: Int, typeVarMapping :: Map Id Type }
 
-type Parser = ParsecT Void Text (Reader ParserContext)
+quantifyTypeVar :: Id -> Parser Type
+quantifyTypeVar id = do
+  state <- get
+  varMap <- gets typeVarMapping
+  lastId <- gets varIdGen
+  let nextId = lastId + 1
+  case M.lookup id varMap of
+    Nothing -> do
+      let var = TGen lastId
+      put state{
+        varIdGen = nextId,
+        typeVarMapping = M.insert id var varMap
+        }
+      return var
+    Just var -> return var
+
+type Parser = ParsecT Void Text (RWS ParserContext () ParserState)
 
 
 pModule :: Parser Module
@@ -40,11 +59,12 @@ pModule = sc *> manyTill pFunc eof
 pFunc :: Parser FunctionDefinition
 pFunc = do
   funSignature <- optional pSignature
-  name <- T.unpack <$> pIdentifier
-  funArgs <- manyTill pIdentifier (symbol "=")
-  funBody <- pExpr
+  funName <- pIdentifier
+  args <- manyTill pIdentifier (symbol "=")
+  body <- pExpr
+  let funBody = Fn args body 
   modName <- asks ctxModuleName
-  let funFqn = (modName, name)
+  let funFqn = (modName, T.unpack funName)
   return FunctionDefinition {..}
 
 pSignature :: Parser FunctionSignature
@@ -52,48 +72,59 @@ pSignature = do
   sigName <- pIdentifier <?> "function name"
   void pDoubleColon2
   sigConstraints <- optional ((pConstraints <* pDoubleArrow) <?> "type constraint(s)")
-  (from, to) <- (,) <$> pType <* pArrow <*> pType
-  let fromSize = countTreeTypes from
-  let toSize = countTreeTypes to
-  let sigType = (from, to)
-  let pFunctionAnnotation' = pFunctionAnnotation fromSize toSize
+  sigType <- pFunctionType
   sigAnnotation <- optional $ symbol "|" *> pSqParens (do
-    withCost <- pFunctionAnnotation'
-    costFree <- optional $ symbol "," *> pCurlyParens pFunctionAnnotation'
+    withCost <- pFunctionAnnotation
+    costFree <- optional $ symbol "," *> pCurlyParens pFunctionAnnotation
     return (withCost, costFree))
   return FunctionSignature {..}
 
-pConstraints :: Parser [TypeConstraint]
-pConstraints = try $ pParens (some pConstraint)
-  <|> (singleton <$> pConstraint)
-  <|> pure []
+pConstraints :: Parser ()
+pConstraints = void (try $ pParens (some pConstraint))
+  <|> pConstraint
 
-pConstraint :: Parser TypeConstraint
-pConstraint = (,) <$> pTypeClass <*> pIdentifier
+pConstraint :: Parser ()
+pConstraint =  pTypeClass <* pIdentifier
 
-pTypeClass :: Parser TypeClass
+pTypeClass :: Parser ()
 pTypeClass
-  = (Eq <$ symbol "Eq")
-  <|> (Ord <$ symbol "Ord")
+  = symbol "Eq"
+  <|> symbol "Ord"
 
-pType :: Parser Type 
-pType
-  = TypeConstructor <$> pTypeConstructor 
-  <|> TypeVariable <$> pIdentifier
-  <?> "type"
+pFunctionType :: Parser Scheme
+pFunctionType = do
+  modify (\s@ParserState{..} -> s{
+             varIdGen = 0,
+             typeVarMapping = M.empty
+             })
+  tArgs <- pProdType <|> pType
+  pArrow
+  tResult <- pType
+  len <- gets varIdGen
+  return $ Forall len (TAp Arrow [tArgs, tResult])
 
-pTypeConstructor :: Parser TypeConstructor
-pTypeConstructor
-  = Bool <$ symbol "Bool"
-  <|> Tree <$ symbol "Tree" <*> pType
-  <|> Product <$> pParens (sepBy1 pType pCross)
+pProdType :: Parser Type
+pProdType = TAp Prod <$> pParens (sepBy1 pType pCross)
 
-pFunctionAnnotation :: Int -> Int -> Parser FunctionAnnotation
-pFunctionAnnotation fromSize toSize = (,) <$> pAnnotation <* pArrow <*> pAnnotation
-  <|> pure (zeroAnnotation fromSize, zeroAnnotation toSize)
+pType :: Parser Type
+pType = pTypeConst
+  <|> (quantifyTypeVar =<< pIdentifier)
+
+pTypeConst :: Parser Type  
+pTypeConst
+  = (`TAp` []) <$> (Bool <$ symbol "Bool")
+  <|> (`TAp` []) <$> (Num <$ symbol "Num")
+  <|> TAp <$> (Tree <$ symbol "Tree") <*> (singleton <$> pType)
+
+pFunctionAnnotation :: Parser FunctionAnnotation
+pFunctionAnnotation = (,) <$> pAnnotation <* pArrow <*> pAnnotation
+  <|> return (Annotation 0 Nothing, Annotation 0 Nothing) 
 
 pAnnotation :: Parser Annotation
-pAnnotation = Map.fromList <$> pCoefficients 
+pAnnotation = do
+  coefs <- pCoefficients
+  return $ Annotation (length coefs) (Just (M.fromList coefs))
+  
 
 pCoefficients :: Parser [([Int], Coefficient)]
 pCoefficients = pSqParens $ sepBy pCoefficient (symbol ",")
@@ -114,6 +145,7 @@ pExpr = pKeywordExpr
 pKeywordExpr :: Parser Expr
 pKeywordExpr
   = pConstructorExpr
+  <|> Lit <$> pNumber
   <|> pParenExpr
   <|> Ite <$ symbol "if" <*> pExpr <* symbol "then" <*> pExpr <* symbol "else" <*> pExpr
   <|> Match <$ symbol "match" <*> pExpr <* symbol "with" <* symbol "|" <*> sepBy1 pMatchArm (symbol "|")
@@ -129,8 +161,7 @@ pConstructorExpr = ConstructorExpr <$> pDataConstructor
 
 pDataConstructor :: Parser DataConstructor
 pDataConstructor
-  = pNumber
-  <|> BooleanConstructor BTrue <$ symbol "true"
+  = BooleanConstructor BTrue <$ symbol "true"
   <|> BooleanConstructor BFalse <$ symbol "false"
   <|> TreeConstructor TreeLeaf <$ symbol "leaf"
   <|> TreeConstructor <$> pTreeNode
@@ -158,22 +189,13 @@ pTuplePattern =  pParens (TuplePattern <$> pPatternVar <* symbol "," <*> pPatter
 
 pPatternVar :: Parser PatternVar
 pPatternVar = (WildcardVar <$ symbol "_")
-  <|> (Identifier <$> pIdentifier)
-
-
-resolveFunId :: String -> Identifier -> Fqn
-resolveFunId currentModule identifier = case suffix of
-  [] -> (currentModule, prefix)
-  _ -> (prefix, suffix)
-  where (prefix, suffix) = break (== '.') $ T.unpack identifier
+  <|> (Id <$> pIdentifier)
 
 
 pApplication :: Parser Expr
 pApplication = do
   identifier <- pIdentifier
-  currentModule <- asks ctxModuleName
-  let fqn = resolveFunId currentModule identifier
-  App fqn <$> some pArg
+  App identifier <$> some pArg
 
 pArg :: Parser Expr
 pArg = pParenExpr
@@ -220,7 +242,7 @@ pNumberList = pParens $ some pInt
 pInt :: Parser Int
 pInt = lexeme L.decimal
 
-pNumber = Number <$> lexeme L.decimal
+pNumber = LitNum <$> lexeme L.decimal
 
 pInteger :: Parser Integer
 pInteger = lexeme L.decimal
@@ -249,7 +271,9 @@ sc = L.space
   (L.skipLineComment "(*)")       
   (L.skipBlockComment "(*" "*)")
 
-run fileName moduleName contents = case runReader reader (ParserContext moduleName) of
+run fileName moduleName contents = case fst $ evalRWS rws initEnv initState of
   Left errs -> error $ errorBundlePretty errs
   Right prog -> prog
-  where reader = runParserT pModule fileName contents
+  where initEnv = ParserContext moduleName
+        initState = ParserState 0 M.empty
+        rws = runParserT pModule fileName contents

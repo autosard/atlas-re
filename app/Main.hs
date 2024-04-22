@@ -21,6 +21,7 @@ import qualified Data.Map as M
 
 import qualified Parser
 import qualified Module
+import qualified TypeInference
 
 import Cli
 
@@ -59,8 +60,10 @@ app = do
       let path = (`fromMaybe` searchPath) . (`fromMaybe` searchPathfromEnv) $ "."
       liftIO $ do
         prog@Module.Program{..} <- Module.load path fqns
-        print $ M.keys progFunDefs
-        putStrLn $ prettyPrintSCC prog
+        -- print $ M.keys progFunDefs
+        -- putStrLn $ prettyPrintSCC prog
+        let ctx = TypeInference.runTypeInference (M.elems progFunDefs)
+        print ctx
   
 
 main :: IO ()
