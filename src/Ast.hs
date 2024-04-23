@@ -1,4 +1,10 @@
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE StrictData #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE StandaloneDeriving #-} 
+
 
 module Ast where
 
@@ -12,57 +18,44 @@ import qualified Data.Set as S
 import Text.Megaparsec(SourcePos)
 
 import Primitive(Id)
-import Types
+import Types ( Scheme, Type )
 
-type Module = [FunctionDefinition]
 
-type Fqn = (String, String)
+type Fqn = (Text, Text)
 
 --type Id = Text
 type Number = Int
 
-data FunctionSignature = FunctionSignature
-  {
-    sigName :: Id,
-    sigType :: Scheme,
-    sigAnnotation :: Maybe (FunctionAnnotation, Maybe FunctionAnnotation)
-  }
+
+
+-- data TreeConstructor a
+--   = TreeNode (Expr a) (Expr a) (Expr a)
+--   | TreeLeaf
+-- --   deriving (Eq, Show)
+
+-- type TupleConstructor a = (Expr a, Expr a)
+
+-- data BooleanConstructor
+--   = BTrue
+--   | BFalse
+--   deriving (Eq, Show)
+
+-- data DataConst a
+--   = TreeConstructor (TreeConstructor a)
+--   | TupleConstructor (TupleConstructor a)
+--   | BooleanConstructor BooleanConstructor
+--  deriving (Eq, Show)
+type Module a = [FunDef a]
+
+data FunDef a = FunDef (XFunAnn a) Id [Id] (Expr a)
+
+newtype Literal = LitNum Number
   deriving (Eq, Show)
 
-
-data FunctionDefinition = FunctionDefinition
-  {
-    funName :: Id,
-    funFqn :: Fqn,
-    funSignature :: Maybe FunctionSignature,
-    funBody :: Expr
-  }
+data Op = LT | EQ | GT
   deriving (Eq, Show)
 
-resolveFunId :: String -> Id -> Fqn
-resolveFunId currentModule identifier = case suffix of
-  [] -> (currentModule, prefix)
-  _ -> (prefix, suffix)
-  where (prefix, suffix) = break (== '.') $ T.unpack identifier
-
-calledFunctions :: FunctionDefinition -> String -> Set Fqn
-calledFunctions FunctionDefinition{..} moduleName =
-  S.map (resolveFunId moduleName) $ calledFunctions' funBody
-
-unionMap :: (Ord b) => (a -> Set b) -> [a] -> Set b
-unionMap f xs = S.unions $ map f xs
-
-calledFunctions' :: Expr -> Set Id
-calledFunctions' (App id exps) = S.insert id $ unionMap calledFunctions' exps
-calledFunctions' (Ite e1 e2 e3) = unionMap calledFunctions' [e1, e2, e3]
-calledFunctions' (Match e1 arms) = calledFunctions' e1 `S.union` unionMap (calledFunctions' . snd) arms
-calledFunctions' (BExpr _ e1 e2) = unionMap calledFunctions' [e1, e2]
-calledFunctions' (Let _ e1 e2) = unionMap calledFunctions' [e1, e2]
-calledFunctions' (Tick _ e) = calledFunctions' e
-calledFunctions' (ConstructorExpr (TreeConstructor (TreeNode e1 e2 e3)))
-  = unionMap calledFunctions' [e1, e2, e3]
-calledFunctions' (ConstructorExpr (TupleConstructor (e1, e2))) = unionMap calledFunctions' [e1, e2]
-calledFunctions' _ = S.empty
+type MatchArm a = (Pattern, Expr a)
 
 data PatternVar = Id Id | WildcardVar
   deriving (Eq, Show)
@@ -75,51 +68,116 @@ data Pattern
   | WildcardPattern
   deriving (Eq, Show)
 
-type MatchArm = (Pattern, Expr)
+-- We use extensible AST types to model the different stages (parsed, types, etc.) (see https://www.microsoft.com/en-us/research/uploads/prod/2016/11/trees-that-grow.pdf)
 
-data TreeConstructor 
-  = TreeNode Expr Expr Expr
-  | TreeLeaf
-  deriving (Eq, Show)
+data Expr a
+  = VarAnn (XExprAnn a) Id
+  | LitAnn (XExprAnn a) Literal
+  | ConstAnn (XExprAnn a) Id [Expr a]
+  | IteAnn (XExprAnn a) (Expr a) (Expr a) (Expr a)
+  | MatchAnn (XExprAnn a) (Expr a) [MatchArm a]
+  | AppAnn (XExprAnn a) Id [Expr a]
+  | BExprAnn (XExprAnn a) Op (Expr a) (Expr a)
+  | LetAnn (XExprAnn a) Id (Expr a) (Expr a)
+  | TickAnn (XExprAnn a) (Maybe Rational) (Expr a)
+  | CoinAnn (XExprAnn a) Rational
 
-type TupleConstructor = (Expr, Expr)
 
-data BooleanConstructor
-  = BTrue
-  | BFalse
-  deriving (Eq, Show)
 
-data DataConstructor
-  = TreeConstructor TreeConstructor
-  | TupleConstructor TupleConstructor
-  | BooleanConstructor BooleanConstructor
-  deriving (Eq, Show)
+type family XExprAnn a
+type family XFunAnn a
 
-newtype Literal = LitNum Number
-  deriving (Eq, Show)
+-- pattern synomyms for constants
+pattern ConstTreeNode :: Expr a -> Expr a -> Expr a -> Expr a
+pattern ConstTreeNode l v r <- ConstAnn _ "node" [l, v, r]
+pattern ConstTreeLeaf :: Expr a
+pattern ConstTreeLeaf <- ConstAnn _ "leaf" []
+pattern ConstTuple :: Expr a -> Expr a -> Expr a
+pattern ConstTuple x y <- ConstAnn _ "(,)" [x, y]
+pattern ConstTrue :: Expr a
+pattern ConstTrue <- ConstAnn _ "true" []
+pattern ConstFalse :: Expr a
+pattern ConstFalse <- ConstAnn _ "false" []
 
-data Op = LT | EQ | GT
-  deriving (Eq, Show)
+-- pattern synomyms to work with epxressions without the overhead of annotations
+pattern Var :: Id -> Expr a
+pattern Var id <- VarAnn _ id
+pattern Lit :: Literal -> Expr a
+pattern Lit l <- LitAnn _ l
+pattern Const :: Id -> [Expr a] -> Expr a
+pattern Const id args <- ConstAnn _ id args
+pattern Ite :: Expr a -> Expr a -> Expr a -> Expr a
+pattern Ite e1 e2 e3 <- IteAnn _ e1 e2 e3
+pattern Match :: Expr a -> [MatchArm a] -> Expr a
+pattern Match e arms <- MatchAnn _ e arms
+pattern App :: Id -> [Expr a] -> Expr a
+pattern App id args <- AppAnn _ id args
+pattern BExpr :: Op -> Expr a -> Expr a -> Expr a
+pattern BExpr op e1 e2 <- BExprAnn _ op e1 e2
+pattern Let :: Id -> Expr a -> Expr a -> Expr a
+pattern Let id e1 e2 <- LetAnn _ id e1 e2
+pattern Tick :: Maybe Rational -> Expr a -> Expr a
+pattern Tick c e <- TickAnn _ c e
+pattern Coin :: Rational -> Expr a
+pattern Coin p <- CoinAnn _ p
 
-data Expr
-  = Var Id
-  | Lit Literal
-  | ConstructorExpr DataConstructor
-  | Ite Expr Expr Expr
-  | Match Expr [MatchArm]
-  | App Id [Expr]
-  | BExpr Op Expr Expr
-  | Let Id Expr Expr
-  | Tick (Maybe Rational) Expr
-  | Coin Rational
-  | Fn [Id] Expr
-  deriving (Eq, Show)
+pattern Fn :: Id -> [Id] -> Expr a -> FunDef a
+pattern Fn id args e <- FunDef _ id args e
 
+-- parsed
+type ParsedModule = Module Parsed
+type ParsedFunDef = FunDef Parsed
+type ParsedExpr = Expr Parsed
+deriving instance Show ParsedExpr
+
+type ParsedMatchArm = MatchArm Parsed
+
+data ParsedFunAnn = ParsedFunAnn {
+  pfloc :: SourcePos,
+  pfFqn :: Fqn,
+  pfType :: Maybe Scheme,
+  pfResourceAnn :: Maybe FullResourceAnn}
+
+data Parsed
+type instance XExprAnn Parsed = SourcePos
+type instance XFunAnn Parsed = ParsedFunAnn
+
+pattern FnParsed :: ParsedFunAnn -> Id -> [Id] -> ParsedExpr -> ParsedFunDef
+pattern FnParsed ann id args body = FunDef ann id args body
+
+funAnn :: FunDef a -> XFunAnn a
+funAnn (FunDef ann _ _ _) = ann
+
+exprAnn :: Expr a -> XExprAnn a
+exprAnn (VarAnn ann _) = ann
+exprAnn (LitAnn ann _) = ann
+exprAnn (IteAnn ann _ _ _) = ann
+exprAnn (MatchAnn ann _ _) = ann
+exprAnn (AppAnn ann _ _) = ann
+exprAnn (BExprAnn ann _ _ _) = ann
+exprAnn (LetAnn ann _ _ _ ) = ann
+exprAnn (TickAnn ann _ _) = ann
+exprAnn (CoinAnn ann _ ) = ann
+
+-- typed
+type TypedExpr = Expr Typed
+
+data TypedExprAnn = TypedExprAnn {
+  teLoc :: SourcePos,
+  teType :: Type}
+  
+data Typed
+type instance XExprAnn Typed = TypedExprAnn
+type instance XFunAnn Typed = ParsedFunAnn
+
+--
 
 type Coefficient = Rational
 
 -- TODO: might replaced once the type system is generatlized
-data Annotation = Annotation {
+type FullResourceAnn = (FunResourceAnn, Maybe FunResourceAnn)
+
+data ResourceAnn = ResourceAnn {
   annLen :: Int,
   annCoefs :: Maybe (Map [Int] Coefficient)
   }
@@ -128,6 +186,6 @@ data Annotation = Annotation {
 --zeroAnnotation :: Int -> Annotation
 --zeroAnnotation size = M.fromList $ zip (map singleton [0..]) (replicate size 0) 
   
-type FunctionAnnotation = (Annotation, Annotation)
+type FunResourceAnn = (ResourceAnn, ResourceAnn)
 
 

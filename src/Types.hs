@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE StrictData #-}
 
 module Types where
 
@@ -12,11 +13,11 @@ import Primitive(Id)
 import Debug.Trace(trace)
 traceShow s v = trace (s ++ ": " ++ show v) v
 
-data Tyvar = Tyvar Id 
+newtype Tyvar = Tyvar Id 
   deriving (Eq, Ord, Show)
 
 enumId :: Int -> Id
-enumId n = T.pack $ "?:" ++ (show n)
+enumId n = T.pack $ "?:" ++ show n
 
 -- Type constructor of arity n
 data Tycon = Num
@@ -47,6 +48,7 @@ type Subst = Map Tyvar Type
 
 nullSubst = M.empty
 
+infix 4 +->
 (+->) :: Tyvar -> Type -> Subst
 u +-> t = M.singleton u t
 
@@ -59,8 +61,10 @@ instance Types Type where
                        Just t  -> t
                        Nothing -> TVar u
   apply s (TAp c ts) = TAp c (apply s ts)
+  apply s t = t
   tv (TVar u)  = [u]
   tv (TAp c ts) = tv ts
+  tv t = []
 
 instance Types a => Types [a] where
   apply s = map (apply s)
@@ -72,5 +76,5 @@ instance Types Scheme where
 
 infix 4 @@
 (@@) :: Subst -> Subst -> Subst
-s1 @@ s2 = (M.map (apply s1) s2) `M.union` s1
+s1 @@ s2 = M.map (apply s1) s2 `M.union` s1
 

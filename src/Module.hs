@@ -8,7 +8,9 @@ import qualified Data.Set as S
 import Data.Set(Set)
 import qualified Data.Map as M
 import Data.Map(Map)
-import qualified Data.Text.IO as T(readFile)
+import qualified Data.Text.IO as TextIO(readFile)
+import qualified Data.Text as T
+import Data.Text(Text)
 import Data.List(uncons)
 import Data.Maybe(fromMaybe)
 
@@ -17,19 +19,17 @@ import System.FilePath(FilePath)
 import Control.Monad.State
 import Control.Monad.Extra
 
-import Ast(FunctionDefinition (funFqn), Fqn, calledFunctions)
+import Ast(ParsedFunDef , Fqn, funAnn, pfFqn)
+import StaticAnalysis(calledFunctions)
 import qualified Parser(run)
 import qualified System.FilePath.Glob as Glob
 
 import Data.Tree
 
-import Debug.Trace(trace)
-traceShow v = trace (show v) v
-
 extension = ".ml"
 
 data Program = Program {
-  progFunDefs :: Map Fqn FunctionDefinition,
+  progFunDefs :: Map Fqn ParsedFunDef,
   progRoots :: [Fqn],
   progCallGraphSCC :: [G.Tree G.Vertex],
   progVertexFqnMap :: G.Vertex -> (Fqn, Fqn, [Fqn]),
@@ -39,12 +39,11 @@ data Program = Program {
 data LoaderState = LoaderState {
   roots :: [Fqn],
   dependents :: Map Fqn (Set Fqn), -- depedency fqdn -> [dependent fqdn]
-  loadedDefinitions :: Map Fqn FunctionDefinition,
-  loadedModules :: Set String,
+  loadedDefinitions :: Map Fqn ParsedFunDef,
+  loadedModules :: Set Text,
   processedDefinitions :: Set Fqn,
   todo :: [Fqn]
                                }
-
 
 load :: FilePath -> [Fqn] -> IO Program
 load loadPath rootFqns = do
@@ -58,8 +57,8 @@ buildProgram loadPath = do
   loaded <- isLoaded moduleName
   unless loaded (
     do
-      moduleFile <- liftIO $ findModule loadPath moduleName
-      parsedModule <- liftIO (Parser.run moduleFile moduleName <$> T.readFile moduleFile)
+      moduleFile <- liftIO $ findModule loadPath (T.unpack moduleName)
+      parsedModule <- liftIO (Parser.run moduleFile moduleName <$> TextIO.readFile moduleFile)
       storeDefinitions parsedModule
       markAsLoaded moduleName
     )
@@ -79,7 +78,7 @@ programFromLoaderState = do
   LoaderState{..} <- get
   let progFunDefs = loadedDefinitions
   let progRoots = roots
-  let edgeList = map (\(key, keys) -> (key, key, S.toList keys)) $ traceShow (M.toList dependents)
+  let edgeList = map (\(key, keys) -> (key, key, S.toList keys)) $ M.toList dependents
   let (g, progVertexFqnMap, progFqnVertexMap)
         = G.graphFromEdges edgeList
   let progCallGraphSCC = G.scc g
@@ -104,23 +103,23 @@ addDependencyEdges dependent dependencies =
   where insertsDepentent m = S.foldr updateDependency m dependencies
         updateDependency = M.alter (Just . S.insert dependent . fromMaybe S.empty) 
 
-retrieveDefinition :: Fqn -> StateT LoaderState IO FunctionDefinition
+retrieveDefinition :: Fqn -> StateT LoaderState IO ParsedFunDef
 retrieveDefinition fqn@(mod, fun) = do
   found <- gets $ M.lookup fqn . loadedDefinitions
   liftIO $ case found of
     Just def -> return def
-    Nothing -> fail $ "Could not find a definition for '" ++ fun ++ "' in module '" ++ mod ++ "'."
+    Nothing -> fail $ "Could not find a definition for '" ++ (T.unpack fun) ++ "' in module '" ++ T.unpack mod ++ "'."
     
 
-storeDefinitions :: [FunctionDefinition] -> StateT LoaderState IO ()
+storeDefinitions :: [ParsedFunDef] -> StateT LoaderState IO ()
 storeDefinitions defs = modify (\s -> s {loadedDefinitions = insertDefs s})
-  where newDefs = M.fromList $ zip (map funFqn defs) defs
+  where newDefs = M.fromList $ zip (map (pfFqn . funAnn) defs) defs
         insertDefs state = newDefs `M.union` loadedDefinitions state
 
-isLoaded :: String -> StateT LoaderState IO Bool
+isLoaded :: Text -> StateT LoaderState IO Bool
 isLoaded mod = gets $ S.member mod . loadedModules
 
-markAsLoaded :: String -> StateT LoaderState IO ()
+markAsLoaded :: Text -> StateT LoaderState IO ()
 markAsLoaded mod = modify (\s -> s {loadedModules = S.insert mod (loadedModules s)})
   
 popTodo :: StateT LoaderState IO Fqn

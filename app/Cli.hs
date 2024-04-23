@@ -6,6 +6,7 @@ module Cli(Options(..), Command(..), RunOptions(..), optionsP) where
 import Ast(Fqn)
 
 import Options.Applicative
+import qualified Data.Text as T
 
 data Options = Options
   { searchPath :: Maybe FilePath
@@ -39,7 +40,7 @@ parseFqn :: String -> Either String Fqn
 parseFqn s = case suffix of
                [] -> Left errorMsg
                [_] -> Left errorMsg
-               (_:functionName) -> Right (moduleName, functionName)
+               (_:functionName) -> Right (T.pack moduleName, T.pack functionName)
   where (moduleName, suffix) = break (== '.') s
         errorMsg = "Could not parse fqn '" ++ s ++
                    "'. Make sure to specify the module name with <module>.<function>."

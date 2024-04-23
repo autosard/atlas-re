@@ -27,7 +27,8 @@ library
                       Module,
                       Primitive,
                       Types,
-                      TypeInference                     
+                      TypeInference,
+                      StaticAnalysis                   
                       
     
     -- Modules included in this library but not exported.

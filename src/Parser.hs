@@ -1,5 +1,7 @@
+{-# LANGUAGE StrictData #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TupleSections #-}
 
 module Parser(run) where
 
@@ -31,7 +33,7 @@ import Primitive(Id)
 defaultCoinPropability :: Rational
 defaultCoinPropability = 1 % 2
 
-newtype ParserContext = ParserContext { ctxModuleName :: String }
+newtype ParserContext = ParserContext { ctxModuleName :: Text }
 data ParserState = ParserState { varIdGen :: Int, typeVarMapping :: Map Id Type }
 
 quantifyTypeVar :: Id -> Parser Type
@@ -53,31 +55,35 @@ quantifyTypeVar id = do
 type Parser = ParsecT Void Text (RWS ParserContext () ParserState)
 
 
-pModule :: Parser Module
+pModule :: Parser ParsedModule
 pModule = sc *> manyTill pFunc eof
 
-pFunc :: Parser FunctionDefinition
+pFunc :: Parser ParsedFunDef
 pFunc = do
-  funSignature <- optional pSignature
+  pos <- getSourcePos
+  sig <- optional (try pSignature)
   funName <- pIdentifier
-  args <- manyTill pIdentifier (symbol "=")
-  body <- pExpr
-  let funBody = Fn args body 
+  (_type, resourceAnn) <- case sig of
+    Just (name, _type, resouceAnn) -> do
+      when (funName /= name ) (fail $ "Signature for function '" ++ T.unpack name ++ "' must be followod by defining equation.")
+      return (Just _type, resouceAnn)
+    Nothing -> return (Nothing, Nothing)
   modName <- asks ctxModuleName
-  let funFqn = (modName, T.unpack funName)
-  return FunctionDefinition {..}
+  let funFqn = (modName, funName)
+  args <- manyTill pIdentifier (symbol "=")
+  FunDef (ParsedFunAnn pos funFqn _type resourceAnn) funName args <$> pExpr
 
-pSignature :: Parser FunctionSignature
+pSignature :: Parser (Id, Scheme, Maybe FullResourceAnn)
 pSignature = do
-  sigName <- pIdentifier <?> "function name"
+  name <- pIdentifier <?> "function name"
   void pDoubleColon2
-  sigConstraints <- optional ((pConstraints <* pDoubleArrow) <?> "type constraint(s)")
-  sigType <- pFunctionType
-  sigAnnotation <- optional $ symbol "|" *> pSqParens (do
-    withCost <- pFunctionAnnotation
-    costFree <- optional $ symbol "," *> pCurlyParens pFunctionAnnotation
+  constraints <- optional ((pConstraints <* pDoubleArrow) <?> "type constraint(s)")
+  _type <- pFunctionType
+  resourceAnn <- optional $ symbol "|" *> pSqParens (do
+    withCost <- pFunResourceAnn
+    costFree <- optional $ symbol "," *> pCurlyParens pFunResourceAnn
     return (withCost, costFree))
-  return FunctionSignature {..}
+  return (name, _type, resourceAnn)
 
 pConstraints :: Parser ()
 pConstraints = void (try $ pParens (some pConstraint))
@@ -97,14 +103,17 @@ pFunctionType = do
              varIdGen = 0,
              typeVarMapping = M.empty
              })
-  tArgs <- pProdType <|> pType
+  tArgs <- pArgsType
   pArrow
   tResult <- pType
   len <- gets varIdGen
   return $ Forall len (TAp Arrow [tArgs, tResult])
 
-pProdType :: Parser Type
-pProdType = TAp Prod <$> pParens (sepBy1 pType pCross)
+pArgsType :: Parser Type
+pArgsType = do
+  args <- pParens (sepBy1 pType pCross)
+    <|> (singleton <$> pType)
+  return $ TAp Prod args
 
 pType :: Parser Type
 pType = pTypeConst
@@ -116,14 +125,14 @@ pTypeConst
   <|> (`TAp` []) <$> (Num <$ symbol "Num")
   <|> TAp <$> (Tree <$ symbol "Tree") <*> (singleton <$> pType)
 
-pFunctionAnnotation :: Parser FunctionAnnotation
-pFunctionAnnotation = (,) <$> pAnnotation <* pArrow <*> pAnnotation
-  <|> return (Annotation 0 Nothing, Annotation 0 Nothing) 
+pFunResourceAnn :: Parser FunResourceAnn
+pFunResourceAnn = (,) <$> pResourceAnn <* pArrow <*> pResourceAnn
+  <|> return (ResourceAnn 0 Nothing, ResourceAnn 0 Nothing) 
 
-pAnnotation :: Parser Annotation
-pAnnotation = do
+pResourceAnn :: Parser ResourceAnn
+pResourceAnn = do
   coefs <- pCoefficients
-  return $ Annotation (length coefs) (Just (M.fromList coefs))
+  return $ ResourceAnn (length coefs) (Just (M.fromList coefs))
   
 
 pCoefficients :: Parser [([Int], Coefficient)]
@@ -136,42 +145,37 @@ pCoefficient = do
   coefficient <- try pRational <|> toRational <$> pInt
   return (index, coefficient)
 
-pExpr :: Parser Expr 
+pExpr :: Parser ParsedExpr
 pExpr = pKeywordExpr
   <|> try pApplication
   <|> try pBExpr 
   <?> "expression"
 
-pKeywordExpr :: Parser Expr
+pKeywordExpr :: Parser ParsedExpr
 pKeywordExpr
-  = pConstructorExpr
-  <|> Lit <$> pNumber
+  = pConst
+  <|> LitAnn <$> getSourcePos <*> pNumber
   <|> pParenExpr
-  <|> Ite <$ symbol "if" <*> pExpr <* symbol "then" <*> pExpr <* symbol "else" <*> pExpr
-  <|> Match <$ symbol "match" <*> pExpr <* symbol "with" <* symbol "|" <*> sepBy1 pMatchArm (symbol "|")
-  <|> Let <$ symbol "let" <*> pIdentifier <* symbol "=" <*> pExpr <* symbol "in" <*> pExpr
-  <|> Tick <$ symbol "~" <*> optional pRational <*> pExpr
-  <|> Coin <$ symbol "coin" <*> ((pRational <?> "coin probability") <|> pure defaultCoinPropability)
+  <|> IteAnn <$> getSourcePos <* symbol "if" <*> pExpr <* symbol "then" <*> pExpr <* symbol "else" <*> pExpr
+  <|> MatchAnn <$> getSourcePos <* symbol "match" <*> pExpr <* symbol "with" <* symbol "|" <*> sepBy1 pMatchArm (symbol "|")
+  <|> LetAnn <$> getSourcePos <* symbol "let" <*> pIdentifier <* symbol "=" <*> pExpr <* symbol "in" <*> pExpr
+  <|> TickAnn <$> getSourcePos <* symbol "~" <*> optional pRational <*> pExpr
+  <|> CoinAnn <$> getSourcePos <* symbol "coin" <*> ((pRational <?> "coin probability") <|> pure defaultCoinPropability)
 
-pParenExpr :: Parser Expr
+pParenExpr :: Parser ParsedExpr
 pParenExpr = pParens pExpr
 
-pConstructorExpr :: Parser Expr
-pConstructorExpr = ConstructorExpr <$> pDataConstructor
+pConst :: Parser ParsedExpr
+pConst = do
+  pos <- getSourcePos
+  (name, args) <- (,) <$> symbol' "true" <*> pure []
+    <|> (,) <$> symbol' "false" <*> pure []
+    <|> (,) <$> symbol' "node" <*> count 3 pArg
+    <|> (,) <$> symbol' "leaf" <*> pure []
+    <|> ("(,)",) <$> try (pParens ((\x y -> [x, y]) <$> pArg <* symbol "," <*> pArg))
+  return $ ConstAnn pos name args
+  
 
-pDataConstructor :: Parser DataConstructor
-pDataConstructor
-  = BooleanConstructor BTrue <$ symbol "true"
-  <|> BooleanConstructor BFalse <$ symbol "false"
-  <|> TreeConstructor TreeLeaf <$ symbol "leaf"
-  <|> TreeConstructor <$> pTreeNode
-  <|> TupleConstructor <$> try (pParens pTuple)
-
-pTreeNode = TreeNode <$ symbol "node" <*> pArg <*> pArg <*> pArg
-
-pTuple = (,) <$> pArg <* symbol "," <*> pArg
-
-pMatchArm :: Parser MatchArm
 pMatchArm = (,) <$> pPattern <* pArrow <*> pExpr
 
 pPattern :: Parser Pattern
@@ -192,30 +196,28 @@ pPatternVar = (WildcardVar <$ symbol "_")
   <|> (Id <$> pIdentifier)
 
 
-pApplication :: Parser Expr
-pApplication = do
-  identifier <- pIdentifier
-  App identifier <$> some pArg
+pApplication :: Parser ParsedExpr
+pApplication = AppAnn <$> getSourcePos <*> pIdentifier <*> some pArg
 
-pArg :: Parser Expr
+pArg :: Parser ParsedExpr
 pArg = pParenExpr
-  <|> pConstructorExpr
+  <|> pConst
   <|> try (pVar <* notFollowedBy (symbol "=" <|> pDoubleColon2))
   <?> "function argument"
 
-pVar :: Parser Expr
-pVar = Var <$> pIdentifier
+pVar :: Parser ParsedExpr
+pVar = VarAnn <$> getSourcePos <*> pIdentifier
   
-pBTerm :: Parser Expr
+pBTerm :: Parser ParsedExpr
 pBTerm = pParenExpr <|> pVar
 
-pBExpr :: Parser Expr
+pBExpr :: Parser ParsedExpr
 pBExpr = makeExprParser pBTerm boolOperatorTable 
 
-binaryBool :: Parser () -> Op -> Operator Parser Expr
-binaryBool parser op = InfixL (BExpr op <$ parser)
+binaryBool :: Parser () -> Op -> Operator Parser ParsedExpr
+binaryBool parser op = InfixL (BExprAnn <$> getSourcePos <*> pure op <* parser)
 
-boolOperatorTable :: [[Operator Parser Expr]]
+boolOperatorTable :: [[Operator Parser ParsedExpr]]
 boolOperatorTable =
   [
     [
@@ -261,6 +263,9 @@ pMapsTo = symbol "↦" <|> symbol "|->"
 
 symbol :: Text -> Parser ()
 symbol = void . L.symbol sc
+
+symbol' :: Text -> Parser Text
+symbol' = L.symbol sc
 
 lexeme :: Parser a -> Parser a
 lexeme = L.lexeme sc
