@@ -36,6 +36,9 @@ data Type
 data Scheme = Forall Int Type
   deriving (Eq, Show)
 
+toScheme :: Type -> Scheme
+toScheme = Forall 0
+
 treeT = Forall 1 (TAp Tree [TGen 0])
 tupleT = Forall 2 (TAp Prod [TGen 0, TGen 1])
 boolT = Forall 0 (TAp Bool [])
@@ -43,6 +46,8 @@ boolT = Forall 0 (TAp Bool [])
 nAryFn :: Int -> Scheme
 nAryFn n = Forall (n+1) $ TAp Arrow [TAp Prod $ map TGen [0..(n-1)], TGen n] ;
 
+fn :: [Type] -> Type -> Type
+fn from to = TAp Arrow [TAp Prod from, to]
 
 type Subst = Map Tyvar Type
 

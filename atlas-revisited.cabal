@@ -70,3 +70,18 @@ executable atlas-revisited
     hs-source-dirs: app
     --profiling: True
     default-language: Haskell2010
+
+test-suite tests
+    type: exitcode-stdio-1.0
+    main-is: Spec.hs
+    build-depends:
+        base ^>=4.17.2.1,
+        containers,
+        hspec,
+        atlas-revisited
+    hs-source-dirs: test
+    other-modules:
+        TypeInferenceSpec
+    default-language: Haskell2010
+    build-tool-depends: hspec-discover:hspec-discover
+ 

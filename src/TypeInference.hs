@@ -1,4 +1,3 @@
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE StrictData #-}
@@ -12,6 +11,7 @@ import qualified Data.Map as M
 import Data.Array(Array)
 import qualified Data.Array as A
 import Data.List(concatMap, uncons)
+import qualified Data.List as L
   
 import Types
 import Ast
@@ -21,6 +21,8 @@ import Control.Monad.Identity (Identity)
 import Text.Megaparsec(SourcePos(sourceName, sourceLine, sourceColumn))
 import Text.Megaparsec.Pos(unPos)
 import GHC.ExecutionStack (Location(functionName))
+import qualified Data.IntMap as S
+
 
 data TiState = TiState {
   idGen :: Int,
@@ -31,6 +33,7 @@ data TypeError
   = TypeMismatch Type Type
   | OccursCheck Tyvar Type
   | UnboundIdentifier Id
+  deriving Eq
 
 instance Show TypeError where
   show (TypeMismatch expected actual) = "Couldn't match type '" ++ show expected ++ "' with '" ++ show actual ++ "'\n"
@@ -71,6 +74,16 @@ extSubst s' = do
 
 type Context = Map Id Scheme
 
+quantify :: [Tyvar] -> Type -> Scheme
+quantify vs t = Forall (length vs) (apply s t)
+  where vs' = [v | v <- tv t, v `elem` vs]
+        s = M.fromList $ zip vs' (map TGen [0..])
+
+
+instance Types b => Types (Map a b) where
+  apply s = M.map (apply s) 
+  tv m = concatMap tv $ M.elems m
+
 find :: Id -> Context -> TI Scheme
 find id ctx = maybe (throwError (UnboundIdentifier id)) return (findMaybe id ctx)
 
@@ -101,9 +114,6 @@ instScheme (Forall len t) = do
   let ts = A.listArray (0,len-1) vars
   return (inst ts t)
 
-instance Types b => Types (Map a b) where
-  apply s = M.map (apply s) 
-  tv m = concatMap tv $ M.elems m
 
 type Infer e t = Context -> e -> TI t
 
@@ -217,50 +227,65 @@ tiExpr' ctx (Ite e1 e2 e3) = do
 tiExpr' ctx (Match e arms) = do
   r <- newTVar
   te <- tiExpr ctx e
-  mapM_ (fmap (unifyWithArm (te, r)) . tiMatchArm ctx) arms
+  armTs <- mapM (tiMatchArm ctx) arms
+  mapM_ (unifyWithArm (te, r)) armTs
   return r
   where unifyWithArm (tp1, te1) (tp2, te2) = do
           unify tp1 tp2
           unify te1 te2
 tiExpr' ctx (App id exps) = do
+  to <- newTVar
   scFun <- find id ctx
   tFun <- instScheme scFun
-  tArgs <- instScheme $ nAryFn (length exps)
-  unify tFun tArgs
-  return tFun
+  tArgs <- mapM (tiExpr ctx) exps
+  unify tFun (tArgs `fn` to)
+  return to
 tiExpr' ctx (BExpr {}) = instScheme boolT
 tiExpr' ctx (Let x e1 e2) = do
-  tx <- tiExpr ctx e1
-  let ctx' = M.insert x (Forall 0 tx) ctx
-  tiExpr ctx e2
+  tx <- traceShow "tx" <$> tiExpr ctx e1
+  s <- gets subst
+  let tx' = apply s tx
+  let fs = tv (apply s ctx)
+  let gs = tv tx' L.\\ fs
+  let ctx' = M.insert x (quantify gs tx) ctx
+  tiExpr ctx' e2
 tiExpr' ctx (Tick _ e) = tiExpr ctx e
 tiExpr' ctx (Coin _) = instScheme boolT
 
-tiFunDef :: Infer ParsedFunDef Type
-tiFunDef ctx (Fn id args exp) = do
-  argVars <- mapM (\v -> (v,) . Forall 0 <$> newTVar) args
-  let argVars' = M.fromList argVars
-  let ctx' = argVars' `M.union` ctx
-  inferedFunT <- tiExpr ctx' exp
-  sc <- find id ctx
-  funT <- instScheme sc
-  unify funT inferedFunT
-  return funT
+funArgTypes :: Type -> [Type]
+funArgTypes (TAp Arrow [TAp Prod ts, _]) = ts
+funArgTypes _ = error "cannot extract arg types from non-function type."
+
+tiFun :: Infer ParsedFunDef Type
+tiFun ctx (Fn _ args exp) = do
+  argVars <- mapM (const newTVar) args
+  let argSchemes = map toScheme argVars
+  let ctx' = M.fromList $ zip args argSchemes
+  let ctx'' = ctx' `M.union` ctx
+  te <- tiExpr ctx'' exp
+  return $ argVars `fn` te
 
 
-tiProg :: Infer ParsedModule [(Id, Type)]
+tiProg :: Infer ParsedModule Context
 tiProg ctx defs = do
-  let ctx' = initCtx defs
-  ts <- mapM (\def@(Fn id _ _) -> (id,) <$> tiFunDef ctx' def) defs
+  ctx' <- initCtx defs
+  
+  ts <- mapM (tiFun ctx') defs
   s <- gets subst
-  return $ map (\pair -> apply s <$> pair) ts
+  let ts' = apply s ts
+  let fs = tv (apply s ctx)
+  let gss = map (\t -> tv t L.\\ fs) ts'
+  let ids = map (\(Fn id _ _) -> id) defs
+  let qts = zipWith quantify gss ts'
+  let ctx' = M.fromList (zip ids qts) `M.union` ctx
+  return ctx'
   
 
-initCtx :: [ParsedFunDef] -> Context
-initCtx defs = M.fromList (map assumeType defs)
+initCtx :: [ParsedFunDef] -> TI Context
+initCtx defs = M.fromList <$> mapM assumeType defs
   where assumeType (FnParsed ann id args _) = case pfType ann of
-          Just sc -> (id, sc)
-          Nothing -> (id, nAryFn (length args))
+          Just sc -> (id,) . toScheme <$> instScheme sc
+          Nothing -> (id,) . toScheme <$> newTVar
 
 showSrcPos :: SourcePos -> String
 showSrcPos pos = let name = sourceName pos
@@ -275,9 +300,15 @@ showCurrentExp s = case uncons (expStack s) of
   Just (e , _) -> let pos = exprAnn e in
     showSrcPos pos ++ " " ++ show e
 
-runTypeInference :: [ParsedFunDef] -> [(Id, Type)]
-runTypeInference defs = case runState state initState of
+runTI :: TiState -> TI a -> (Either TypeError a, TiState)
+runTI s ti = runState (runExceptT ti) s
+
+evalTI :: TiState -> TI a -> Either TypeError a
+evalTI s = fst . runTI s
+
+runTypeInference :: [ParsedFunDef] -> Context
+runTypeInference defs = case runTI initState (tiProg M.empty defs) of
   (Left e, s) -> error $ showCurrentExp s ++ ": " ++ show e
   (Right context, s) -> context
   where initState = TiState 0 nullSubst []
-        state = runExceptT (tiProg M.empty defs)
+
