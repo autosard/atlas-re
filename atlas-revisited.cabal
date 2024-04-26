@@ -21,13 +21,21 @@ maintainer:         armin695@gmail.com
 -- category:
 extra-source-files: CHANGELOG.md
 
+package:
+    
+
+                                      
+
+
 library
     exposed-modules:  Ast,
                       Parser,
                       Module,
                       Primitive,
-                      Types,
-                      TypeInference,
+                      Typing.Type,
+                      Typing.Scheme,
+                      Typing.Subst,
+                      Typing.Inference,
                       StaticAnalysis                   
                       
     
@@ -48,6 +56,7 @@ library
                       array
     hs-source-dirs:   src
     default-language: Haskell2010
+    ghc-options: -Wunused-imports            
 
 executable atlas-revisited
     main-is:          Main.hs
@@ -81,7 +90,7 @@ test-suite tests
         atlas-revisited
     hs-source-dirs: test
     other-modules:
-        TypeInferenceSpec
+        Typing.InferenceSpec
     default-language: Haskell2010
     build-tool-depends: hspec-discover:hspec-discover
  

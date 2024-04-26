@@ -13,7 +13,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Void ( Void )
 import Control.Monad.Combinators.Expr
-import Data.Char (isAlphaNum, isLetter)
+import Data.Char (isAlphaNum)
 import qualified Data.Map as M
 import Data.Map(Map)
 import Data.Ratio((%))
@@ -23,10 +23,10 @@ import Prelude hiding (LT, EQ, GT)
 import Text.Megaparsec
 import Text.Megaparsec.Char ( letterChar, space1 )
 import qualified Text.Megaparsec.Char.Lexer as L
-import Text.Megaparsec.Error(errorBundlePretty)
 
 import Ast
-import Types
+import Typing.Type
+import Typing.Scheme
 import Control.Monad.RWS
 import Primitive(Id)
 

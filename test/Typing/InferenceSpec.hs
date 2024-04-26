@@ -1,12 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module TypeInferenceSpec(spec) where
+module Typing.InferenceSpec(spec) where
 
 import Test.Hspec
 
-import TypeInference
+import Typing.Inference
 import Ast
-import Types
+import Typing.Type
+import Typing.Scheme
+import Typing.Subst
 import qualified Data.Map as M
 import Data.Void
 import Parser (initialPos)
@@ -107,7 +109,7 @@ spec = do
         let e2 = VarAnn sp "x" 
         let e = LetAnn sp "x" e1 e2
         let (t, state) = runTI testState (tiExpr ctx e)
-        let s = traceShow "s: " $ subst state 
+        let s = subst state 
         apply s <$> t `shouldBe` Right tTreeNum
 
     context "Given a tick expression" $ do

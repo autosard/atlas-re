@@ -1,0 +1,9 @@
+[[check]]
+type = "Exclude"
+id = "STAN-0103"
+file = "src/Typing/Inference.hs"
+
+[[check]]
+type = "Exclude"
+id = "STAN-0103"
+file = "src/Typing/Scheme.hs"

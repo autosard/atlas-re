@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE InstanceSigs #-}
 
-module TypeInference where
+module Typing.Inference where
 
 import Control.Monad.State
 import Control.Monad.Except
@@ -10,19 +11,16 @@ import Data.Map(Map)
 import qualified Data.Map as M
 import Data.Array(Array)
 import qualified Data.Array as A
-import Data.List(concatMap, uncons)
+import Data.List(uncons)
 import qualified Data.List as L
   
-import Types
+import Typing.Type
+import Typing.Subst
+import Typing.Scheme
 import Ast
-import Primitive(Id)
-import Data.Data (typeOf2)
-import Control.Monad.Identity (Identity)
+import Primitive(Id, enumId)
 import Text.Megaparsec(SourcePos(sourceName, sourceLine, sourceColumn))
 import Text.Megaparsec.Pos(unPos)
-import GHC.ExecutionStack (Location(functionName))
-import qualified Data.IntMap as S
-
 
 data TiState = TiState {
   idGen :: Int,
@@ -74,13 +72,9 @@ extSubst s' = do
 
 type Context = Map Id Scheme
 
-quantify :: [Tyvar] -> Type -> Scheme
-quantify vs t = Forall (length vs) (apply s t)
-  where vs' = [v | v <- tv t, v `elem` vs]
-        s = M.fromList $ zip vs' (map TGen [0..])
-
 
 instance Types b => Types (Map a b) where
+  apply :: Types b => Subst -> Map a b -> Map a b
   apply s = M.map (apply s) 
   tv m = concatMap tv $ M.elems m
 
@@ -242,7 +236,7 @@ tiExpr' ctx (App id exps) = do
   return to
 tiExpr' ctx (BExpr {}) = instScheme boolT
 tiExpr' ctx (Let x e1 e2) = do
-  tx <- traceShow "tx" <$> tiExpr ctx e1
+  tx <- tiExpr ctx e1
   s <- gets subst
   let tx' = apply s tx
   let fs = tv (apply s ctx)

@@ -18,7 +18,8 @@ import qualified Data.Set as S
 import Text.Megaparsec(SourcePos)
 
 import Primitive(Id)
-import Types ( Scheme, Type )
+import Typing.Type (Type)
+import Typing.Scheme (Scheme)
 
 
 type Fqn = (Text, Text)

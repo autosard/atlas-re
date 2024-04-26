@@ -21,7 +21,7 @@ import qualified Data.Map as M
 
 import qualified Parser
 import qualified Module
-import qualified TypeInference
+import qualified Typing.Inference 
 
 import Cli
 
@@ -62,7 +62,7 @@ app = do
         prog@Module.Program{..} <- Module.load path fqns
         -- print $ M.keys progFunDefs
         -- putStrLn $ prettyPrintSCC prog
-        let ctx = TypeInference.runTypeInference (M.elems progFunDefs)
+        let ctx = Typing.Inference.runTypeInference (M.elems progFunDefs)
         print ctx
   
 
