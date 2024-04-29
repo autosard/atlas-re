@@ -181,18 +181,19 @@ pConst = do
 pMatchArm :: Parser ParsedMatchArm
 pMatchArm = MatchArmAnn <$> getSourcePos <*> pPattern <* pArrow <*> pExpr
 
-pPattern :: Parser Pattern
-pPattern = pTreePattern
-  <|> (LeafPattern <$ symbol "leaf")
-  <|> pTuplePattern
-  <|> WildcardPattern <$ symbol "_"
-  <|> Alias <$> pIdentifier
+pPattern :: Parser ParsedPattern
+pPattern = do
+  pos <- getSourcePos
+  pConstPattern pos 
+    <|> WildcardPat pos <$ symbol "_"
+    <|> Alias pos <$> pIdentifier
 
-pTreePattern :: Parser Pattern
-pTreePattern = TreePattern <$ symbol "node" <*> pPatternVar <*> pPatternVar <*> pPatternVar
-
-pTuplePattern :: Parser Pattern
-pTuplePattern =  pParens (TuplePattern <$> pPatternVar <* symbol "," <*> pPatternVar)
+pConstPattern :: SourcePos -> Parser ParsedPattern
+pConstPattern pos = do
+  (name, args) <- (,) <$> symbol' "node" <*> count 3 pPatternVar
+    <|> (,) <$> symbol' "leaf" <*> pure []
+    <|> ("(,)",) <$> try (pParens ((\x y -> [x, y]) <$> pPatternVar <* symbol "," <*> pPatternVar))
+  return $ ConstPat pos name args
 
 pPatternVar :: Parser PatternVar
 pPatternVar = (WildcardVar <$ symbol "_")

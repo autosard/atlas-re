@@ -54,22 +54,19 @@ data Op = LT | EQ | GT
 data Syntax a
    = SynExpr (Expr a)
    | SynArm (MatchArm a)
---   | SynPat Pattern 
+   | SynPat (Pattern a)
 
-data MatchArm a = MatchArmAnn (XExprAnn a) Pattern (Expr a)
+data MatchArm a = MatchArmAnn (XExprAnn a) (Pattern a) (Expr a)
 
 data PatternVar = Id Id | WildcardVar
   deriving (Eq, Show)
 
-data Pattern 
-  = TreePattern PatternVar PatternVar PatternVar
-  | LeafPattern 
-  | TuplePattern PatternVar PatternVar
-  | Alias Id
-  | WildcardPattern
-  deriving (Eq, Show)
+data Pattern a
+  = ConstPat (XExprAnn a) Id [PatternVar]
+  | Alias (XExprAnn a) Id
+  | WildcardPat (XExprAnn a) 
 
--- We use extensible AST types to model the different stages (parsed, types, etc.) (see https://www.microsoft.com/en-us/research/uploads/prod/2016/11/trees-that-grow.pdf)
+-- We use extensible AST types to model the different stages (parsed, typed, etc.) (see https://www.microsoft.com/en-us/research/uploads/prod/2016/11/trees-that-grow.pdf)
 
 data Expr a
   = VarAnn (XExprAnn a) Id
@@ -82,8 +79,6 @@ data Expr a
   | LetAnn (XExprAnn a) Id (Expr a) (Expr a)
   | TickAnn (XExprAnn a) (Maybe Rational) (Expr a)
   | CoinAnn (XExprAnn a) Rational
-
-
 
 type family XExprAnn a
 type family XFunAnn a
@@ -99,6 +94,14 @@ pattern ConstTrue :: Expr a
 pattern ConstTrue <- ConstAnn _ "true" []
 pattern ConstFalse :: Expr a
 pattern ConstFalse <- ConstAnn _ "false" []
+
+-- pattern synomyms for constructor patterns
+pattern PatTreeNode :: PatternVar -> PatternVar -> PatternVar -> Pattern a
+pattern PatTreeNode l v r <- ConstPat _ "node" [l, v, r]
+pattern PatTreeLeaf :: Pattern a
+pattern PatTreeLeaf <- ConstPat _ "leaf" []
+pattern PatTuple :: PatternVar -> PatternVar -> Pattern a
+pattern PatTuple x y <- ConstPat _ "(,)" [x, y]
 
 -- pattern synomyms to work with epxressions without the overhead of annotations
 pattern Var :: Id -> Expr a
@@ -122,7 +125,12 @@ pattern Tick c e <- TickAnn _ c e
 pattern Coin :: Rational -> Expr a
 pattern Coin p <- CoinAnn _ p
 
-pattern MatchArm :: Pattern -> Expr a -> MatchArm a
+pattern PatWildcard :: Pattern a
+pattern PatWildcard <- WildcardPat _
+pattern PatAlias :: Id -> Pattern a
+pattern PatAlias id <- Alias _ id
+
+pattern MatchArm :: Pattern a -> Expr a -> MatchArm a
 pattern MatchArm p e <- MatchArmAnn _ p e
 
 pattern Fn :: Id -> [Id] -> Expr a -> FunDef a
@@ -134,13 +142,15 @@ type ParsedModule = Module Parsed
 type ParsedFunDef = FunDef Parsed
 type ParsedExpr = Expr Parsed
 type ParsedMatchArm = MatchArm Parsed
+type ParsedPattern = Pattern Parsed
 
+deriving instance Show ParsedPattern
 deriving instance Show ParsedMatchArm
 deriving instance Show ParsedExpr
 
 
 data ParsedFunAnn = ParsedFunAnn {
-  pfloc :: SourcePos,
+  pfLoc :: SourcePos,
   pfFqn :: Fqn,
   pfType :: Maybe Scheme,
   pfResourceAnn :: Maybe FullResourceAnn}
@@ -178,8 +188,6 @@ data TypedExprAnn = TypedExprAnn {
 data Typed
 type instance XExprAnn Typed = TypedExprAnn
 type instance XFunAnn Typed = ParsedFunAnn
-
---
 
 type Coefficient = Rational
 

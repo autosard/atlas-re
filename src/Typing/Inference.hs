@@ -40,6 +40,9 @@ instance Traceable ParsedExpr where
 instance Traceable ParsedMatchArm where
   trace arm = pushSyn $ SynArm arm
 
+instance Traceable ParsedPattern where
+  trace p = pushSyn $ SynPat p
+
 untrace :: a -> TI ()
 untrace _ = popSyn
 
@@ -181,8 +184,8 @@ tiPatternVar ctx WildcardVar = do
   t <- newTVar
   return (M.empty, t)
 
-tiPattern :: Infer Pattern (Context, Type)
-tiPattern ctx (TreePattern l v r) = do
+tiPattern :: Infer ParsedPattern (Context, Type)
+tiPattern ctx (PatTreeNode l v r) = do
   freshTreeT <- instScheme treeT
   let [valueType] = tv freshTreeT
   (cl, tl) <- tiPatternVar ctx l 
@@ -192,8 +195,8 @@ tiPattern ctx (TreePattern l v r) = do
   (cr, tr) <- tiPatternVar ctx r
   unify freshTreeT tr
   return (M.unions [cl, cv, cr, ctx], freshTreeT)
-tiPattern ctx LeafPattern = (ctx,) <$> instScheme treeT
-tiPattern ctx (TuplePattern v1 v2) = do
+tiPattern ctx PatTreeLeaf = (ctx,) <$> instScheme treeT
+tiPattern ctx (PatTuple v1 v2) = do
   freshTupleT <- instScheme tupleT
   let [a, b] = tv freshTupleT
   (ca, t1) <- tiPatternVar ctx v1
@@ -201,10 +204,10 @@ tiPattern ctx (TuplePattern v1 v2) = do
   (cb, t2) <- tiPatternVar ctx v2
   unify (TVar b) t2
   return (M.unions [ca, cb, ctx], freshTupleT)
-tiPattern ctx (Alias id) = do
+tiPattern ctx (PatAlias id) = do
   v <- newTVar
   return (M.insert id (Forall 0 v) ctx, v)
-tiPattern ctx WildcardPattern = (ctx,) <$> newTVar
+tiPattern ctx PatWildcard = (ctx,) <$> newTVar
 
 tiMatchArm :: Infer ParsedMatchArm (Type, Type)
 tiMatchArm ctx arm = do
