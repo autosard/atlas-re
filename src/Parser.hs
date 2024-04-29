@@ -3,7 +3,7 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections #-}
 
-module Parser(run, initialPos) where
+module Parser(run, initialPos, SourcePos) where
 
 import Control.Monad 
 import Control.Applicative hiding (many, some)
@@ -154,13 +154,16 @@ pExpr = pKeywordExpr
 pKeywordExpr :: Parser ParsedExpr
 pKeywordExpr
   = pConst
-  <|> LitAnn <$> getSourcePos <*> pNumber
+  <|> pLit
   <|> pParenExpr
   <|> IteAnn <$> getSourcePos <* symbol "if" <*> pExpr <* symbol "then" <*> pExpr <* symbol "else" <*> pExpr
   <|> MatchAnn <$> getSourcePos <* symbol "match" <*> pExpr <* symbol "with" <* symbol "|" <*> sepBy1 pMatchArm (symbol "|")
   <|> LetAnn <$> getSourcePos <* symbol "let" <*> pIdentifier <* symbol "=" <*> pExpr <* symbol "in" <*> pExpr
   <|> TickAnn <$> getSourcePos <* symbol "~" <*> optional pRational <*> pExpr
   <|> CoinAnn <$> getSourcePos <* symbol "coin" <*> ((pRational <?> "coin probability") <|> pure defaultCoinPropability)
+
+pLit :: Parser ParsedExpr
+pLit = LitAnn <$> getSourcePos <*> pNumber
 
 pParenExpr :: Parser ParsedExpr
 pParenExpr = pParens pExpr
@@ -175,8 +178,8 @@ pConst = do
     <|> ("(,)",) <$> try (pParens ((\x y -> [x, y]) <$> pArg <* symbol "," <*> pArg))
   return $ ConstAnn pos name args
   
-
-pMatchArm = (,) <$> pPattern <* pArrow <*> pExpr
+pMatchArm :: Parser ParsedMatchArm
+pMatchArm = MatchArmAnn <$> getSourcePos <*> pPattern <* pArrow <*> pExpr
 
 pPattern :: Parser Pattern
 pPattern = pTreePattern
@@ -202,6 +205,7 @@ pApplication = AppAnn <$> getSourcePos <*> pIdentifier <*> some pArg
 pArg :: Parser ParsedExpr
 pArg = pParenExpr
   <|> pConst
+  <|> pLit
   <|> try (pVar <* notFollowedBy (symbol "=" <|> pDoubleColon2))
   <?> "function argument"
 

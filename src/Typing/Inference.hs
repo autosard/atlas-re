@@ -2,6 +2,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Typing.Inference where
 
@@ -12,6 +13,8 @@ import qualified Data.Map as M
 import Data.Array(Array)
 import qualified Data.Array as A
 import Data.List(uncons)
+import System.Exit
+
 import qualified Data.List as L
   
 import Typing.Type
@@ -21,11 +24,36 @@ import Ast
 import Primitive(Id, enumId)
 import Text.Megaparsec(SourcePos(sourceName, sourceLine, sourceColumn))
 import Text.Megaparsec.Pos(unPos)
+import SourceError
 
 data TiState = TiState {
   idGen :: Int,
   subst :: Subst,
-  expStack :: [ParsedExpr]}
+  traceStack :: [ParsedSyntax]}
+
+class Traceable a where
+  trace :: a -> TI ()
+
+instance Traceable ParsedExpr where
+  trace e = pushSyn $ SynExpr e
+
+instance Traceable ParsedMatchArm where
+  trace arm = pushSyn $ SynArm arm
+
+untrace :: a -> TI ()
+untrace _ = popSyn
+
+pushSyn :: ParsedSyntax -> TI ()
+pushSyn e = do
+  s <- get
+  put s{traceStack = e:traceStack s}
+
+popSyn :: TI ()
+popSyn = do
+  s <- get
+  put s{traceStack = tail (traceStack s)}
+
+
 
 data TypeError
   = TypeMismatch Type Type
@@ -177,28 +205,27 @@ tiPattern ctx (Alias id) = do
   v <- newTVar
   return (M.insert id (Forall 0 v) ctx, v)
 tiPattern ctx WildcardPattern = (ctx,) <$> newTVar
-  
+
 tiMatchArm :: Infer ParsedMatchArm (Type, Type)
-tiMatchArm ctx (pat, e) = do
+tiMatchArm ctx arm = do
+  trace arm
+  (tp, te) <- tiMatchArm' ctx arm
+  untrace arm
+  return (tp, te)
+
+
+tiMatchArm' :: Infer ParsedMatchArm (Type, Type)
+tiMatchArm' ctx (MatchArm pat e) = do
   (ctx', tp) <- tiPattern ctx pat
   te <- tiExpr ctx' e
   return (tp, te)
 
-pushExp :: ParsedExpr -> TI ()
-pushExp e = do
-  s <- get
-  put s{expStack = e:expStack s}
-
-popExp :: TI ()
-popExp = do
-  s <- get
-  put s{expStack = tail (expStack s)}
 
 tiExpr :: Infer ParsedExpr Type
 tiExpr ctx e = do
-  pushExp e
+  trace e
   t <- tiExpr' ctx e
-  popExp
+  untrace e
   return t
 
 tiExpr' :: Infer ParsedExpr Type
@@ -212,11 +239,17 @@ tiExpr' ctx (Lit l) = do
 tiExpr' ctx (Ite e1 e2 e3) = do
   r <- newTVar
   t1 <- tiExpr ctx e1
+  trace e1
   unify (TAp Bool []) t1
+  untrace e1
   t2 <- tiExpr ctx e2
+  trace e2
   unify r t2
+  untrace e2
   t3 <- tiExpr ctx e3
+  trace e3
   unify r t3
+  untrace e2
   return r
 tiExpr' ctx (Match e arms) = do
   r <- newTVar
@@ -288,11 +321,11 @@ showSrcPos pos = let name = sourceName pos
                  in 
                    name ++ ":" ++ show line ++ ":" ++ show column ++ ":"
 
-showCurrentExp :: TiState -> String
-showCurrentExp s = case uncons (expStack s) of
-  Nothing -> "no expr"
-  Just (e , _) -> let pos = exprAnn e in
-    showSrcPos pos ++ " " ++ show e
+currentExpLoc :: TiState -> SourcePos
+currentExpLoc s = case uncons (traceStack s) of
+  Nothing -> error "pop from empty syntax stack"
+  Just (e , _) -> synAnn e 
+    
 
 runTI :: TiState -> TI a -> (Either TypeError a, TiState)
 runTI s ti = runState (runExceptT ti) s
@@ -300,9 +333,9 @@ runTI s ti = runState (runExceptT ti) s
 evalTI :: TiState -> TI a -> Either TypeError a
 evalTI s = fst . runTI s
 
-runTypeInference :: [ParsedFunDef] -> Context
+runTypeInference :: [ParsedFunDef] -> IO Context
 runTypeInference defs = case runTI initState (tiProg M.empty defs) of
-  (Left e, s) -> error $ showCurrentExp s ++ ": " ++ show e
-  (Right context, s) -> context
+  (Left e, s) -> die =<< printSrcError (SourceError (currentExpLoc s) (show e))
+  (Right context, _) -> return context
   where initState = TiState 0 nullSubst []
 

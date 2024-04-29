@@ -67,8 +67,8 @@ spec = do
     context "given a valid match expression" $ do
       it "returns the correct type" $ do
         let ctx = M.fromList [("t", toScheme (TVar $ Tyvar "t")), ("arm1", toScheme tNum), ("arm2", toScheme tNum)]
-        let arm1 = (LeafPattern, VarAnn sp "arm1" )
-        let arm2 = (TreePattern (Id "l") (Id "v") (Id "r"), VarAnn sp "arm2")
+        let arm1 = MatchArmAnn sp LeafPattern (VarAnn sp "arm1")
+        let arm2 = MatchArmAnn sp (TreePattern (Id "l") (Id "v") (Id "r")) (VarAnn sp "arm2")
         let e = MatchAnn sp (VarAnn sp "t") [arm1, arm2]
         let (t, state) = runTI testState (tiExpr ctx e)
         let s = subst state 
@@ -157,7 +157,7 @@ spec = do
         let ctx = M.empty
         let p = TreePattern (Id "l") (Id "v") (Id "r")
         let e = VarAnn sp "l" 
-        let arm = (p, e)
+        let arm = MatchArmAnn sp p e
         let (t, state) = runTI testState (tiMatchArm ctx arm)
         let s = subst state
         let t' = bimap (apply s) (apply s) <$> t

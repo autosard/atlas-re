@@ -1,9 +1,9 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE StrictData #-}
 
 module Module where
 
 import qualified Data.Graph as G
-import Data.Graph(Graph)
 import qualified Data.Set as S
 import Data.Set(Set)
 import qualified Data.Map as M
@@ -13,8 +13,6 @@ import qualified Data.Text as T
 import Data.Text(Text)
 import Data.List(uncons)
 import Data.Maybe(fromMaybe)
-
-import System.FilePath(FilePath)
 
 import Control.Monad.State
 import Control.Monad.Extra
@@ -145,11 +143,3 @@ prettyPrintSCC Program{..} = foldr op "" progCallGraphSCC
         op tree string = string ++ ", " ++ treeToString tree
         treeToString G.Node{..} = show (((\(fqn, _, _) -> fqn) . progVertexFqnMap) rootLabel)
           ++ " -> [" ++ concatMap treeToString subForest ++ "]"
-  
-
-
-  
-
-
- 
-  

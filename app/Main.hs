@@ -12,21 +12,17 @@ import Control.Monad.Reader (MonadReader)
 import Data.Maybe(fromMaybe)
 
 import qualified Iris
-import qualified Options.Applicative as Opt
 
-import System.FilePath(FilePath)
 import System.Environment(lookupEnv)
 
 import qualified Data.Map as M
 
-import qualified Parser
 import qualified Module
-import qualified Typing.Inference 
+import qualified Typing.Inference
 
 import Cli
 
 import qualified Paths_atlas_revisited as Autogen
-import Module (prettyPrintSCC)
 
 
 newtype App a = App
@@ -62,7 +58,7 @@ app = do
         prog@Module.Program{..} <- Module.load path fqns
         -- print $ M.keys progFunDefs
         -- putStrLn $ prettyPrintSCC prog
-        let ctx = Typing.Inference.runTypeInference (M.elems progFunDefs)
+        ctx <- Typing.Inference.runTypeInference (M.elems progFunDefs)
         print ctx
   
 

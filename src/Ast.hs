@@ -9,12 +9,7 @@
 module Ast where
 
 import Data.Text (Text)
-import qualified Data.Text as T
 import Data.Map(Map)
-import qualified Data.Map as M
-import Data.List(singleton)
-import Data.Set(Set)
-import qualified Data.Set as S
 import Text.Megaparsec(SourcePos)
 
 import Primitive(Id)
@@ -56,7 +51,12 @@ newtype Literal = LitNum Number
 data Op = LT | EQ | GT
   deriving (Eq, Show)
 
-type MatchArm a = (Pattern, Expr a)
+data Syntax a
+   = SynExpr (Expr a)
+   | SynArm (MatchArm a)
+--   | SynPat Pattern 
+
+data MatchArm a = MatchArmAnn (XExprAnn a) Pattern (Expr a)
 
 data PatternVar = Id Id | WildcardVar
   deriving (Eq, Show)
@@ -122,16 +122,22 @@ pattern Tick c e <- TickAnn _ c e
 pattern Coin :: Rational -> Expr a
 pattern Coin p <- CoinAnn _ p
 
+pattern MatchArm :: Pattern -> Expr a -> MatchArm a
+pattern MatchArm p e <- MatchArmAnn _ p e
+
 pattern Fn :: Id -> [Id] -> Expr a -> FunDef a
 pattern Fn id args e <- FunDef _ id args e
 
 -- parsed
+type ParsedSyntax = Syntax Parsed
 type ParsedModule = Module Parsed
 type ParsedFunDef = FunDef Parsed
 type ParsedExpr = Expr Parsed
+type ParsedMatchArm = MatchArm Parsed
+
+deriving instance Show ParsedMatchArm
 deriving instance Show ParsedExpr
 
-type ParsedMatchArm = MatchArm Parsed
 
 data ParsedFunAnn = ParsedFunAnn {
   pfloc :: SourcePos,
@@ -149,16 +155,18 @@ pattern FnParsed ann id args body = FunDef ann id args body
 funAnn :: FunDef a -> XFunAnn a
 funAnn (FunDef ann _ _ _) = ann
 
-exprAnn :: Expr a -> XExprAnn a
-exprAnn (VarAnn ann _) = ann
-exprAnn (LitAnn ann _) = ann
-exprAnn (IteAnn ann _ _ _) = ann
-exprAnn (MatchAnn ann _ _) = ann
-exprAnn (AppAnn ann _ _) = ann
-exprAnn (BExprAnn ann _ _ _) = ann
-exprAnn (LetAnn ann _ _ _ ) = ann
-exprAnn (TickAnn ann _ _) = ann
-exprAnn (CoinAnn ann _ ) = ann
+synAnn :: Syntax a -> XExprAnn a
+synAnn (SynExpr (VarAnn ann _)) = ann
+synAnn (SynExpr (ConstAnn ann _ _)) = ann
+synAnn (SynExpr (LitAnn ann _)) = ann
+synAnn (SynExpr (IteAnn ann _ _ _)) = ann
+synAnn (SynExpr (MatchAnn ann _ _)) = ann
+synAnn (SynExpr (AppAnn ann _ _)) = ann
+synAnn (SynExpr (BExprAnn ann _ _ _)) = ann
+synAnn (SynExpr (LetAnn ann _ _ _ )) = ann
+synAnn (SynExpr (TickAnn ann _ _)) = ann
+synAnn (SynExpr (CoinAnn ann _ )) = ann
+synAnn (SynArm (MatchArmAnn ann _ _)) = ann
 
 -- typed
 type TypedExpr = Expr Typed
@@ -188,5 +196,3 @@ data ResourceAnn = ResourceAnn {
 --zeroAnnotation size = M.fromList $ zip (map singleton [0..]) (replicate size 0) 
   
 type FunResourceAnn = (ResourceAnn, ResourceAnn)
-
-
