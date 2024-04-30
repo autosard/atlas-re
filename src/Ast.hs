@@ -3,7 +3,9 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE FlexibleContexts, FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE StandaloneDeriving #-} 
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE InstanceSigs #-}
 
 
 module Ast where
@@ -14,6 +16,7 @@ import Text.Megaparsec(SourcePos)
 
 import Primitive(Id)
 import Typing.Type (Type)
+import Typing.Subst(Types(apply, tv))
 import Typing.Scheme (Scheme)
 
 
@@ -83,25 +86,37 @@ data Expr a
 type family XExprAnn a
 type family XFunAnn a
 
--- pattern synomyms for constants
-pattern ConstTreeNode :: Expr a -> Expr a -> Expr a -> Expr a
-pattern ConstTreeNode l v r <- ConstAnn _ "node" [l, v, r]
-pattern ConstTreeLeaf :: Expr a
-pattern ConstTreeLeaf <- ConstAnn _ "leaf" []
-pattern ConstTuple :: Expr a -> Expr a -> Expr a
-pattern ConstTuple x y <- ConstAnn _ "(,)" [x, y]
-pattern ConstTrue :: Expr a
-pattern ConstTrue <- ConstAnn _ "true" []
-pattern ConstFalse :: Expr a
-pattern ConstFalse <- ConstAnn _ "false" []
+funAnn :: FunDef a -> XFunAnn a
+funAnn (FunDef ann _ _ _) = ann
 
+
+-- pattern synomyms for constants
+pattern ConstTreeNode :: XExprAnn a -> Expr a -> Expr a -> Expr a -> Expr a
+pattern ConstTreeNode ann l v r <- ConstAnn ann "node" [l, v, r]
+  where ConstTreeNode ann l v r = ConstAnn ann "node" [l, v, r]
+pattern ConstTreeLeaf :: XExprAnn a -> Expr a
+pattern ConstTreeLeaf ann <- ConstAnn ann "leaf" []
+  where ConstTreeLeaf ann = ConstAnn ann "leaf" []
+pattern ConstTuple :: XExprAnn a -> Expr a -> Expr a -> Expr a
+pattern ConstTuple ann x y <- ConstAnn ann "(,)" [x, y]
+  where ConstTuple ann x y = ConstAnn ann "(,)" [x, y]
+pattern ConstTrue :: XExprAnn a -> Expr a
+pattern ConstTrue ann <- ConstAnn ann "true" []
+  where  ConstTrue ann = ConstAnn ann "true" []
+pattern ConstFalse :: XExprAnn a -> Expr a
+pattern ConstFalse ann <- ConstAnn ann "false" []
+  where ConstFalse ann = ConstAnn ann "false" []
+  
 -- pattern synomyms for constructor patterns
-pattern PatTreeNode :: PatternVar -> PatternVar -> PatternVar -> Pattern a
-pattern PatTreeNode l v r <- ConstPat _ "node" [l, v, r]
-pattern PatTreeLeaf :: Pattern a
-pattern PatTreeLeaf <- ConstPat _ "leaf" []
-pattern PatTuple :: PatternVar -> PatternVar -> Pattern a
-pattern PatTuple x y <- ConstPat _ "(,)" [x, y]
+pattern PatTreeNode :: XExprAnn a -> PatternVar -> PatternVar -> PatternVar -> Pattern a
+pattern PatTreeNode ann l v r <- ConstPat ann "node" [l, v, r]
+  where PatTreeNode ann l v r = ConstPat ann "node" [l, v, r]
+pattern PatTreeLeaf :: XExprAnn a -> Pattern a
+pattern PatTreeLeaf ann <- ConstPat ann "leaf" []
+  where PatTreeLeaf ann = ConstPat ann "leaf" []
+pattern PatTuple :: XExprAnn a -> PatternVar -> PatternVar -> Pattern a
+pattern PatTuple ann x y <- ConstPat ann "(,)" [x, y]
+  where PatTuple ann x y = ConstPat ann "(,)" [x, y]
 
 -- pattern synomyms to work with epxressions without the overhead of annotations
 pattern Var :: Id -> Expr a
@@ -125,16 +140,65 @@ pattern Tick c e <- TickAnn _ c e
 pattern Coin :: Rational -> Expr a
 pattern Coin p <- CoinAnn _ p
 
-pattern PatWildcard :: Pattern a
-pattern PatWildcard <- WildcardPat _
-pattern PatAlias :: Id -> Pattern a
-pattern PatAlias id <- Alias _ id
+pattern PatWildcard :: XExprAnn a -> Pattern a
+pattern PatWildcard ann <- WildcardPat ann
+  where PatWildcard ann = WildcardPat ann
+pattern PatAlias :: XExprAnn a -> Id -> Pattern a
+pattern PatAlias ann id <- Alias ann id
+  where PatAlias ann id = Alias ann id
 
 pattern MatchArm :: Pattern a -> Expr a -> MatchArm a
 pattern MatchArm p e <- MatchArmAnn _ p e
 
 pattern Fn :: Id -> [Id] -> Expr a -> FunDef a
 pattern Fn id args e <- FunDef _ id args e
+
+class Annotated a b where
+  getAnn :: a b -> XExprAnn b
+  mapAnn :: (XExprAnn b -> XExprAnn b) -> a b -> a b
+
+instance Annotated Expr a where
+  mapAnn f (VarAnn ann id) = VarAnn (f ann) id
+  mapAnn f (ConstAnn ann id args) = ConstAnn (f ann) id $ map (mapAnn f) args
+  mapAnn f (LitAnn ann l) = LitAnn (f ann) l
+  mapAnn f (IteAnn ann e1 e2 e3) = IteAnn (f ann) (mapAnn f e1) (mapAnn f e2) (mapAnn f e3)
+  mapAnn f (MatchAnn ann e arms) = MatchAnn (f ann) e $ map (mapAnn f) arms
+  mapAnn f (AppAnn ann id args) = AppAnn (f ann) id $ map (mapAnn f) args
+  mapAnn f (BExprAnn ann op e1 e2) = BExprAnn (f ann) op (mapAnn f e1) (mapAnn f e2)
+  mapAnn f (LetAnn ann id e1 e2) = LetAnn (f ann) id (mapAnn f e1) (mapAnn f e2)
+  mapAnn f (TickAnn ann c e) = TickAnn (f ann) c (mapAnn f e)
+  mapAnn f (CoinAnn ann p) = CoinAnn (f ann) p
+
+  getAnn (VarAnn ann _) = ann
+  getAnn (ConstAnn ann _ _) = ann
+  getAnn (LitAnn ann _) = ann
+  getAnn (IteAnn ann _ _ _) = ann
+  getAnn (MatchAnn ann _ _) = ann
+  getAnn (AppAnn ann _ _) = ann
+  getAnn (BExprAnn ann _ _ _) = ann
+  getAnn (LetAnn ann _ _ _) = ann
+  getAnn (TickAnn ann _ _) = ann
+  getAnn (CoinAnn ann _) = ann
+
+
+instance Annotated MatchArm a where
+  mapAnn f (MatchArmAnn ann p e) = MatchArmAnn (f ann) (mapAnn f p) (mapAnn f e)
+  getAnn (MatchArmAnn ann _ _) = ann
+  
+
+instance Annotated Pattern a where
+  mapAnn f (ConstPat ann id vars) = ConstPat (f ann) id vars
+  mapAnn f (Alias ann id) = Alias (f ann) id
+  mapAnn f (WildcardPat ann) = WildcardPat (f ann)
+
+  getAnn (ConstPat ann _ _) = ann
+  getAnn (Alias ann _) = ann
+  getAnn (WildcardPat ann) = ann
+
+instance Annotated Syntax a where
+  mapAnn f (SynExpr e) = SynExpr $ mapAnn f e
+  getAnn (SynExpr e) = getAnn e
+
 
 -- parsed
 type ParsedSyntax = Syntax Parsed
@@ -162,34 +226,50 @@ type instance XFunAnn Parsed = ParsedFunAnn
 pattern FnParsed :: ParsedFunAnn -> Id -> [Id] -> ParsedExpr -> ParsedFunDef
 pattern FnParsed ann id args body = FunDef ann id args body
 
-funAnn :: FunDef a -> XFunAnn a
-funAnn (FunDef ann _ _ _) = ann
-
-synAnn :: Syntax a -> XExprAnn a
-synAnn (SynExpr (VarAnn ann _)) = ann
-synAnn (SynExpr (ConstAnn ann _ _)) = ann
-synAnn (SynExpr (LitAnn ann _)) = ann
-synAnn (SynExpr (IteAnn ann _ _ _)) = ann
-synAnn (SynExpr (MatchAnn ann _ _)) = ann
-synAnn (SynExpr (AppAnn ann _ _)) = ann
-synAnn (SynExpr (BExprAnn ann _ _ _)) = ann
-synAnn (SynExpr (LetAnn ann _ _ _ )) = ann
-synAnn (SynExpr (TickAnn ann _ _)) = ann
-synAnn (SynExpr (CoinAnn ann _ )) = ann
-synAnn (SynArm (MatchArmAnn ann _ _)) = ann
 
 -- typed
+type TypedModule = Module Typed
+type TypedFunDef = FunDef Typed
 type TypedExpr = Expr Typed
+type TypedMatchArm = MatchArm Typed
+type TypedPattern = Pattern Typed
+
+deriving instance Show TypedPattern
+deriving instance Eq TypedPattern
+deriving instance Show TypedMatchArm
+deriving instance Eq TypedMatchArm
+deriving instance Show TypedExpr
+deriving instance Eq TypedExpr
+deriving instance Show TypedFunDef
+
+data TypedFunAnn = TypedFunAnn {
+  tfLoc :: SourcePos,
+  tfFqn :: Fqn,
+  tfType :: Scheme,
+  tfResourceAnn :: Maybe FullResourceAnn}
+  deriving (Eq, Show)
 
 data TypedExprAnn = TypedExprAnn {
   teLoc :: SourcePos,
   teType :: Type}
+  deriving (Eq, Show)
   
 data Typed
 type instance XExprAnn Typed = TypedExprAnn
-type instance XFunAnn Typed = ParsedFunAnn
+type instance XFunAnn Typed = TypedFunAnn
 
 type Coefficient = Rational
+
+getType :: Annotated a Typed => a Typed -> Type
+getType = teType . getAnn
+
+extendWithType :: Type -> XExprAnn Parsed -> XExprAnn Typed
+extendWithType t pos = TypedExprAnn pos t
+
+instance Types TypedExpr where
+  apply s = mapAnn (\ann -> ann{teType = apply s (teType ann) })
+  tv e = tv (getType e)
+
 
 -- TODO: might replaced once the type system is generatlized
 type FullResourceAnn = (FunResourceAnn, Maybe FunResourceAnn)

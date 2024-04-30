@@ -32,6 +32,7 @@ instance Types a => Types [a] where
   apply s = map (apply s)
   tv = foldr (union . tv) []
 
+
 infix 4 @@
 (@@) :: Subst -> Subst -> Subst
 s1 @@ s2 = M.map (apply s1) s2 `M.union` s1
