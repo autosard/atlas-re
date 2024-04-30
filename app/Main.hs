@@ -19,6 +19,7 @@ import qualified Data.Map as M
 
 import qualified Module
 import qualified Typing.Inference
+import qualified Normalization
 
 import Cli
 
@@ -58,8 +59,9 @@ app = do
         prog@Module.Program{..} <- Module.load path fqns
         -- print $ M.keys progFunDefs
         -- putStrLn $ prettyPrintSCC prog
-        ctx <- Typing.Inference.runTypeInference (M.elems progFunDefs)
-        print ctx
+        typedProg <- Typing.Inference.runTypeInference (M.elems progFunDefs)
+        let normalizedProg = Normalization.normalize typedProg
+        print normalizedProg
   
 
 main :: IO ()

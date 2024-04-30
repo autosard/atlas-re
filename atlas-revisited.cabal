@@ -31,7 +31,8 @@ library
                       Typing.Subst,
                       Typing.Inference,
                       StaticAnalysis,
-                      SourceError                   
+                      SourceError,
+                      Normalization                   
                       
     
     -- Modules included in this library but not exported.
@@ -86,7 +87,8 @@ test-suite tests
         atlas-revisited
     hs-source-dirs: test
     other-modules:
-        Typing.InferenceSpec
+        Typing.InferenceSpec,
+        NormalizationSpec
     default-language: Haskell2010
     build-tool-depends: hspec-discover:hspec-discover
  

@@ -249,8 +249,11 @@ data TypedFunAnn = TypedFunAnn {
   tfResourceAnn :: Maybe FullResourceAnn}
   deriving (Eq, Show)
 
+data TypedExprSrc = Loc SourcePos | Derived
+  deriving (Eq, Show)
+
 data TypedExprAnn = TypedExprAnn {
-  teLoc :: SourcePos,
+  teSrc :: TypedExprSrc,
   teType :: Type}
   deriving (Eq, Show)
   
@@ -264,7 +267,7 @@ getType :: Annotated a Typed => a Typed -> Type
 getType = teType . getAnn
 
 extendWithType :: Type -> XExprAnn Parsed -> XExprAnn Typed
-extendWithType t pos = TypedExprAnn pos t
+extendWithType t pos = TypedExprAnn (Loc pos) t
 
 instance Types TypedExpr where
   apply s = mapAnn (\ann -> ann{teType = apply s (teType ann) })
