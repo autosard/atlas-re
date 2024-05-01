@@ -32,8 +32,9 @@ library
                       Typing.Inference,
                       StaticAnalysis,
                       SourceError,
-                      Normalization                   
-                      
+                      Normalization,
+                      Eval,
+                      Constants                      
     
     -- Modules included in this library but not exported.
     -- other-modules:

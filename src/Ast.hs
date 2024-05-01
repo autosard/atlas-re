@@ -5,8 +5,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE InstanceSigs #-}
-
 
 module Ast where
 
@@ -22,28 +20,8 @@ import Typing.Scheme (Scheme)
 
 type Fqn = (Text, Text)
 
---type Id = Text
 type Number = Int
 
-
-
--- data TreeConstructor a
---   = TreeNode (Expr a) (Expr a) (Expr a)
---   | TreeLeaf
--- --   deriving (Eq, Show)
-
--- type TupleConstructor a = (Expr a, Expr a)
-
--- data BooleanConstructor
---   = BTrue
---   | BFalse
---   deriving (Eq, Show)
-
--- data DataConst a
---   = TreeConstructor (TreeConstructor a)
---   | TupleConstructor (TupleConstructor a)
---   | BooleanConstructor BooleanConstructor
---  deriving (Eq, Show)
 type Module a = [FunDef a]
 
 data FunDef a = FunDef (XFunAnn a) Id [Id] (Expr a)
@@ -78,7 +56,6 @@ data Expr a
   | IteAnn (XExprAnn a) (Expr a) (Expr a) (Expr a)
   | MatchAnn (XExprAnn a) (Expr a) [MatchArm a]
   | AppAnn (XExprAnn a) Id [Expr a]
-  | BExprAnn (XExprAnn a) Op (Expr a) (Expr a)
   | LetAnn (XExprAnn a) Id (Expr a) (Expr a)
   | TickAnn (XExprAnn a) (Maybe Rational) (Expr a)
   | CoinAnn (XExprAnn a) Rational
@@ -88,24 +65,6 @@ type family XFunAnn a
 
 funAnn :: FunDef a -> XFunAnn a
 funAnn (FunDef ann _ _ _) = ann
-
-
--- pattern synomyms for constants
-pattern ConstTreeNode :: XExprAnn a -> Expr a -> Expr a -> Expr a -> Expr a
-pattern ConstTreeNode ann l v r <- ConstAnn ann "node" [l, v, r]
-  where ConstTreeNode ann l v r = ConstAnn ann "node" [l, v, r]
-pattern ConstTreeLeaf :: XExprAnn a -> Expr a
-pattern ConstTreeLeaf ann <- ConstAnn ann "leaf" []
-  where ConstTreeLeaf ann = ConstAnn ann "leaf" []
-pattern ConstTuple :: XExprAnn a -> Expr a -> Expr a -> Expr a
-pattern ConstTuple ann x y <- ConstAnn ann "(,)" [x, y]
-  where ConstTuple ann x y = ConstAnn ann "(,)" [x, y]
-pattern ConstTrue :: XExprAnn a -> Expr a
-pattern ConstTrue ann <- ConstAnn ann "true" []
-  where  ConstTrue ann = ConstAnn ann "true" []
-pattern ConstFalse :: XExprAnn a -> Expr a
-pattern ConstFalse ann <- ConstAnn ann "false" []
-  where ConstFalse ann = ConstAnn ann "false" []
   
 -- pattern synomyms for constructor patterns
 pattern PatTreeNode :: XExprAnn a -> PatternVar -> PatternVar -> PatternVar -> Pattern a
@@ -131,8 +90,6 @@ pattern Match :: Expr a -> [MatchArm a] -> Expr a
 pattern Match e arms <- MatchAnn _ e arms
 pattern App :: Id -> [Expr a] -> Expr a
 pattern App id args <- AppAnn _ id args
-pattern BExpr :: Op -> Expr a -> Expr a -> Expr a
-pattern BExpr op e1 e2 <- BExprAnn _ op e1 e2
 pattern Let :: Id -> Expr a -> Expr a -> Expr a
 pattern Let id e1 e2 <- LetAnn _ id e1 e2
 pattern Tick :: Maybe Rational -> Expr a -> Expr a
@@ -164,7 +121,6 @@ instance Annotated Expr a where
   mapAnn f (IteAnn ann e1 e2 e3) = IteAnn (f ann) (mapAnn f e1) (mapAnn f e2) (mapAnn f e3)
   mapAnn f (MatchAnn ann e arms) = MatchAnn (f ann) e $ map (mapAnn f) arms
   mapAnn f (AppAnn ann id args) = AppAnn (f ann) id $ map (mapAnn f) args
-  mapAnn f (BExprAnn ann op e1 e2) = BExprAnn (f ann) op (mapAnn f e1) (mapAnn f e2)
   mapAnn f (LetAnn ann id e1 e2) = LetAnn (f ann) id (mapAnn f e1) (mapAnn f e2)
   mapAnn f (TickAnn ann c e) = TickAnn (f ann) c (mapAnn f e)
   mapAnn f (CoinAnn ann p) = CoinAnn (f ann) p
@@ -175,7 +131,6 @@ instance Annotated Expr a where
   getAnn (IteAnn ann _ _ _) = ann
   getAnn (MatchAnn ann _ _) = ann
   getAnn (AppAnn ann _ _) = ann
-  getAnn (BExprAnn ann _ _ _) = ann
   getAnn (LetAnn ann _ _ _) = ann
   getAnn (TickAnn ann _ _) = ann
   getAnn (CoinAnn ann _) = ann

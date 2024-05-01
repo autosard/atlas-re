@@ -32,5 +32,6 @@ instance Show Type where
   show (TGen i) = "a" ++ show i
 
 fn :: [Type] -> Type -> Type
+fn [] to = to
 fn from to = TAp Arrow [TAp Prod from, to]
 

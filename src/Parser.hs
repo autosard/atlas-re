@@ -148,7 +148,7 @@ pCoefficient = do
 pExpr :: Parser ParsedExpr
 pExpr = pKeywordExpr
   <|> try pApplication
-  <|> try pBExpr 
+  <|> try pInfixExpr 
   <?> "expression"
 
 pKeywordExpr :: Parser ParsedExpr
@@ -207,28 +207,31 @@ pArg :: Parser ParsedExpr
 pArg = pParenExpr
   <|> pConst
   <|> pLit
-  <|> try (pVar <* notFollowedBy (symbol "=" <|> pDoubleColon2))
+  <|> try (pVar <* notFollowedBy (symbol "= " <|> pDoubleColon2))
   <?> "function argument"
 
 pVar :: Parser ParsedExpr
 pVar = VarAnn <$> getSourcePos <*> pIdentifier
-  
-pBTerm :: Parser ParsedExpr
-pBTerm = pParenExpr <|> pVar
 
-pBExpr :: Parser ParsedExpr
-pBExpr = makeExprParser pBTerm boolOperatorTable 
+pInfixExpr :: Parser ParsedExpr
+pInfixExpr = makeExprParser pArg operatorTable 
 
-binaryBool :: Parser () -> Op -> Operator Parser ParsedExpr
-binaryBool parser op = InfixL (BExprAnn <$> getSourcePos <*> pure op <* parser)
+binaryApp :: Parser Text -> Id -> Operator Parser ParsedExpr
+binaryApp parser id = InfixL curryConst
+  where curryConst :: Parser (ParsedExpr -> ParsedExpr -> ParsedExpr)
+        curryConst = do
+          f <- const
+          return (\a1 a2 -> f [a1, a2])
+        const :: Parser ([ParsedExpr] -> ParsedExpr)
+        const = ConstAnn <$> getSourcePos <* parser <*> pure id
 
-boolOperatorTable :: [[Operator Parser ParsedExpr]]
-boolOperatorTable =
+operatorTable :: [[Operator Parser ParsedExpr]]
+operatorTable =
   [
     [
-      binaryBool (symbol "<") LT,
-      binaryBool (symbol "==" <|> symbol "⩵") EQ,
-      binaryBool (symbol ">") GT
+      binaryApp (symbol' "<") "LT",
+      binaryApp (symbol' "==" <|> symbol' "⩵") "EQ",
+      binaryApp (symbol' ">") "GT"
     ]
   ]
 

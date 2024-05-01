@@ -30,20 +30,25 @@ spec = do
               VarAnn (testAnn tTreeNum) "t"]
         let a2 = ConstAnn (testAnn tTreeNum) "node" [
               VarAnn (testAnn tTreeNum) "l",
-              VarAnn (testAnn tTreeNum) "b",
+              VarAnn (testAnn tNum) "b",
               ConstAnn (testAnn tTreeNum) "leaf" []]
         let a3 = IteAnn (testAnn tNum) (VarAnn (testAnn tBool) "test") (LitAnn (testAnn tNum) (LitNum 2)) (LitAnn (testAnn tNum) (LitNum 3))
         let a4 = VarAnn (testAnn tNum) "x"
         let e = AppAnn (testAnn tNum) "testFn" [a1, a2, a3, a4]
+        let a2' = ConstAnn (testAnn tTreeNum) "node" [
+              VarAnn (testAnn tTreeNum) "l",
+              VarAnn (testAnn tNum) "b",
+              VarAnn (testAnnDerived tTreeNum) "?:0"]
         let result = LetAnn
-                     (testAnnDerived tNum) "?:0" a1
-                      (LetAnn (testAnnDerived tNum) "?:1" a2
-                       (LetAnn (testAnnDerived tNum) "?:2" a3
-                        (AppAnn (testAnn tNum) "testFn" [
-                          VarAnn (testAnnDerived tSplay) "?:0",
-                          VarAnn (testAnnDerived tTreeNum) "?:1",
-                          VarAnn (testAnnDerived tNum) "?:2",
-                          VarAnn (testAnn tNum) "x"])))
+                     (testAnnDerived tNum) "?:1" a1
+                      (LetAnn (testAnnDerived tNum) "?:2"
+                       (LetAnn (testAnnDerived tTreeNum) "?:0" (ConstAnn (testAnn tTreeNum) "leaf" []) a2')
+                        (LetAnn (testAnnDerived tNum) "?:3" a3
+                         (AppAnn (testAnn tNum) "testFn" [
+                             VarAnn (testAnnDerived tSplay) "?:1",
+                             VarAnn (testAnnDerived tTreeNum) "?:2",
+                             VarAnn (testAnnDerived tNum) "?:3",
+                             VarAnn (testAnn tNum) "x"])))
         runNorm (nmExpr e) `shouldBe` result
         
         

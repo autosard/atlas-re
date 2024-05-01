@@ -94,12 +94,12 @@ spec = do
         let s = subst state 
         apply s . getType <$> e' `shouldBe` Right to
         
-    context "A boolean expression" $ do
-      it "returns a bool type" $ do
-        let ctx = M.fromList [("a", toScheme tNum), ("b", toScheme tNum)]
-        let e = BExprAnn sp Ast.LT (VarAnn sp "a") (VarAnn sp "b")
-        let e' = evalTI testState (tiExpr ctx e)
-        getType <$> e' `shouldBe` Right tBool
+    -- context "A boolean expression" $ do
+    --   it "returns a bool type" $ do
+    --     let ctx = M.fromList [("a", toScheme tNum), ("b", toScheme tNum)]
+    --     let e = BExprAnn sp Ast.LT (VarAnn sp "a") (VarAnn sp "b")
+    --     let e' = evalTI testState (tiExpr ctx e)
+    --     getType <$> e' `shouldBe` Right tBool
 
     context "Given a let expression" $ do
       it "returns the correct type" $ do

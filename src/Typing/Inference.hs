@@ -25,6 +25,10 @@ import Primitive(Id, enumId)
 import Text.Megaparsec(SourcePos(sourceName, sourceLine, sourceColumn))
 import Text.Megaparsec.Pos(unPos)
 import SourceError
+import Constants
+
+import qualified Debug.Trace(trace)
+traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
 
 data TiState = TiState {
   idGen :: Int,
@@ -142,57 +146,8 @@ instScheme (Forall len t) = do
 
 type Infer e t = Context -> e -> TI t
 
-constScheme :: ParsedExpr -> Scheme
-constScheme (ConstTrue _) = boolT
-constScheme (ConstFalse _) = boolT
-constScheme (ConstTuple {}) = tupleT
-constScheme (ConstTreeNode {}) = treeT
-constScheme (ConstTreeLeaf _) = treeT
-
 litScheme :: Literal -> Scheme
 litScheme (LitNum _) = Forall 0 (TAp Num [])
-
-tiConst :: Infer ParsedExpr TypedExpr
-tiConst ctx (ConstTreeNode ann l v r) = do
-  freshTreeT <- instScheme treeT
-  let [valueType] = tv freshTreeT
-  
-  l' <- tiExpr ctx l
-  let tl = getType l'
-  unify freshTreeT tl
-  
-  v' <- tiExpr ctx v
-  let tv = getType v'
-  unify (TVar valueType) tv
-  
-  r' <- tiExpr ctx r
-  let tr = getType r'
-  unify freshTreeT tr
-
-  let ann' = extendWithType freshTreeT ann 
-  return $ ConstTreeNode ann' l' v' r'
-tiConst ctx (ConstTreeLeaf ann) = do
-  t <- instScheme treeT
-  return $ ConstTreeLeaf (extendWithType t ann)
-tiConst ctx (ConstTuple ann x y) = do
-  freshTupleT <- instScheme tupleT
-  let [a, b] = tv freshTupleT
-  x' <- tiExpr ctx x
-  let tx = getType x'
-  unify (TVar a) tx
-  
-  y' <- tiExpr ctx y
-  let ty = getType y'
-  unify (TVar b) ty
-
-  let ann' = extendWithType freshTupleT ann
-  return $ ConstTuple ann' x' y'
-tiConst ctx (ConstTrue ann) = do
-  t <- instScheme boolT
-  return $ ConstTrue (extendWithType t ann)
-tiConst ctx (ConstFalse ann) = do
-  t <- instScheme boolT
-  return $ ConstFalse (extendWithType t ann)
 
 tiPatternVar :: Infer PatternVar (Context, Type)
 tiPatternVar ctx (Id id) = do
@@ -204,7 +159,7 @@ tiPatternVar ctx WildcardVar = do
 
 tiPattern :: Infer ParsedPattern (Context, TypedPattern)
 tiPattern ctx (PatTreeNode ann l v r) = do
-  freshTreeT <- instScheme treeT
+  freshTreeT <- instScheme treeSc
   let [valueType] = tv freshTreeT
   (cl, tl) <- tiPatternVar ctx l 
   unify freshTreeT tl
@@ -215,10 +170,10 @@ tiPattern ctx (PatTreeNode ann l v r) = do
   let ann' = extendWithType freshTreeT ann
   return (M.unions [cl, cv, cr, ctx], PatTreeNode ann' l v r)
 tiPattern ctx (PatTreeLeaf ann) = do
-  t <- instScheme treeT
+  t <- instScheme treeSc
   return (ctx, PatTreeLeaf $ extendWithType t ann)
 tiPattern ctx (PatTuple ann v1 v2) = do
-  freshTupleT <- instScheme tupleT
+  freshTupleT <- instScheme tupleSc
   let [a, b] = tv freshTupleT
   (ca, t1) <- tiPatternVar ctx v1
   unify (TVar a) t1
@@ -251,13 +206,22 @@ tiExpr ctx e = do
   untrace e
   return e'
 
+
 tiExpr' :: Infer ParsedExpr TypedExpr
 tiExpr' ctx (VarAnn ann id) = do
   sc <- find id ctx
   t <- instScheme sc
   let ann' = extendWithType t ann
   return $ VarAnn ann' id
-tiExpr' ctx const@(Const _ _) = tiConst ctx const
+tiExpr' ctx (ConstAnn ann id args) = do
+  to <- newTVar
+  let sc = constType id
+  tConst <- instScheme sc
+  args' <- mapM (tiExpr ctx) args
+  let tArgs = map getType args'
+  unify tConst (tArgs `fn` to)
+  let ann' = extendWithType to ann 
+  return $ ConstAnn ann' id args'
 tiExpr' ctx (LitAnn ann l) = do
   let sc = litScheme l
   t <- instScheme sc
@@ -306,12 +270,6 @@ tiExpr' ctx (AppAnn ann id args) = do
   unify tFun (tArgs `fn` to)
   let ann' = extendWithType to ann
   return $ AppAnn ann' id args'
-tiExpr' ctx (BExprAnn ann op e1 e2) = do
-  e1' <- tiExpr ctx e1
-  e2' <- tiExpr ctx e2
-  t <- instScheme boolT
-  let ann' = extendWithType t ann
-  return $ BExprAnn ann' op e1' e2'
 tiExpr' ctx (LetAnn ann x e1 e2) = do
   e1' <- tiExpr ctx e1
   let tx = getType e1'
@@ -331,7 +289,7 @@ tiExpr' ctx (TickAnn ann c e) = do
   let ann' = extendWithType t ann
   return $ TickAnn ann' c e'
 tiExpr' ctx (CoinAnn ann p) = do
-  t <- instScheme boolT
+  t <- instScheme boolSc
   let ann' = extendWithType t ann
   return $ CoinAnn ann' p
 
