@@ -158,29 +158,13 @@ tiPatternVar ctx WildcardVar = do
   return (M.empty, t)
 
 tiPattern :: Infer ParsedPattern (Context, TypedPattern)
-tiPattern ctx (PatTreeNode ann l v r) = do
-  freshTreeT <- instScheme treeSc
-  let [valueType] = tv freshTreeT
-  (cl, tl) <- tiPatternVar ctx l 
-  unify freshTreeT tl
-  (cv, tv) <- tiPatternVar ctx v
-  unify (TVar valueType) tv
-  (cr, tr) <- tiPatternVar ctx r
-  unify freshTreeT tr
-  let ann' = extendWithType freshTreeT ann
-  return (M.unions [cl, cv, cr, ctx], PatTreeNode ann' l v r)
-tiPattern ctx (PatTreeLeaf ann) = do
-  t <- instScheme treeSc
-  return (ctx, PatTreeLeaf $ extendWithType t ann)
-tiPattern ctx (PatTuple ann v1 v2) = do
-  freshTupleT <- instScheme tupleSc
-  let [a, b] = tv freshTupleT
-  (ca, t1) <- tiPatternVar ctx v1
-  unify (TVar a) t1
-  (cb, t2) <- tiPatternVar ctx v2
-  unify (TVar b) t2
-  let ann' = extendWithType freshTupleT ann
-  return (M.unions [ca, cb, ctx], PatTuple ann' v1 v2)
+tiPattern ctx (ConstPat ann id vars) = do
+  tp <- newTVar
+  constT <- instScheme (constType id)
+  (ctxs, varTs) <- mapAndUnzipM (tiPatternVar ctx) vars
+  unify constT (varTs `fn` tp)
+  let ann' = extendWithType tp ann
+  return (M.unions (ctxs ++ [ctx]), ConstPat ann' id vars)
 tiPattern ctx (PatAlias ann id) = do
   v <- newTVar
   let ann' = extendWithType v ann

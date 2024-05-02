@@ -6,10 +6,6 @@ import Typing.Scheme
 import Typing.Type(Type(TGen, TAp), Tycon(Tree, Bool, Prod), fn)
 import qualified Data.Text as T
 
---treeT = Forall 1 (TAp Tree [TGen 0])
---tupleT = Forall 2 (TAp Prod [TGen 0, TGen 1])
---boolT = Forall 0 (TAp Bool [])
-
 treeT = TAp Tree [TGen 0]
 tupleT = TAp Prod [TGen 0, TGen 1]
 boolT = TAp Bool []
