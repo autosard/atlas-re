@@ -242,3 +242,6 @@ data ResourceAnn = ResourceAnn {
 --zeroAnnotation size = M.fromList $ zip (map singleton [0..]) (replicate size 0) 
   
 type FunResourceAnn = (ResourceAnn, ResourceAnn)
+
+data Val = ConstVal !Id ![Val] | LitVal !Literal
+  deriving (Eq, Show)

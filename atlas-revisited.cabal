@@ -50,7 +50,10 @@ library
                       filepath ^>= 1.5.2.0,
                       Glob ^>= 0.10.2,
                       extra ^>= 1.7.14,
-                      array
+                      array,
+                      random ^>= 1.2.1,
+                      microlens-platform ^>= 0.4.3,
+                      random-fu ^>= 0.3
     hs-source-dirs:   src
     default-language: Haskell2010
     ghc-options: -Wunused-imports
@@ -72,7 +75,8 @@ executable atlas-revisited
         optparse-applicative ^>= 0.17.1.0,
         filepath ^>= 1.5.2.0,
         mtl ^>= 2.2.2,
-        containers
+        containers,
+        random ^>= 1.2.1
     hs-source-dirs: app
     --profiling: True
     default-language: Haskell2010
@@ -85,11 +89,13 @@ test-suite tests
         base ^>=4.17.2.1,
         containers,
         hspec,
-        atlas-revisited
+        atlas-revisited,
+        random ^>= 1.2.1
     hs-source-dirs: test
     other-modules:
         Typing.InferenceSpec,
-        NormalizationSpec
+        NormalizationSpec,
+        EvalSpec
     default-language: Haskell2010
     build-tool-depends: hspec-discover:hspec-discover
  
