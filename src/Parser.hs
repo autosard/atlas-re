@@ -78,7 +78,7 @@ pSignature = do
   name <- pIdentifier <?> "function name"
   void pDoubleColon2
   constraints <- optional ((pConstraints <* pDoubleArrow) <?> "type constraint(s)")
-  _type <- pFunctionType
+  _type <- pFunctionType <?> "function type"
   resourceAnn <- optional $ symbol "|" *> pSqParens (do
     withCost <- pFunResourceAnn
     costFree <- optional $ symbol "," *> pCurlyParens pFunResourceAnn
@@ -124,6 +124,7 @@ pTypeConst
   = (`TAp` []) <$> (Bool <$ symbol "Bool")
   <|> (`TAp` []) <$> (Num <$ symbol "Num")
   <|> TAp <$> (Tree <$ symbol "Tree") <*> (singleton <$> pType)
+  <|> TAp Prod <$> pParens (sepBy1 pType pCross)
 
 pFunResourceAnn :: Parser FunResourceAnn
 pFunResourceAnn = (,) <$> pResourceAnn <* pArrow <*> pResourceAnn
