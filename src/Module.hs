@@ -3,6 +3,7 @@
 
 module Module where
 
+
 import qualified Data.Graph as G
 import qualified Data.Set as S
 import Data.Set(Set)
@@ -19,7 +20,7 @@ import Control.Monad.Extra
 
 import Ast(ParsedFunDef , Fqn, funAnn, pfFqn)
 import StaticAnalysis(calledFunctions)
-import qualified Parser(run)
+import qualified Parser(parseModule)
 import qualified System.FilePath.Glob as Glob
 
 import Data.Tree
@@ -56,7 +57,7 @@ buildProgram loadPath = do
   unless loaded (
     do
       moduleFile <- liftIO $ findModule loadPath (T.unpack moduleName)
-      parsedModule <- liftIO (Parser.run moduleFile moduleName <$> TextIO.readFile moduleFile)
+      parsedModule <- liftIO (Parser.parseModule moduleFile moduleName <$> TextIO.readFile moduleFile)
       storeDefinitions parsedModule
       markAsLoaded moduleName
     )
@@ -143,3 +144,9 @@ prettyPrintSCC Program{..} = foldr op "" progCallGraphSCC
         op tree string = string ++ ", " ++ treeToString tree
         treeToString G.Node{..} = show (((\(fqn, _, _) -> fqn) . progVertexFqnMap) rootLabel)
           ++ " -> [" ++ concatMap treeToString subForest ++ "]"
+
+loadSimple :: FilePath -> Text -> IO (String, Text)
+loadSimple searchPath modName = do
+  modPath <- findModule searchPath (T.unpack modName)
+  contents <- TextIO.readFile modPath
+  return (modPath, contents)

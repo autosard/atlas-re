@@ -9,6 +9,7 @@
 module Ast where
 
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Map(Map)
 import Text.Megaparsec(SourcePos)
 
@@ -244,4 +245,12 @@ data ResourceAnn = ResourceAnn {
 type FunResourceAnn = (ResourceAnn, ResourceAnn)
 
 data Val = ConstVal !Id ![Val] | LitVal !Literal
-  deriving (Eq, Show)
+  deriving Eq
+
+paren :: String -> String
+paren s = "(" ++ s ++ ")"
+
+instance Show Val where
+  show (ConstVal id []) = T.unpack id
+  show (ConstVal id args) = paren $ T.unpack id ++ " " ++ unwords (map show args)
+  show (LitVal (LitNum n)) = show n

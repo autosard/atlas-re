@@ -13,7 +13,6 @@ import qualified Data.Map as M
 import Data.Array(Array)
 import qualified Data.Array as A
 import Data.List(uncons)
-import System.Exit
 
 import qualified Data.List as L
   
@@ -291,6 +290,10 @@ tiFun ctx (FunDef ann id args exp) = do
   let te = argVars `fn` getType exp'
   return (te, exp')
 
+tiApply :: Infer TypedExpr TypedExpr
+tiApply ctx e = do
+  s <- gets subst
+  return $ apply s e
 
 tiProg :: Infer ParsedModule TypedModule
 tiProg ctx defs = do
@@ -341,9 +344,17 @@ runTI s ti = runState (runExceptT ti) s
 evalTI :: TiState -> TI a -> Either TypeError a
 evalTI s = fst . runTI s
 
-runTypeInference :: [ParsedFunDef] -> IO TypedModule
-runTypeInference defs = case runTI initState (tiProg M.empty defs) of
-  (Left e, s) -> die =<< printSrcError (SourceError (currentExpLoc s) (show e))
-  (Right mod, _) -> return mod
+
+infer :: TI a -> Either SourceError a
+infer ti = case runTI initState ti of
+  (Left e, s) -> Left $ SourceError (currentExpLoc s) (show e)
+  (Right x, _) -> Right x
   where initState = TiState 0 nullSubst []
 
+inferModule :: [ParsedFunDef] -> Either SourceError TypedModule
+inferModule = infer . tiProg M.empty
+
+inferExpr :: TypedModule -> ParsedExpr -> Either SourceError TypedExpr
+inferExpr context expr = infer $ tiApply M.empty =<< tiExpr initCtx expr
+  where initCtx = M.fromList $ map getScheme context
+        getScheme (FunDef funAnn id _ _) = (id, tfType funAnn)

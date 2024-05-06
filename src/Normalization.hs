@@ -7,8 +7,11 @@ import Primitive(Id, enumId)
 
 type Norm = State Int
 
-normalize :: TypedModule -> TypedModule
-normalize m = runNorm $ nmModule m
+normalizeMod :: TypedModule -> TypedModule
+normalizeMod m = runNorm $ nmModule m
+
+normalizeExpr :: TypedExpr -> TypedExpr
+normalizeExpr e = runNorm $ nmExpr e
 
 runNorm :: Norm a -> a
 runNorm nm = evalState nm 0

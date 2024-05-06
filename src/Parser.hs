@@ -3,7 +3,7 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections #-}
 
-module Parser(run, initialPos, SourcePos) where
+module Parser(parseExpr, parseModule, initialPos, SourcePos) where
 
 import Control.Monad 
 import Control.Applicative hiding (many, some)
@@ -284,9 +284,19 @@ sc = L.space
   (L.skipLineComment "(*)")       
   (L.skipBlockComment "(*" "*)")
 
-run fileName moduleName contents = case fst $ evalRWS rws initEnv initState of
+initState = ParserState 0 M.empty
+
+parseModule fileName moduleName contents = case fst $ evalRWS rws initEnv initState of
   Left errs -> error $ errorBundlePretty errs
   Right prog -> prog
   where initEnv = ParserContext moduleName
-        initState = ParserState 0 M.empty
         rws = runParserT pModule fileName contents
+
+parseExpr contents = case fst $ evalRWS rws initEnv initState of
+  Left errs -> error $ errorBundlePretty errs
+  Right prog -> prog
+  where name = "<interactive>"
+        initEnv = ParserContext name
+        rws = runParserT pExpr (T.unpack name) contents
+
+
