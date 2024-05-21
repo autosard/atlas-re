@@ -1,0 +1,71 @@
+(match
+  (w{mono} leaf)
+  (ite
+    (match
+      (w{mono} (let:tree:cf leaf (let:tree:cf leaf (let:tree:cf node node))))
+      (ite
+        (w{l2xy mono}
+          (let:tree:cf{nege}
+            (tick:defer (shift app))
+            (match
+              (w{mono} leaf)
+              (w{l2xy}
+                (ite
+                  (w{mono} (tick:defer (let:tree:cf node (let:tree:cf node node))))
+                  (w{mono} (let:tree:cf node (let:tree:cf node node)))
+                )
+              )
+            )
+          )
+        )
+        (w{l2xy mono}
+          (let:tree:cf
+            (tick:defer (shift app))
+            (match
+              (w{mono} leaf)
+              (w{l2xy}
+                (ite
+                  (w{mono} (tick:defer (let:tree:cf node (let:tree:cf node node))))
+                  (w{mono} (let:tree:cf node (let:tree:cf node node)))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (match
+      (w{mono} (let:tree:cf leaf (let:tree:cf leaf (let:tree:cf node (w{mono} node)))))
+      (ite
+        (w{l2xy mono}
+          (let:tree:cf
+            (tick:defer (shift app))
+            (match
+              (w{mono} leaf)
+              (w{l2xy}
+                (ite
+                  (w{mono} (tick:defer (let:tree:cf node (let:tree:cf node node))))
+                  (w{mono} (let:tree:cf node (let:tree:cf node node)))
+                )
+              )
+            )
+          )
+        )
+        (w{l2xy mono}
+          (let:tree:cf{nege}
+            (tick:defer (shift app))
+            (match
+              (w leaf)
+              (w{l2xy}
+                (ite
+                  (w{mono} (tick:defer (let:tree:cf node (let:tree:cf node node))))
+                  (w{mono} (let:tree:cf node (let:tree:cf node node)))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

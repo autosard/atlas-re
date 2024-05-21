@@ -7,7 +7,7 @@ import qualified Data.Map as M
 
 import Ast
 import System.Random
-import Parser (initialPos)
+import Parsing.Program (initialPos)
 import Constants (boolT, boolSc)
 import Eval
 import Data.Ratio ( (%) )

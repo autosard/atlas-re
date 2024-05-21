@@ -3,7 +3,7 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections #-}
 
-module Parser(parseExpr, parseModule, initialPos, SourcePos) where
+module Parsing.Program(parseExpr, parseModule, initialPos, SourcePos) where
 
 import Control.Monad 
 import Control.Applicative hiding (many, some)

@@ -1,0 +1,84 @@
+(match
+  (w{mono} leaf)
+  (ite
+    (w{mono} node)
+    (ite
+      (match
+        (w{mono} (let leaf (w{mono} node)))
+        (ite
+          (w{mono} (let node (w{mono} node)))
+          (ite
+            (match
+              (w{mono} (let leaf (let node (w{mono} node))))
+              (w{l2xy mono}
+                (let
+                  (tick:defer (shift app))
+                  (match
+                    (w{mono}
+                      leaf
+                    )
+                    (w{l2xy mono}
+                      (let
+                        node
+                        (let
+                          node
+                          (w{mono}
+                            node
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            (match
+              (w{mono} (let leaf (let node (w{mono} node))))
+              (w{l2xy mono}
+                (let
+                  (tick:defer (shift app))
+                  (match
+                    (w{mono} leaf)
+                    (w{l2xy mono} (let node (let node (w{mono} node))))
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      (match
+        (w{mono} (let leaf (w{mono} node)))
+        (ite
+          (w{mono} (let node (w{mono} node)))
+          (ite
+            (match
+              (w{mono} (let leaf (let node (w{mono} node))))
+              (w{l2xy mono}
+                (let
+                  (tick:defer (shift app))
+                  (match
+                    (w{mono} leaf)
+                    (w{l2xy mono} (let node (let node (w{mono} node))))
+                  )
+                )
+              )
+            )
+            (match
+              (w{mono} (let node (let leaf (w{mono} node))))
+              (w{l2xy mono}
+                (let
+                  (tick:defer (shift app))
+                  (match
+                    (w{mono} leaf)
+                    (w{l2xy mono} (let node (let node (w{mono} node))))
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

@@ -1,0 +1,10 @@
+(match
+  (w var)
+  (match
+    (w node)
+    (w{mono} (ite
+      (let:tree:cf node (let:tree:cf leaf node))
+      (let:tree:cf node (let:tree:cf leaf node))
+    ))
+  )
+)

@@ -1,0 +1,20 @@
+(match
+  (w var)
+  (match
+    (w node)
+    (ite
+      (w{l2xy mono}
+        (ite
+          (let:tree:cf (tick (let:tree:cf node (shift app))) node)
+          (let:tree:cf (tick (let:tree:cf node (shift app))) node)
+        )
+      )
+      (w{l2xy mono}
+        (ite
+          (let:tree:cf (tick (let:tree:cf node (shift app))) node)
+          (let:tree:cf (tick (let:tree:cf node (shift app))) node)
+        )
+      )
+    )
+  )
+)

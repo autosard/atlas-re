@@ -1,0 +1,24 @@
+(match
+  (w leaf)
+  (match
+    (w{mono} (let:tree:cf leaf (let:tree:cf node (w var))))
+    (match
+      (w{mono} (let:tree:cf node (let:tree:cf leaf (let:tree:cf node (w{mono} var)))))
+      (w{l2xy mono}
+        (let:tree:cf (tick:defer (shift app))
+          (match:tuple
+            (match
+              (w{mono} (w:var (w:var leaf)))
+              (w{l2xy}
+                (ite
+                  (w{mono} (tick:defer (let:tree:cf node (let:tree:cf node (let:tree:cf node (w var))))))
+                  (w{mono} (let:tree:cf node (let:tree:cf node (let:tree:cf node (w var)))))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

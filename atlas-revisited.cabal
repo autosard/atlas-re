@@ -23,18 +23,21 @@ extra-source-files: CHANGELOG.md
 
 library
     exposed-modules:  Ast,
-                      Parser,
+                      Parsing.Program,
+                      Parsing.Tactic,
                       Module,
                       Primitive,
                       Typing.Type,
                       Typing.Scheme,
                       Typing.Subst,
                       Typing.Inference,
+                      CostAnalysis.Deriv,
+                      CostAnalysis.Tactic                   
                       StaticAnalysis,
                       SourceError,
                       Normalization,
                       Eval,
-                      Constants                      
+                      Constants
     
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -53,7 +56,8 @@ library
                       array,
                       random ^>= 1.2.1,
                       microlens-platform ^>= 0.4.3,
-                      random-fu ^>= 0.3
+                      random-fu ^>= 0.3,
+                      z3 ^>= 411
     hs-source-dirs:   src
     default-language: Haskell2010
     ghc-options: -Wunused-imports
@@ -90,12 +94,14 @@ test-suite tests
         containers,
         hspec,
         atlas-revisited,
-        random ^>= 1.2.1
+        random ^>= 1.2.1,
+        text ^>= 2.0.2
     hs-source-dirs: test
     other-modules:
         Typing.InferenceSpec,
         NormalizationSpec,
-        EvalSpec
+        EvalSpec,
+        Parsing.TacticSpec
     default-language: Haskell2010
     build-tool-depends: hspec-discover:hspec-discover
  

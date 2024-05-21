@@ -1,0 +1,7 @@
+(match
+  (w leaf)
+  (match
+    (w (let:tree:cf leaf node))
+    (w{size} (let:tree:cf (tick app) (let:tree:cf node (let:tree:cf node (tick app)))))
+  )
+)

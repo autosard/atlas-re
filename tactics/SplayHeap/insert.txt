@@ -1,0 +1,7 @@
+(let:tree:cf
+  (tick:defer (shift app)) (* partition d x h *)
+  (match
+    (let:tree:cf leaf (let:tree:cf leaf node))
+    (w node)
+  )
+)

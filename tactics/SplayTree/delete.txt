@@ -1,0 +1,45 @@
+(w{l2xy mono}
+  (let:tree:cf
+    (tick:defer
+      (shift
+        app
+      )
+    )
+    (match
+      (w{mono}
+        leaf
+      )
+      (ite
+        (match
+          (w{mono}
+            var
+          )
+          (w{l2xy mono}
+            (let:tree:cf
+              (tick:defer
+                (shift
+                  app
+                )
+              )
+              (match
+                (w{mono}
+                  (w:var
+                    leaf
+                  )
+                )
+                (w{l2xy mono}
+                  (w:var
+                    node
+                  )
+                )
+              )
+            )
+          )
+        )
+        (w{mono}
+          node
+        )
+      )
+    )
+  )
+)

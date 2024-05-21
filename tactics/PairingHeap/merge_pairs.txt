@@ -1,0 +1,28 @@
+(match
+  (w{mono} leaf)
+  (match
+    (let:tree:cf (w{mono} leaf) (w{l2xy} node))
+    (w{l2xy}
+      (tick
+        (w{l2xy mono}
+          (let:tree:cf
+            (w{l2xy}
+              (tick
+                (w{l2xy mono}
+                  (let:tree:cf
+                    (w{l2xy} (tick (w{l2xy} (shift app))))
+                    (let:tree:cf
+                      (w{mono} node)
+                      (let:tree:cf (w{mono} node) (shift app))
+                    )
+                  )
+                )
+              )
+            )
+            (shift app)
+          )
+        )
+      )
+    )
+  )
+)

@@ -20,7 +20,7 @@ import System.Environment(lookupEnv)
 import Typing.Inference(inferExpr, inferModule)
 import Ast(TypedModule, TypedExpr)
 import Normalization(normalizeMod, normalizeExpr)
-import Parser(parseExpr, parseModule)
+import Parsing.Program(parseExpr, parseModule)
 import Eval(evalWithModule)
 
 import Cli(Options(..), RunOptions(..), EvalOptions(..), Command(..), optionsP)

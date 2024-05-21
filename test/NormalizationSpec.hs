@@ -4,7 +4,7 @@ module NormalizationSpec where
 
 import Test.Hspec
 
-import Parser (initialPos)
+import Parsing.Program (initialPos)
 import Ast
 import Normalization
 import Typing.Type

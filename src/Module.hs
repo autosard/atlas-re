@@ -20,7 +20,7 @@ import Control.Monad.Extra
 
 import Ast(ParsedFunDef , Fqn, funAnn, pfFqn)
 import StaticAnalysis(calledFunctions)
-import qualified Parser(parseModule)
+import qualified Parsing.Program(parseModule)
 import qualified System.FilePath.Glob as Glob
 
 import Data.Tree
@@ -57,7 +57,7 @@ buildProgram loadPath = do
   unless loaded (
     do
       moduleFile <- liftIO $ findModule loadPath (T.unpack moduleName)
-      parsedModule <- liftIO (Parser.parseModule moduleFile moduleName <$> TextIO.readFile moduleFile)
+      parsedModule <- liftIO (Parsing.Program.parseModule moduleFile moduleName <$> TextIO.readFile moduleFile)
       storeDefinitions parsedModule
       markAsLoaded moduleName
     )

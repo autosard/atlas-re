@@ -11,7 +11,7 @@ import Typing.Scheme
 import Typing.Subst
 import qualified Data.Map as M
 import Data.Void
-import Parser (initialPos)
+import Parsing.Program (initialPos)
 import Data.Maybe(fromMaybe)
 import Data.Bifunctor(bimap)
 import Data.Ratio((%))
