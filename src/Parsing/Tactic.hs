@@ -18,7 +18,7 @@ pTactic :: Parser Tactic
 pTactic = sc *> pRule <* eof
 
 pRule :: Parser Tactic
-pRule = pAtomic <|> pParens pNonAtomic
+pRule = pAtomic <|> pParens pNonAtomic 
 
 pAtomic :: Parser Tactic
 pAtomic = Leaf <$ symbol "leaf"
@@ -26,6 +26,9 @@ pAtomic = Leaf <$ symbol "leaf"
   <|> Cmp <$ symbol "cmp"
   <|> Var <$ symbol "pair"
   <|> App <$ symbol "app"
+  <|> Hole <$ symbol "?"
+  <|> Auto <$ symbol "_"
+  <?> "rule"
 
 pNonAtomic :: Parser Tactic
 pNonAtomic = Ite <$ symbol "ite" <*> pRule <*> pRule
@@ -35,6 +38,7 @@ pNonAtomic = Ite <$ symbol "ite" <*> pRule <*> pRule
   <|> TickDefer <$ symbol "tick:defer" <*> pRule
   <|> Weaken <$ symbol "w" <*> pRuleArgs <*> pRule
   <|> Shift <$ symbol "shift" <*> pRule
+  <?> "rule"
 
 pRuleArg :: Parser RuleArg
 pRuleArg = Mono <$ symbol "mono"

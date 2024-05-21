@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 module Parsing.TacticSpec(spec) where
 
 import Test.Hspec
@@ -16,3 +17,15 @@ spec = do
         contents <- TextIO.readFile file
         let tactic = parse file contents
         True `shouldBe` True
+    context "given the wauto tactic" $ do
+      it "does not produce a parse error" $ do
+        let file = "tactics/wauto.txt"
+        contents <- TextIO.readFile file
+        let tactic = parse file contents
+        tactic `shouldBe` (Weaken [L2xy] Auto)
+    context "given a hole tactic" $ do
+      it "does not produce a parse error" $ do
+        let file = "tactics/hole.txt"
+        contents <- TextIO.readFile file
+        let tactic = parse file contents
+        tactic `shouldBe` Hole          

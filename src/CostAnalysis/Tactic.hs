@@ -19,4 +19,6 @@ data Tactic
   | TickDefer Tactic
   | Weaken [RuleArg] Tactic
   | Shift Tactic
+  | Hole
+  | Auto
   deriving (Eq, Show)
