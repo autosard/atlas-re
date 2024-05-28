@@ -3,6 +3,7 @@
 module Parsing.Tactic where
 
 import CostAnalysis.Tactic
+import CostAnalysis.Rules
 
 import Text.Megaparsec
 import Text.Megaparsec.Char ( space1 )
@@ -21,23 +22,24 @@ pRule :: Parser Tactic
 pRule = pAtomic <|> pParens pNonAtomic 
 
 pAtomic :: Parser Tactic
-pAtomic = Leaf <$ symbol "leaf"
-  <|> Node <$ symbol "node"
-  <|> Cmp <$ symbol "cmp"
-  <|> Var <$ symbol "pair"
-  <|> App <$ symbol "app"
+pAtomic = Rule Leaf [] <$ symbol "leaf" 
+  <|> Rule Node [] <$ symbol "node"
+  <|> Rule Cmp [] <$ symbol "cmp"
+  <|> Rule Var [] <$ symbol "pair"
+  <|> Rule App [] <$ symbol "app"
   <|> Hole <$ symbol "?"
   <|> Auto <$ symbol "_"
   <?> "rule"
 
 pNonAtomic :: Parser Tactic
-pNonAtomic = Ite <$ symbol "ite" <*> pRule <*> pRule
-  <|> Match <$ symbol "match" <*> many pRule
-  <|> Let <$ symbol "let" <*> pRule <*> pRule
-  <|> TickNow <$ symbol "tick:now" <*> pRule
-  <|> TickDefer <$ symbol "tick:defer" <*> pRule
-  <|> Weaken <$ symbol "w" <*> pRuleArgs <*> pRule
-  <|> Shift <$ symbol "shift" <*> pRule
+pNonAtomic = Rule Ite <$ symbol "ite" <*> count 2 pRule 
+  <|> Rule Match <$ symbol "match" <*> many pRule
+  <|> Rule Let <$ symbol "let" <*> count 2 pRule 
+  <|> Rule TickNow <$ symbol "tick:now" <*> count 1 pRule
+  <|> Rule TickDefer <$ symbol "tick:defer" <*> count 1 pRule
+  <|> (do rule <- Weaken <$ symbol "w" <*> pRuleArgs
+          Rule rule <$> count 1 pRule)
+  <|> Rule Shift <$ symbol "shift" <*> count 1 pRule
   <?> "rule"
 
 pRuleArg :: Parser RuleArg

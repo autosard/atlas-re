@@ -35,3 +35,15 @@ fn :: [Type] -> Type -> Type
 fn [] to = to
 fn from to = TAp Arrow [TAp Prod from, to]
 
+splitFnType :: Type -> (Type, Type)
+splitFnType (TAp Arrow [from, to]) = (from, to)
+splitFnType t = error $ "Cannot split function type: got invalid function type '" ++ show t ++ "'."
+
+countTrees :: Type -> Int
+countTrees (TAp Tree _) = 1
+countTrees (TAp Prod ts) = sum . map countTrees $ ts
+countTrees _ = 0
+
+isTree :: Type -> Bool
+isTree (TAp Tree _) = True
+isTree _ = False

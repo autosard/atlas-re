@@ -2,23 +2,10 @@
 
 module CostAnalysis.Tactic where
 
-data RuleArg = Mono | L2xy
-  deriving (Eq, Show)
+import CostAnalysis.Rules
 
 data Tactic
-  = Leaf
-  | Node
-  | Cmp
-  | Var
-  | Pair
-  | Ite Tactic Tactic
-  | Match [Tactic]
-  | Let Tactic Tactic
-  | App 
-  | TickNow Tactic
-  | TickDefer Tactic
-  | Weaken [RuleArg] Tactic
-  | Shift Tactic
+  = Rule Rule [Tactic]
   | Hole
   | Auto
   deriving (Eq, Show)

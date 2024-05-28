@@ -19,6 +19,9 @@ instance Show Scheme where
 toScheme :: Type -> Scheme
 toScheme = Forall 0
 
+toType :: Scheme -> Type
+toType (Forall _ t) = t
+
 quantify :: [Tyvar] -> Type -> Scheme
 quantify vs t = Forall (length vs) (apply s t)
   where vs' = [v | v <- tv t, v `elem` vs]

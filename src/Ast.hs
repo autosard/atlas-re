@@ -98,6 +98,10 @@ pattern Tick c e <- TickAnn _ c e
 pattern Coin :: Rational -> Expr a
 pattern Coin p <- CoinAnn _ p
 
+-- special patterns for constructor expressions
+pattern Leaf :: Expr a
+pattern Leaf <- ConstAnn _ "leaf" []
+
 pattern PatWildcard :: XExprAnn a -> Pattern a
 pattern PatWildcard ann <- WildcardPat ann
   where PatWildcard ann = WildcardPat ann

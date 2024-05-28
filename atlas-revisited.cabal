@@ -32,7 +32,10 @@ library
                       Typing.Subst,
                       Typing.Inference,
                       CostAnalysis.Deriv,
-                      CostAnalysis.Tactic                   
+                      CostAnalysis.Tactic,
+                      CostAnalysis.Rules,
+                      CostAnalysis.Potential
+                      CostAnalysis.Log,
                       StaticAnalysis,
                       SourceError,
                       Normalization,
