@@ -22,20 +22,11 @@ import CostAnalysis.Potential
 
 --type Context = [Id]
 
-
 --linRsrcAnn :: Int -> Int -> IndexedCoeffs
 --linRsrcAnn id len = M.fromList [([x], Unknown id "Q" "lin" [x]) | x <- [1..(len+1)]]
 
 --linPot :: GroundPot
 --linPot = Potential linRsrcAnn 
-
---type CombPot = Potential [IndexedCoeffs]
-
---combRsrcAnn :: [GroundPot] -> Int -> Int -> [IndexedCoeffs]
---combRsrcAnn pots id len = map (\p -> rsrcAnn p id len) pots
-
---combPot :: [GroundPot] -> CombPot
---combPot pots = Potential (combRsrcAnn pots)
   
 class Encodeable a where
   toZ3 :: a -> AST

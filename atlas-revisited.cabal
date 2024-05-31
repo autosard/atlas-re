@@ -36,6 +36,7 @@ library
                       CostAnalysis.Rules,
                       CostAnalysis.Potential
                       CostAnalysis.Log,
+                      CostAnalysis.Comb,
                       StaticAnalysis,
                       SourceError,
                       Normalization,

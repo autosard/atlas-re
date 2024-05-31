@@ -31,6 +31,7 @@ infixl 9 !
 type family AnnArray a
 
 type instance AnnArray IndexedCoeffs = Map [Int] IndexedCoeffs
+type instance AnnArray [IndexedCoeffs] = [Map [Int] IndexedCoeffs]
 
 infixl 9 !!
 (!!) :: AnnArray IndexedCoeffs -> [Int] -> IndexedCoeffs
@@ -61,3 +62,4 @@ data Potential a = Potential {
   printPot :: a -> String}
 
 type GroundPot = Potential IndexedCoeffs
+type CombPot = Potential [IndexedCoeffs]
