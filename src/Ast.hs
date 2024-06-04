@@ -102,6 +102,12 @@ pattern Coin p <- CoinAnn _ p
 pattern Leaf :: Expr a
 pattern Leaf <- ConstAnn _ "leaf" []
 
+pattern Node :: Expr a -> Expr a -> Expr a -> Expr a 
+pattern Node l v r <- ConstAnn _ "node" [l, v, r]
+
+pattern Tuple :: Expr a -> Expr a -> Expr a
+pattern Tuple x1 x2 <- ConstAnn _ "(,)" [x1, x2]
+
 pattern PatWildcard :: XExprAnn a -> Pattern a
 pattern PatWildcard ann <- WildcardPat ann
   where PatWildcard ann = WildcardPat ann
@@ -238,7 +244,7 @@ instance Types TypedExpr where
 type FullResourceAnn = (FunResourceAnn, Maybe FunResourceAnn)
 
 data ResourceAnn = ResourceAnn {
-  annLen :: Int,
+  annLength :: Int,
   annCoefs :: Maybe (Map [Int] Coefficient)
   }
   deriving (Eq, Show)

@@ -21,6 +21,7 @@ printIdx :: [Int] -> String
 printIdx idx = "(" ++ intercalate "," (map show idx) ++ ")" 
 
 data IndexedCoeffs = IndexedCoeffs Int (Map [Int] Coeff)
+  deriving (Show)
 
 infixl 9 !
 (!) :: IndexedCoeffs -> [Int] -> Coeff
@@ -41,6 +42,8 @@ infixl 9 !!
 
 data Constraint = Eq Coeff Coeff
   | EqSum Coeff [Coeff]
+  | EqPlusConst Coeff Coeff Rational
+  | EqMinusConst Coeff Coeff Rational
   | Zero Coeff
   | NotZero Coeff
   | Le Coeff Coeff
@@ -51,8 +54,13 @@ data Constraint = Eq Coeff Coeff
 
 
 data Potential a = Potential {
-  rsrcAnn :: Int -> Int -> a,
+  rsrcAnn :: Int -> Text -> Int -> a,
+  enumAnn :: a -> Bool -> [[Int]],
+  forAllIdx :: [[Int]] -> [Int] -> a -> AnnArray a,
+  elems :: AnnArray a -> [a],
   annLen :: a -> Int,
+  cPlusConst :: a -> Rational -> a -> [Constraint],
+  cMinusConst :: a -> Rational -> a -> [Constraint],
   cLeaf :: a -> a -> [Constraint],
   cNode :: a -> a -> [Constraint],
   cPair :: a -> a -> [Constraint],

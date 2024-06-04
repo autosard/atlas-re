@@ -39,6 +39,14 @@ splitFnType :: Type -> (Type, Type)
 splitFnType (TAp Arrow [from, to]) = (from, to)
 splitFnType t = error $ "Cannot split function type: got invalid function type '" ++ show t ++ "'."
 
+splitTreeType :: Type -> (Type, Type, Type)
+splitTreeType (TAp Tree [l, v, r]) = (l, v, r)
+splitTreeType t = error "Got non-tree type."
+
+splitTupleType :: Type -> (Type, Type)
+splitTupleType (TAp Prod [x1, x2]) = (x1, x2)
+splitTupleType t = error "Got non-tuple type."
+
 countTrees :: Type -> Int
 countTrees (TAp Tree _) = 1
 countTrees (TAp Prod ts) = sum . map countTrees $ ts
@@ -47,3 +55,7 @@ countTrees _ = 0
 isTree :: Type -> Bool
 isTree (TAp Tree _) = True
 isTree _ = False
+
+isBool :: Type -> Bool
+isBool (TAp Bool []) = True
+isBool _ = False

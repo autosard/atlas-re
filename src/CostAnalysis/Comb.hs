@@ -9,9 +9,14 @@ import CostAnalysis.Potential(Potential(Potential),
                               AnnArray)
 
 import Data.List(zipWith5, zipWith4, zipWith7, intercalate)
+import Data.Text (Text)
 
-rsrcAnn :: [GroundPot] -> Int -> Int -> [IndexedCoeffs]
-rsrcAnn pots id len = map (\p -> P.rsrcAnn p id len) pots
+rsrcAnn :: [GroundPot] -> Int -> Text -> Int -> [IndexedCoeffs]
+rsrcAnn pots id label len = map (\p -> P.rsrcAnn p id label len) pots
+
+--forAll :: [GroundPot] -> [IndexedCoeffs] -> [IndexedCoeffs]
+--  -> [Int] -> Bool -> AnnArray [IndexedCoeffs]
+--forAll pots ps rs ids = zipWith3 
 
 annLen :: [GroundPot] -> [IndexedCoeffs] -> Int
 annLen (pot:_) (coeffs:_) = P.annLen pot coeffs
@@ -51,14 +56,14 @@ cLet pots neg = concatZipWith7 (`P.cLet` neg) pots
 printPot :: [GroundPot] -> [IndexedCoeffs] -> String
 printPot pots coeffs = intercalate " + " $ zipWith P.printPot pots coeffs
   
-combPot :: [GroundPot] -> CombPot
-combPot pots = Potential
-  (rsrcAnn pots)
-  (annLen pots)
-  (cLeaf pots)
-  (cNode pots)
-  (cPair pots)
-  (cMatch pots)
-  (cLetBase pots)
-  (cLet pots)
-  (printPot pots)
+-- combPot :: [GroundPot] -> CombPot
+-- combPot pots = Potential
+--   (rsrcAnn pots)
+--   (annLen pots)
+--   (cLeaf pots)
+--   (cNode pots)
+--   (cPair pots)
+--   (cMatch pots)
+--   (cLetBase pots)
+--   (cLet pots)
+--   (printPot pots)
