@@ -13,6 +13,7 @@ import CostAnalysis.Potential(IndexedCoeffs(IndexedCoeffs),
                               (!!),
                               AnnArray, printCoeff, GroundPot, Potential (Potential))
 import qualified Data.Text as T
+import CostAnalysis.Rules (RuleArg)
 
 aRange = [1, 0]
 bRange = [0, 2]
@@ -154,6 +155,9 @@ cLet neg q p p' ps ps' r = let m = annLen p
      as <- delete (replicate m 0) (aIdx m),
      c <- bRange]
 
+cWeaken :: [RuleArg] -> IndexedCoeffs -> IndexedCoeffs
+  -> IndexedCoeffs -> IndexedCoeffs -> [Constraint]
+cWeaken args q q' p p' = []
 
 -- TODO accept arguments to be printed as well. 
 printPot :: IndexedCoeffs -> String
@@ -165,7 +169,7 @@ printPot qs@(IndexedCoeffs len _) = rankCoeffs ++ " " ++ logCoeffs
           s -> s
         printLog :: [Int] -> String
         printLog xs = "log(" ++ intercalate " + " (map show xs) ++ ")"
-  
+
 logPot :: GroundPot
 logPot = Potential
   rsrcAnn
@@ -181,4 +185,5 @@ logPot = Potential
   cMatch
   cLetBase
   cLet
+  cWeaken
   printPot

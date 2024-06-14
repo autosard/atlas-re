@@ -65,8 +65,8 @@ sc = L.space
   (L.skipLineComment "(*)")       
   (L.skipBlockComment "(*" "*)")
 
-parse :: String -> Text -> Tactic
-parse fileName contents = case runParser pTactic fileName contents of
+parseTactic :: String -> Text -> Tactic
+parseTactic fileName contents = case runParser pTactic fileName contents of
   Left errs -> error $ errorBundlePretty errs
   Right tactic -> tactic
 

@@ -6,6 +6,7 @@ import Data.Text(Text, unpack)
 import Data.List(intercalate)
 import Data.Map(Map)
 import qualified Data.Map as M
+import CostAnalysis.Rules ( RuleArg )
 
 data Coeff
   = Unknown Int Text Text [Int]
@@ -67,6 +68,7 @@ data Potential a = Potential {
   cMatch :: a -> a -> a -> [Constraint],
   cLetBase :: a -> a -> a -> a -> [Constraint],
   cLet :: Bool -> a -> a -> a -> AnnArray a -> AnnArray a -> a -> [Constraint],
+  cWeaken :: [RuleArg] -> a -> a -> a -> a -> [Constraint], 
   printPot :: a -> String}
 
 type GroundPot = Potential IndexedCoeffs

@@ -42,3 +42,7 @@ freeVars (App _ exps) = unionMap freeVars exps
 freeVars (Let id e1 e2) = S.delete id $ freeVars e1 `S.union` freeVars e2
 freeVars (Tick _ e) = freeVars e
 freeVars _ = S.empty
+
+fns :: Module a -> [Id]
+fns = map go
+  where go (Fn id _ _) = id
