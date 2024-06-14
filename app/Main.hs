@@ -4,16 +4,27 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Main (main) where
 
+import Options.Applicative
 import Control.Monad.IO.Class (MonadIO (..))
-import Control.Monad.Reader (MonadReader)
 import Data.Maybe(fromMaybe)
+import Data.Map(Map)
+import qualified Data.Map as M
 import System.Exit
 import Data.Text(Text)
+import System.FilePath
+import qualified Data.Text.IO as TextIO
+import qualified Data.Text as T
+import Data.Maybe(catMaybes)
+import System.Directory
 
-import qualified Iris
+import Colog (cmap, fmtMessage, logTextStdout, logWarning,
+              usingLoggerT, LoggerT, Msg, Severity)
+
 
 import System.Environment(lookupEnv)
 
@@ -21,52 +32,46 @@ import Typing.Inference(inferExpr, inferModule)
 import Ast(TypedModule, TypedExpr)
 import Normalization(normalizeMod, normalizeExpr)
 import Parsing.Program(parseExpr, parseModule)
+import Parsing.Tactic
 import Eval(evalWithModule)
+import StaticAnalysis(fns)
+import Primitive(Id)
+import CostAnalysis.Tactic 
+import CostAnalysis.Log
+import CostAnalysis.Deriv
 
-import Cli(Options(..), RunOptions(..), EvalOptions(..), Command(..), optionsP)
+import Cli(Options(..), RunOptions(..), EvalOptions(..), Command(..), cliP)
 
-import qualified Paths_atlas_revisited as Autogen
 import System.Random (getStdGen)
 import Module (loadSimple)
 import SourceError (printSrcError)
 
+type App a = LoggerT (Msg Severity) IO a
 
-newtype App a = App
-    { unApp :: Iris.CliApp Options () a
-    } deriving newtype
-        ( Functor
-        , Applicative
-        , Monad
-        , MonadIO
-        , MonadReader (Iris.CliEnv Options ())
-        )
+app :: Options -> App ()
+app options = do
+  case optCommand options of
+    Run runOptions -> run options runOptions
+    Eval evalOptions -> eval options evalOptions
 
-appSettings :: Iris.CliEnvSettings Options ()
-appSettings = Iris.defaultCliEnvSettings
-    { Iris.cliEnvSettingsHeaderDesc = "Atlas"
-    , Iris.cliEnvSettingsProgDesc = "A static analysis tool for Automated (Expected) Amortised Complexity Analysis."
-    , Iris.cliEnvSettingsVersionSettings =
-        Just (Iris.defaultVersionSettings Autogen.version) {
-        Iris.versionSettingsMkDesc = ("ATLAS v" <>)
-        }
-    , Iris.cliEnvSettingsCmdParser = optionsP
-    }
+run :: Options -> RunOptions -> App ()
+run Options{..} RunOptions{..} = do
+  let (modName, funName) = fqn 
+  normalizedProg <- liftIO $ loadMod searchPath modName
+  tactics <- case tacticsPath of
+    Just path -> loadTactics (T.unpack modName) (fns normalizedProg) path
+    Nothing -> return M.empty
+  let (derivs, cs) = runProof normalizedProg logPot tactics
+  liftIO $ mapM_ (print . show) cs
 
+eval :: Options -> EvalOptions -> App ()
+eval Options{..} EvalOptions{..} = do
+  mod <- liftIO $ loadMod searchPath modName
+  expr' <- liftIO $ loadExpr expr mod
+  rng <- liftIO getStdGen
+  let val = evalWithModule mod expr' rng
+  liftIO $ print val
 
-app :: App ()
-app = do
-  Options{..} <- Iris.asksCliEnv Iris.cliEnvCmd
-  case optCommand of
-    Run RunOptions{..} -> do
-      let (modName, funName) = fqn 
-      normalizedProg <- liftIO $ loadMod searchPath modName
-      liftIO $ print normalizedProg
-    Eval EvalOptions{..} -> do
-      mod <- liftIO $ loadMod searchPath modName
-      expr' <- liftIO $ loadExpr expr mod
-      rng <- liftIO getStdGen
-      let val = evalWithModule mod expr' rng
-      liftIO $ print val
 
 loadExpr :: Text -> TypedModule -> IO TypedExpr
 loadExpr contents ctx = do
@@ -75,7 +80,19 @@ loadExpr contents ctx = do
         Left srcErr -> die $ printSrcError srcErr contents
         Right expr -> return expr
   return $ normalizeExpr typed
-     
+
+loadTactics :: String -> [Id] -> FilePath -> App (Map Id Tactic)
+loadTactics modName fns path = (M.fromList . catMaybes) <$> mapM loadOne fns
+  where loadOne :: Id -> App (Maybe (Id, Tactic))
+        loadOne fn = do
+          let fileName = path </> modName </> (T.unpack fn) <.> "txt"
+          exists <- liftIO $ doesFileExist fileName
+          if exists then do
+            contents <- liftIO $ TextIO.readFile fileName
+            return $ Just (fn, parseTactic fileName contents)
+          else do
+            logWarning $ "No tactic file for function '" `T.append` fn `T.append` "' found."
+            return Nothing
 
 loadMod :: Maybe FilePath -> Text -> IO TypedModule
 loadMod pathSearch modName = do
@@ -90,5 +107,7 @@ loadMod pathSearch modName = do
 
 main :: IO ()
 main = do
-  Iris.runCliApp appSettings $ unApp app
-  
+  let logAction = cmap fmtMessage logTextStdout
+  options <- execParser cliP
+  usingLoggerT logAction $ app options
+

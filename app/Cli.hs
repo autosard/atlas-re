@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ApplicativeDo #-}
 
-module Cli(Options(..), Command(..), RunOptions(..), optionsP, EvalOptions(..)) where
+module Cli(Options(..), Command(..), RunOptions(..), optionsP, EvalOptions(..), cliP) where
 
 import Ast(Fqn)
 
@@ -16,6 +16,11 @@ data Options = Options
 
 data Command = Run !RunOptions | Eval !EvalOptions
 
+cliP :: ParserInfo Options
+cliP = info (optionsP <**> helper) ( fullDesc
+  <> progDesc "A static analysis tool for Automated (Expected) Amortised Complexity Analysis."
+  <> header "atlas - automated amortized complexity analysis" )
+
 optionsP :: Parser Options
 optionsP = do
    searchPath <- optional $ strOption
@@ -29,10 +34,19 @@ optionsP = do
                                  (info evalCommandP (progDesc "Evaluate the given expression in the context of the given module.")))
    return Options{..}
 
-newtype RunOptions = RunOptions { fqn :: Fqn }
+data RunOptions = RunOptions {
+  fqn :: Fqn,
+  tacticsPath :: Maybe FilePath}
 
 runOptionsP :: Parser RunOptions
-runOptionsP = RunOptions <$> argument (eitherReader parseFqn) (metavar "FQN")
+runOptionsP = do
+  tacticsPath <- optional $ strOption
+    (long "tactics"
+     <> short 't'
+     <> metavar "PATH"
+     <> help "When present, tactics will be loaded from this directory.")
+  fqn <- argument (eitherReader parseFqn) (metavar "FQN")
+  return RunOptions{..}
 
 runCommandP :: Parser Command
 runCommandP = Run <$> runOptionsP

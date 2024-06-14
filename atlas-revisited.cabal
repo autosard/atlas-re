@@ -79,12 +79,13 @@ executable atlas-revisited
         base ^>=4.17.2.1,
         atlas-revisited,
         text,
-        iris ^>= 0.1.0.0,
+        directory ^>= 1.3.8.5,
         optparse-applicative ^>= 0.17.1.0,
         filepath ^>= 1.5.2.0,
         mtl ^>= 2.2.2,
         containers,
-        random ^>= 1.2.1
+        random ^>= 1.2.1,
+        co-log ^>= 0.6.1.0
     hs-source-dirs: app
     --profiling: True
     default-language: Haskell2010
