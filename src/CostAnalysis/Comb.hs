@@ -31,10 +31,15 @@ cPair = concatZipWith3 P.cPair
 concatZipWith4 :: (a -> b -> c -> d -> [f]) -> [a] -> [b] -> [c] -> [d] -> [f]
 concatZipWith4 f a b c d = concat $ zipWith4 f a b c d
 
-cMatch :: [GroundPot]
-  -> [IndexedCoeffs] -> [IndexedCoeffs] -> [IndexedCoeffs]
+cMatchLeaf :: [GroundPot]
+  -> [IndexedCoeffs] -> [IndexedCoeffs]
   -> [Constraint]
-cMatch = concatZipWith4 P.cMatch
+cMatchLeaf = concatZipWith3 P.cMatchLeaf
+
+cMatchNode :: [GroundPot]
+  -> [IndexedCoeffs] -> [IndexedCoeffs]
+  -> [Constraint]
+cMatchNode = concatZipWith3 P.cMatchNode
 
 concatZipWith5 :: (a -> b -> c -> d -> e -> [f]) -> [a] -> [b] -> [c] -> [d] -> [e] -> [f]
 concatZipWith5 f a b c d e = concat $ zipWith5 f a b c d e

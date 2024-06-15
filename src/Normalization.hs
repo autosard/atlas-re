@@ -58,8 +58,15 @@ nmMatchArm (MatchArmAnn ann pat e) = do
 
 type HoleExpr = TypedExpr -> TypedExpr
 
+srcForBind :: TypedExpr -> TypedExprSrc
+srcForBind e = case (teSrc . getAnn) e of
+  (Loc pos) -> DerivedFrom pos
+  (DerivedFrom pos) -> DerivedFrom pos
+
+
 letHole :: TypedExpr -> Id -> Type -> HoleExpr
-letHole e v t = LetAnn (TypedExprAnn Derived t) v e
+letHole e v t = LetAnn (TypedExprAnn src t) v e
+  where src = srcForBind e
 
 nmBind :: Type -> TypedExpr -> Norm (HoleExpr, TypedExpr)
 nmBind t e = if isImmediate e
@@ -67,8 +74,9 @@ nmBind t e = if isImmediate e
   else do
   v <- newVar
   let hole = letHole e v t
-  let ann = TypedExprAnn Derived (getType e)
-  return (hole, VarAnn ann v) 
+  let ann = TypedExprAnn src (getType e)
+  return (hole, VarAnn ann v)
+  where src = srcForBind e
     
 
 nmBinds :: Type -> [TypedExpr] -> Norm (HoleExpr, [TypedExpr])

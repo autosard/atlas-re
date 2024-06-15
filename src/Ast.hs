@@ -108,6 +108,13 @@ pattern Node l v r <- ConstAnn _ "node" [l, v, r]
 pattern Tuple :: Expr a -> Expr a -> Expr a
 pattern Tuple x1 x2 <- ConstAnn _ "(,)" [x1, x2]
 
+isCmp :: Expr a -> Bool
+isCmp (Const "EQ" _ ) = True
+isCmp (Const "LT" _ ) = True
+isCmp (Const "GT" _ ) = True
+isCmp _ = False
+
+
 pattern PatWildcard :: XExprAnn a -> Pattern a
 pattern PatWildcard ann <- WildcardPat ann
   where PatWildcard ann = WildcardPat ann
@@ -120,6 +127,24 @@ pattern MatchArm p e <- MatchArmAnn _ p e
 
 pattern Fn :: Id -> [Id] -> Expr a -> FunDef a
 pattern Fn id args e <- FunDef _ id args e
+
+printExprHead :: Expr a -> String
+printExprHead (Var _) = "var"
+printExprHead (Lit l) = show l
+printExprHead (Const id _) = T.unpack id
+printExprHead (Ite {}) = "ite"
+printExprHead (Match _ _) = "match"
+printExprHead (App _ _) = "app"
+printExprHead (Let {}) = "let"
+printExprHead (Tick _ _) = "tick"
+printExprHead (Coin _) = "coin"
+
+-- printExpr :: Expr a -> String
+-- printExpr (Var id) = T.unpack id
+-- printExpr (Lit l) = show l
+-- printExpr (Const "(,)" [x1, x2]) = "(" ++ printExpr x1 ++ ", " ++ printExpr x2 ++ ")"
+-- printExpr (Const id args) = id ++ unwords args
+
 
 class Annotated a b where
   getAnn :: a b -> XExprAnn b
@@ -215,7 +240,7 @@ data TypedFunAnn = TypedFunAnn {
   tfResourceAnn :: Maybe FullResourceAnn}
   deriving (Eq, Show)
 
-data TypedExprSrc = Loc SourcePos | Derived
+data TypedExprSrc = Loc SourcePos | DerivedFrom SourcePos
   deriving (Eq, Show)
 
 data TypedExprAnn = TypedExprAnn {

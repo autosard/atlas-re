@@ -39,9 +39,9 @@ splitFnType :: Type -> (Type, Type)
 splitFnType (TAp Arrow [from, to]) = (from, to)
 splitFnType t = error $ "Cannot split function type: got invalid function type '" ++ show t ++ "'."
 
-splitTreeType :: Type -> (Type, Type, Type)
-splitTreeType (TAp Tree [l, v, r]) = (l, v, r)
-splitTreeType t = error "Got non-tree type."
+treeValueType :: Type -> Type
+treeValueType (TAp Tree [t]) = t
+treeValueType t = error "Got non-tree type."
 
 splitTupleType :: Type -> (Type, Type)
 splitTupleType (TAp Prod [x1, x2]) = (x1, x2)

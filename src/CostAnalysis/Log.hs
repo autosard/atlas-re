@@ -84,8 +84,15 @@ cPair q q' =
   Eq (q![1]) (q'![1]) :
   [Eq (q![a,c]) (q'![a,c]) | a <- aRange, c <- bRange]
 
-cMatch :: IndexedCoeffs -> IndexedCoeffs -> IndexedCoeffs -> [Constraint]
-cMatch q p r = let m = annLen q - 1 in
+cMatchLeaf :: IndexedCoeffs -> IndexedCoeffs -> [Constraint]
+cMatchLeaf q p = let m = annLen q - 1 in
+  [Eq (q![i]) (p![i]) | i <- [1..m]]
+  ++ [EqSum (p!(as ++ [c])) [q!(as ++ [a,b])
+                            | a <- aRange, b <- bRange, a + b == c]
+     | as <- aIdx m, c <- bRange]
+
+cMatchNode :: IndexedCoeffs -> IndexedCoeffs -> [Constraint]
+cMatchNode q r = let m = annLen q - 1 in
   Eq (r![m+1]) (q![m+1]) :
   Eq (r![m+2]) (q![m+1]) :
   Eq (r!(replicate m 0 ++ [1,0,0])) (q![m+1]) :
@@ -93,9 +100,19 @@ cMatch q p r = let m = annLen q - 1 in
   [Eq (r!(as ++ [a,a,b])) (q!(as ++ [a,b]))
   | as <- aIdx m, a <- aRange, b <- bRange]
   ++ [Eq (q![i]) (r![i]) | i <- [1..m]]
-  ++ [EqSum (p!(as ++ [c])) [q!(as ++ [a,b])
-                            | a <- aRange, b <- bRange, a + b == c]
-     | as <- aIdx m, c <- bRange]
+  
+-- cMatch :: IndexedCoeffs -> IndexedCoeffs -> IndexedCoeffs -> [Constraint]
+-- cMatch q p r = let m = annLen q - 1 in
+--   Eq (r![m+1]) (q![m+1]) :
+--   Eq (r![m+2]) (q![m+1]) :
+--   Eq (r!(replicate m 0 ++ [1,0,0])) (q![m+1]) :
+--   Eq (r!(replicate m 0 ++ [0,1,0])) (q![m+1]) :
+--   [Eq (r!(as ++ [a,a,b])) (q!(as ++ [a,b]))
+--   | as <- aIdx m, a <- aRange, b <- bRange]
+--   ++ [Eq (q![i]) (r![i]) | i <- [1..m]]
+--   ++ [EqSum (p!(as ++ [c])) [q!(as ++ [a,b])
+--                             | a <- aRange, b <- bRange, a + b == c]
+--      | as <- aIdx m, c <- bRange]
 
 cLetBase :: IndexedCoeffs -> IndexedCoeffs -> IndexedCoeffs -> IndexedCoeffs -> [Constraint]
 cLetBase q p r p' = let m = annLen p
@@ -182,7 +199,8 @@ logPot = Potential
   cLeaf
   cNode
   cPair
-  cMatch
+  cMatchLeaf
+  cMatchNode
   cLetBase
   cLet
   cWeaken

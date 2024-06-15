@@ -57,16 +57,19 @@ app options = do
 run :: Options -> RunOptions -> App ()
 run Options{..} RunOptions{..} = do
   let (modName, funName) = fqn 
-  normalizedProg <- liftIO $ loadMod searchPath modName
+  (normalizedProg, contents) <- liftIO $ loadMod searchPath modName
+--  liftIO $ print (show normalizedProg)
   tactics <- case tacticsPath of
     Just path -> loadTactics (T.unpack modName) (fns normalizedProg) path
     Nothing -> return M.empty
-  let (derivs, cs) = runProof normalizedProg logPot tactics
+  (derivs, cs) <- liftIO $ case runProof normalizedProg logPot tactics of
+        Left srcErr -> die $ printSrcError srcErr contents
+        Right v -> return v
   liftIO $ mapM_ (print . show) cs
 
 eval :: Options -> EvalOptions -> App ()
 eval Options{..} EvalOptions{..} = do
-  mod <- liftIO $ loadMod searchPath modName
+  (mod, _) <- liftIO $ loadMod searchPath modName
   expr' <- liftIO $ loadExpr expr mod
   rng <- liftIO getStdGen
   let val = evalWithModule mod expr' rng
@@ -94,7 +97,7 @@ loadTactics modName fns path = (M.fromList . catMaybes) <$> mapM loadOne fns
             logWarning $ "No tactic file for function '" `T.append` fn `T.append` "' found."
             return Nothing
 
-loadMod :: Maybe FilePath -> Text -> IO TypedModule
+loadMod :: Maybe FilePath -> Text -> IO (TypedModule, Text)
 loadMod pathSearch modName = do
   searchPathfromEnv <- lookupEnv "ATLAS_SEARCH"
   let path = (`fromMaybe` pathSearch) . (`fromMaybe` searchPathfromEnv) $ "."
@@ -103,7 +106,7 @@ loadMod pathSearch modName = do
   typedMod <- case inferModule parsedMod of
         Left srcErr -> die $ printSrcError srcErr contents
         Right mod -> return mod
-  return $ normalizeMod typedMod
+  return (normalizeMod typedMod, contents)
 
 main :: IO ()
 main = do
