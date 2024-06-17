@@ -45,7 +45,7 @@ data RuleApp = RuleApp R.Rule [Constraint] TypedExpr
 type Derivation = Tree RuleApp
 
 data ProofState a = ProofState {
-  _sig :: Map Id (a, a),
+  _sig :: Map Id (FunRsrcAnn a),
   _annIdGen :: Int
   }
   deriving (Show)
@@ -90,7 +90,7 @@ genAnnId = do
   annIdGen .= g+1
   return g
 
-genFunRsrcAnn :: TypedFunDef -> ProveMonad a (a, a) 
+genFunRsrcAnn :: TypedFunDef -> ProveMonad a (FunRsrcAnn a)
 genFunRsrcAnn fun = do
   pot <- view potential
   let (tFrom, tTo) = splitFnType . toType . tfType . funAnn $ fun
@@ -99,7 +99,10 @@ genFunRsrcAnn fun = do
   (fromId, toId) <- genAnnIdPair
   let from = rsrcAnn pot fromId "Q" lenFrom
   let to = rsrcAnn pot toId "Q'" lenTo
-  return (from, to)
+  (fromIdCf, toIdCf) <- genAnnIdPair
+  let fromCf = rsrcAnn pot fromId "P" lenFrom
+  let toCf = rsrcAnn pot toId "P'" lenTo
+  return $ FunRsrcAnn (from, to) (fromCf, toCf)
  
 
 type TypeCtx = Map Id Type
@@ -160,7 +163,7 @@ proveMatchArm matchVar tactic cf ctx (MatchArm (PatTreeLeaf _) e) q q' = do
   tell cs
   return (cs, deriv)
 proveMatchArm matchVar tactic cf ctx
-  (MatchArm pat@(PatTreeNode _ (Id idR) (Id idV) (Id idL)) e) q q' = do
+  (MatchArm pat@(PatTreeNode _ (Id idR) _ (Id idL)) e) q q' = do
   pot <- view potential
   let tTree = getType pat
   let tValue = treeValueType tTree
@@ -251,6 +254,20 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       tell cs
       return $ T.Node (RuleApp R.Let cs e) [deriv1, deriv2]
 
+proveApp :: Prove a TypedExpr Derivation
+proveApp tactic cf ctx e@(App id _) q q' = do
+  pot <- view potential
+  fnSig <- use sig
+  let (p, p') = withCost $ fnSig M.! id
+  let (r, r') = withoutCost $ fnSig M.! id
+  q <- rsrcAnn pot <$> genAnnId <*> pure "Q" <*> pure (annLen pot p)
+  q' <- rsrcAnn pot <$> genAnnId <*> pure "Q'" <*> pure (annLen pot p')
+  let cs = cPlusMulti pot q p r
+        ++ cPlusMulti pot q' p' r'
+  tell cs
+  return $ T.Node (RuleApp R.App cs e) []
+  
+  
 proveWeaken :: Prove a TypedExpr Derivation
 proveWeaken tactic@(Rule (R.Weaken args) _) cf ctx e q q' = do
   pot <- view potential
@@ -268,11 +285,10 @@ proveShift tactic cf ctx e q q' = do
   let [subTactic] = subTactics 1 tactic
   p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (annLen pot q)
   p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure (annLen pot q')
-  let cs = cMinusVar pot q  p
-        ++ cMinusVar pot q' p'
+  let cs = cMinusVar pot p q
+        ++ cMinusVar pot p' q'
   deriv <- proveExpr subTactic cf ctx e p p'
   return $ T.Node (RuleApp R.Shift cs e) [deriv]
-  
 
 proveTickDefer :: Prove a TypedExpr Derivation
 proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
@@ -283,7 +299,7 @@ proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
     return $ T.Node (RuleApp R.TickDefer [] e) [deriv]
   else do
     p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (annLen pot q')
-    let cs = cPlusConst pot q' (fromMaybe 1 c) p
+    let cs = cPlusConst pot p q' (fromMaybe 1 c) 
     tell cs
     deriv <- proveExpr subTactic cf ctx e1 q p
     return $ T.Node (RuleApp R.TickDefer cs e) [deriv]
@@ -291,16 +307,17 @@ proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
 
 proveExpr :: Prove a TypedExpr Derivation
 -- manual tactic
-proveExpr (Rule R.Var []) cf ctx e = proveVar Auto cf ctx e
-proveExpr (Rule R.Leaf []) cf ctx e = proveLeaf Auto cf ctx e
-proveExpr (Rule R.Node []) cf ctx e = proveNode  Auto cf ctx e
-proveExpr (Rule R.Cmp []) cf ctx e@(Const _ _) | isCmp e = proveCmp Auto cf ctx e
-proveExpr tactic@(Rule R.Match _) cf ctx e = proveMatch tactic cf ctx e
+proveExpr (Rule R.Var []) cf ctx e@(Var _) = proveVar Auto cf ctx e
+proveExpr (Rule R.Leaf []) cf ctx e@Leaf = proveLeaf Auto cf ctx e
+proveExpr (Rule R.Node []) cf ctx e@(Node {}) = proveNode  Auto cf ctx e
+proveExpr (Rule R.Cmp []) cf ctx e@(Const {}) | isCmp e = proveCmp Auto cf ctx e
+proveExpr tactic@(Rule R.Match _) cf ctx e@(Match {}) = proveMatch tactic cf ctx e
 proveExpr tactic@(Rule R.Ite _) cf ctx e@(Ite {}) = proveIte tactic cf ctx e
-proveExpr tactic@(Rule R.Let _) cf ctx e = proveLet tactic cf ctx e
+proveExpr tactic@(Rule R.Let _) cf ctx e@(Let {}) = proveLet tactic cf ctx e
 proveExpr tactic@(Rule R.TickDefer _) cf ctx e = proveTickDefer tactic cf ctx e
 proveExpr tactic@(Rule (R.Weaken _) _) cf ctx e = proveWeaken tactic cf ctx e
 proveExpr tactic@(Rule R.Shift _) cf ctx e = proveShift tactic cf ctx e
+proveExpr tactic@(Rule R.App _) cf ctx e@(App {}) = proveApp Auto cf ctx e
 -- auto tactic
 proveExpr Auto cf ctx e@Leaf = proveWeaken (Rule (R.Weaken []) [Auto]) cf ctx e
 proveExpr Auto cf ctx e@(Var _) = proveVar Auto cf ctx e
@@ -329,7 +346,9 @@ proveModule mod = do
   -- TODO merge with existing signatures / or type check afterwards
   funAnns <- mapM (\f@(Fn name _ _) -> (name,) <$> genFunRsrcAnn f) mod
   sig .= s `M.union` M.fromList funAnns
-  mapM (\(fun, (_, (q, q'))) -> proveFun Auto False M.empty fun q q' ) $ zip mod funAnns
+  mapM proveFunWithAnn $ zip mod funAnns
+  where proveFunWithAnn (fun, (_, ann)) = let (q, q') = withCost ann in
+          proveFun Auto False M.empty fun q q' 
   
   
   

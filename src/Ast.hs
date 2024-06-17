@@ -17,6 +17,7 @@ import Primitive(Id)
 import Typing.Type (Type)
 import Typing.Subst(Types(apply, tv))
 import Typing.Scheme (Scheme)
+import CostAnalysis.Potential (Potential)
 
 
 type Fqn = (Text, Text)
@@ -188,8 +189,11 @@ instance Annotated Pattern a where
 
 instance Annotated Syntax a where
   mapAnn f (SynExpr e) = SynExpr $ mapAnn f e
+  mapAnn f (SynArm arm) = SynArm $ mapAnn f arm
+  mapAnn f (SynPat p) = SynPat $ mapAnn f p
   getAnn (SynExpr e) = getAnn e
-
+  getAnn (SynArm arm) = getAnn arm
+  getAnn (SynPat p) = getAnn p
 
 -- parsed
 type ParsedSyntax = Syntax Parsed
@@ -265,7 +269,7 @@ instance Types TypedExpr where
   tv e = tv (getType e)
 
 
--- TODO: might replaced once the type system is generatlized
+-- TODO replace with FunRsrcAnn from CostAnalysis
 type FullResourceAnn = (FunResourceAnn, Maybe FunResourceAnn)
 
 data ResourceAnn = ResourceAnn {
@@ -273,11 +277,9 @@ data ResourceAnn = ResourceAnn {
   annCoefs :: Maybe (Map [Int] Coefficient)
   }
   deriving (Eq, Show)
-
---zeroAnnotation :: Int -> Annotation
---zeroAnnotation size = M.fromList $ zip (map singleton [0..]) (replicate size 0) 
   
 type FunResourceAnn = (ResourceAnn, ResourceAnn)
+--
 
 data Val = ConstVal !Id ![Val] | LitVal !Literal
   deriving Eq

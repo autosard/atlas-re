@@ -53,28 +53,33 @@ annLen :: IndexedCoeffs -> Int
 annLen (IndexedCoeffs len _ ) = len
 
 -- P = Q + c
-cPlusConst :: IndexedCoeffs -> Rational -> IndexedCoeffs -> [Constraint]
-cPlusConst q c p = let m = annLen q in
-  EqPlusConst (p!(replicate m 0 ++ [2])) (q!(replicate m 0 ++ [2])) c :
+cPlusConst :: IndexedCoeffs -> IndexedCoeffs -> Rational -> [Constraint]
+cPlusConst q p c = let m = annLen q in
+  EqPlusConst (q!(replicate m 0 ++ [2])) (p!(replicate m 0 ++ [2])) c :
   [Eq (q![i]) (p![i]) | i <- [1..m]]
   ++ [Eq (q!(as ++ [b])) (p!(as ++ [b])) |
       as <- delete (replicate m 0) (aIdx m), b <- bRange]
 
 -- P = Q - c
-cMinusConst :: IndexedCoeffs -> Rational -> IndexedCoeffs -> [Constraint]
-cMinusConst q c p = let m = annLen q in
-  EqMinusConst (p!(replicate m 0 ++ [2])) (q!(replicate m 0 ++ [2])) c :
+cMinusConst :: IndexedCoeffs -> IndexedCoeffs -> Rational -> [Constraint]
+cMinusConst q p c  = let m = annLen q in
+  EqMinusConst (q!(replicate m 0 ++ [2])) (p!(replicate m 0 ++ [2])) c :
   [Eq (q![i]) (p![i]) | i <- [1..m]]
   ++ [Eq (q!(as ++ [b])) (p!(as ++ [b])) |
       as <- delete (replicate m 0) (aIdx m), b <- bRange]
 
 cMinusVar :: IndexedCoeffs -> IndexedCoeffs -> [Constraint]
 cMinusVar q p = let m = annLen q in
-  EqMinusVar (p!(replicate m 0 ++ [2])) (q!(replicate m 0 ++ [2])):
+  EqMinusVar (q!(replicate m 0 ++ [2])) (p!(replicate m 0 ++ [2])):
   [Eq (q![i]) (p![i]) | i <- [1..m]]
   ++ [Eq (q!(as ++ [b])) (p!(as ++ [b])) |
       as <- delete (replicate m 0) (aIdx m), b <- bRange]
-
+  
+cPlusMulti :: IndexedCoeffs -> IndexedCoeffs -> IndexedCoeffs -> [Constraint]
+cPlusMulti q p r = let m = annLen q in
+  [EqPlusMulti (q![i]) (p![i]) (r![i]) | i <- [1..m]]
+  ++ [EqPlusMulti (q!(as ++ [b])) (p!(as ++ [b])) (r!(as ++ [b]))
+     | as <- aIdx m, b <- bRange]
 
 cLeaf :: IndexedCoeffs -> IndexedCoeffs -> [Constraint]
 cLeaf q q' =
@@ -207,6 +212,7 @@ logPot = Potential
   cPlusConst
   cMinusConst
   cMinusVar
+  cPlusMulti
   cLeaf
   cNode
   cPair

@@ -55,6 +55,8 @@ data Constraint =
   | EqMinusConst Coeff Coeff Rational
   -- | 'EqMinusVar' q p = \[q = p - k \]
   | EqMinusVar Coeff Coeff
+  -- | 'EqPlusMulti' q p r = \[ q = p \cdot k r\]
+  | EqPlusMulti Coeff Coeff Coeff
   -- | 'Zero' q = \[q = 0 \]
   | Zero Coeff
   -- | 'NotZero' q = \[q \neq 0 \]
@@ -67,7 +69,10 @@ data Constraint =
   | Impl Constraint Constraint
   deriving (Eq, Show)
 
-
+data FunRsrcAnn a = FunRsrcAnn {
+  withCost :: (a, a),
+  withoutCost :: (a, a)}
+  deriving(Show)
 
 data Potential a = Potential {
   -- Annotation manipulation
@@ -86,12 +91,14 @@ data Potential a = Potential {
   -- Constraint generation
   
   -- | @ 'cPlusConst' q c p@, returns constraints that guarantee \[\phi(*\mid P) = \phi(*\mid Q) + C\] where @c@ is constant.
-  cPlusConst :: a -> Rational -> a -> [Constraint],
+  cPlusConst :: a -> a -> Rational -> [Constraint],
   -- | @ 'cMinusConst' q c p@, returns constraints that guarantee \[\phi(*\mid P) = \phi(*\mid Q) - C\] where @c@ is constant.
-  cMinusConst :: a -> Rational -> a -> [Constraint],
+  cMinusConst :: a -> a -> Rational -> [Constraint],
   -- | @ 'cMinusVar' q p@, returns constraints that guarantee \[\phi(*\mid P) = \phi(*\mid Q) - K\] where @k@ is a fresh variable.
   cMinusVar :: a -> a -> [Constraint],
-  -- | @ 'cLeaf' q q'@, returns constraints that guarantee \[\phi(\varnothing\mid Q) = \phi(\verb|leaf| \mid Q')\]
+  -- | @ 'cPlusMulti' q p r@, returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid Q) - K\] where @k@ is a fresh variable.
+  cPlusMulti :: a -> a -> a -> [Constraint],
+  -- | @ 'cLeaf' q q'@, returns constraints that guarantee \[\phi(\varnothing\mid Q) = \phi(\verb|leaf| \mid Q')\]  
   cLeaf :: a -> a -> [Constraint],
   -- | @ 'cNode' q q'@, returns constraints that guarantee \[\forall u: T,b: B, v:T .\,\phi(u,v\mid Q) = \phi(\verb|node| \,u\, b\, v\mid Q')\]
   cNode :: a -> a -> [Constraint],
