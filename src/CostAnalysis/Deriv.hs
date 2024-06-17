@@ -221,12 +221,12 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (length ctxE1)
       p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure 0
       r <- rsrcAnn pot <$> genAnnId <*> pure "R" <*> pure (length ctxE2)
-      let pIdxs = enumAnn pot r neg
+      let pIdxs = enumAnn pot (annLen pot r) neg
       pIds <- genAnnIds (length pIdxs)
-      let ps = forAllIdx pot pIdxs pIds p
-      let p'Idxs = enumAnn pot r neg
+      let ps = forAllIdx pot pIdxs pIds (annLen pot p)
+      let p'Idxs = enumAnn pot (annLen pot r) neg
       p'Ids <- genAnnIds (length p'Idxs)
-      let ps' = forAllIdx pot p'Idxs p'Ids p'
+      let ps' = forAllIdx pot p'Idxs p'Ids (annLen pot p')
 
       deriv1 <- proveExpr t1 cf ctxE1 e1 p p'
       deriv2 <- proveExpr t2 cf ctxE2 e2 r q'      
@@ -261,7 +261,18 @@ proveWeaken tactic@(Rule (R.Weaken args) _) cf ctx e q q' = do
   tell cs
   deriv <- proveExpr t cf ctx e p p'
   return $ T.Node (RuleApp (R.Weaken args) cs e) [deriv]
-      
+
+proveShift :: Prove a TypedExpr Derivation
+proveShift tactic cf ctx e q q' = do
+  pot <- view potential
+  let [subTactic] = subTactics 1 tactic
+  p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (annLen pot q)
+  p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure (annLen pot q')
+  let cs = cMinusVar pot q  p
+        ++ cMinusVar pot q' p'
+  deriv <- proveExpr subTactic cf ctx e p p'
+  return $ T.Node (RuleApp R.Shift cs e) [deriv]
+  
 
 proveTickDefer :: Prove a TypedExpr Derivation
 proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
@@ -271,10 +282,10 @@ proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
     deriv <- proveExpr subTactic cf ctx e1 q q'
     return $ T.Node (RuleApp R.TickDefer [] e) [deriv]
   else do
-    q'' <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (annLen pot q')
-    let cs = cMinusConst pot q' (fromMaybe 1 c) q''
+    p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (annLen pot q')
+    let cs = cPlusConst pot q' (fromMaybe 1 c) p
     tell cs
-    deriv <- proveExpr subTactic cf ctx e1 q q''
+    deriv <- proveExpr subTactic cf ctx e1 q p
     return $ T.Node (RuleApp R.TickDefer cs e) [deriv]
 
 
@@ -289,6 +300,7 @@ proveExpr tactic@(Rule R.Ite _) cf ctx e@(Ite {}) = proveIte tactic cf ctx e
 proveExpr tactic@(Rule R.Let _) cf ctx e = proveLet tactic cf ctx e
 proveExpr tactic@(Rule R.TickDefer _) cf ctx e = proveTickDefer tactic cf ctx e
 proveExpr tactic@(Rule (R.Weaken _) _) cf ctx e = proveWeaken tactic cf ctx e
+proveExpr tactic@(Rule R.Shift _) cf ctx e = proveShift tactic cf ctx e
 -- auto tactic
 proveExpr Auto cf ctx e@Leaf = proveWeaken (Rule (R.Weaken []) [Auto]) cf ctx e
 proveExpr Auto cf ctx e@(Var _) = proveVar Auto cf ctx e

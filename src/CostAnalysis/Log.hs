@@ -34,17 +34,17 @@ rsrcAnn id label len = IndexedCoeffs len $ M.fromList (rankCoeffs ++ logCoeffs)
   where rankCoeffs = [([x], Unknown id label "log" [x]) | x <- [1..len]]
         logCoeffs = map (\idx -> (idx, Unknown id label "log" idx)) $ abIdx len
 
-enumAnn :: IndexedCoeffs -> Bool -> [[Int]]
-enumAnn r neg = let k = annLen r - 1
-                    _eRange = if neg then eRangeNeg else eRange in
+enumAnn :: Int -> Bool -> [[Int]]
+enumAnn len neg = let k = len - 1
+                      _eRange = if neg then eRangeNeg else eRange in
   [bs ++ [d,e] | 
     bs <- delete (replicate k 0) (aIdx k),
     d <- delete 0 dRange,
     e <- _eRange]
 
-forAllIdx :: [[Int]] -> [Int] -> IndexedCoeffs -> AnnArray IndexedCoeffs
-forAllIdx idxs ids p = M.fromList $ zipWith go idxs ids
-  where go idx id = (idx, rsrcAnn id (T.concat ["P_", T.pack $ show idx]) (annLen p))
+forAllIdx :: [[Int]] -> [Int] -> Int -> AnnArray IndexedCoeffs
+forAllIdx idxs ids len = M.fromList $ zipWith go idxs ids
+  where go idx id = (idx, rsrcAnn id (T.concat ["P_", T.pack $ show idx]) len)
 
 elems :: AnnArray IndexedCoeffs -> [IndexedCoeffs]
 elems = M.elems
@@ -52,19 +52,29 @@ elems = M.elems
 annLen :: IndexedCoeffs -> Int
 annLen (IndexedCoeffs len _ ) = len
 
+-- P = Q + c
 cPlusConst :: IndexedCoeffs -> Rational -> IndexedCoeffs -> [Constraint]
-cPlusConst q c q' = let m = annLen q in
-  EqPlusConst (q'!(replicate m 0 ++ [2])) (q!(replicate m 0 ++ [2])) c :
-  [Eq (q![i]) (q'![i]) | i <- [1..m]]
-  ++ [Eq (q!(as ++ [b])) (q'!(as ++ [b])) |
+cPlusConst q c p = let m = annLen q in
+  EqPlusConst (p!(replicate m 0 ++ [2])) (q!(replicate m 0 ++ [2])) c :
+  [Eq (q![i]) (p![i]) | i <- [1..m]]
+  ++ [Eq (q!(as ++ [b])) (p!(as ++ [b])) |
       as <- delete (replicate m 0) (aIdx m), b <- bRange]
 
+-- P = Q - c
 cMinusConst :: IndexedCoeffs -> Rational -> IndexedCoeffs -> [Constraint]
-cMinusConst q c q' = let m = annLen q in
-  EqMinusConst (q'!(replicate m 0 ++ [2])) (q!(replicate m 0 ++ [2])) c :
-  [Eq (q![i]) (q'![i]) | i <- [1..m]]
-  ++ [Eq (q!(as ++ [b])) (q'!(as ++ [b])) |
+cMinusConst q c p = let m = annLen q in
+  EqMinusConst (p!(replicate m 0 ++ [2])) (q!(replicate m 0 ++ [2])) c :
+  [Eq (q![i]) (p![i]) | i <- [1..m]]
+  ++ [Eq (q!(as ++ [b])) (p!(as ++ [b])) |
       as <- delete (replicate m 0) (aIdx m), b <- bRange]
+
+cMinusVar :: IndexedCoeffs -> IndexedCoeffs -> [Constraint]
+cMinusVar q p = let m = annLen q in
+  EqMinusVar (p!(replicate m 0 ++ [2])) (q!(replicate m 0 ++ [2])):
+  [Eq (q![i]) (p![i]) | i <- [1..m]]
+  ++ [Eq (q!(as ++ [b])) (p!(as ++ [b])) |
+      as <- delete (replicate m 0) (aIdx m), b <- bRange]
+
 
 cLeaf :: IndexedCoeffs -> IndexedCoeffs -> [Constraint]
 cLeaf q q' =
@@ -195,7 +205,8 @@ logPot = Potential
   elems
   annLen
   cPlusConst
-  cPlusConst
+  cMinusConst
+  cMinusVar
   cLeaf
   cNode
   cPair

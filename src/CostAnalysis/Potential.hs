@@ -18,6 +18,8 @@ printCoeff (Unknown id label kind idx) =
   unpack label ++ "_" ++ show id ++ "_" ++ unpack kind ++ "_" ++ printIdx idx
 printCoeff (Known _ _ _ _ v) = show v
 
+
+
 printIdx :: [Int] -> String
 printIdx idx = "(" ++ intercalate "," (map show idx) ++ ")" 
 
@@ -41,36 +43,71 @@ infixl 9 !!
   Just c -> c
   Nothing -> error $ "Invalid index '" ++ show k ++ "' for annotation list."
 
-data Constraint = Eq Coeff Coeff
+
+data Constraint =
+  -- | 'Eq' q p = \[q = p\]
+  Eq Coeff Coeff 
+  -- | 'EqSum' q ps = \[q = \sum^N_{i=1} p_i \]
   | EqSum Coeff [Coeff]
+  -- | 'EqPlusConst' q p = \[q = p + c \]
   | EqPlusConst Coeff Coeff Rational
+  -- | 'EqMinusConst' q p = \[q = p - c \]
   | EqMinusConst Coeff Coeff Rational
+  -- | 'EqMinusVar' q p = \[q = p - k \]
+  | EqMinusVar Coeff Coeff
+  -- | 'Zero' q = \[q = 0 \]
   | Zero Coeff
+  -- | 'NotZero' q = \[q \neq 0 \]
   | NotZero Coeff
+  -- | 'Le' q p = \[q < p \]
   | Le Coeff Coeff
+  -- | 'GeSum' q ps = \[q \geq \sum^N_{i=1} p_i \]
   | GeSum [Coeff] Coeff
+  -- | 'GeSum' c1 c2 = \[C_1 \Rightarrow C_2 \]
   | Impl Constraint Constraint
   deriving (Eq, Show)
 
 
 
 data Potential a = Potential {
+  -- Annotation manipulation
+  
+  -- | @ 'rsrcAnn' id label len@ constructs a fresh resource annotation of length @len@. @id@ specifies a unique identifier for the annotation and @label@ is the human readable label, e.g \"Q\", \"Q\'\" or \"P\".
   rsrcAnn :: Int -> Text -> Int -> a,
-  enumAnn :: a -> Bool -> [[Int]],
-  forAllIdx :: [[Int]] -> [Int] -> a -> AnnArray a,
+  -- | @ 'enumAnn' len neg @ enumerates coefficient indicies of length @len@. If neg is @True@, allow negative values for the annotation constant. 
+  enumAnn :: Int -> Bool -> [[Int]],
+  -- | @ 'forAllIdx' idxs ids q@ constructs a fresh annotation of length @len@ for every index from @idxs@ using @ids@ as identifiers. 
+  forAllIdx :: [[Int]] -> [Int] -> Int -> AnnArray a,
+  -- | @ 'elems' a@ converts an annotation array to a list.
   elems :: AnnArray a -> [a],
+  -- | @ 'annLen' q' @ returns the length (number of tree arguments) of the annotation @q@. 
   annLen :: a -> Int,
+  
+  -- Constraint generation
+  
+  -- | @ 'cPlusConst' q c p@, returns constraints that guarantee \[\phi(*\mid P) = \phi(*\mid Q) + C\] where @c@ is constant.
   cPlusConst :: a -> Rational -> a -> [Constraint],
+  -- | @ 'cMinusConst' q c p@, returns constraints that guarantee \[\phi(*\mid P) = \phi(*\mid Q) - C\] where @c@ is constant.
   cMinusConst :: a -> Rational -> a -> [Constraint],
+  -- | @ 'cMinusVar' q p@, returns constraints that guarantee \[\phi(*\mid P) = \phi(*\mid Q) - K\] where @k@ is a fresh variable.
+  cMinusVar :: a -> a -> [Constraint],
+  -- | @ 'cLeaf' q q'@, returns constraints that guarantee \[\phi(\varnothing\mid Q) = \phi(\verb|leaf| \mid Q')\]
   cLeaf :: a -> a -> [Constraint],
+  -- | @ 'cNode' q q'@, returns constraints that guarantee \[\forall u: T,b: B, v:T .\,\phi(u,v\mid Q) = \phi(\verb|node| \,u\, b\, v\mid Q')\]
   cNode :: a -> a -> [Constraint],
+  -- | @ 'cPair' q q'@, returns constraints that guarantee \[\forall u: T, v:B .\,\phi(u,v\mid Q) = \phi((u, v) \mid Q')\]
   cPair :: a -> a -> [Constraint],
-  -- cMatch :: a -> a -> a -> [Constraint],
+  -- | @ 'cMatchLeaf' q q'@, returns constraints that guarantee \[\forall  \Gamma.\ \phi(\Gamma, \verb|leaf| \mid Q) = \phi(\Gamma, \mid Q')\]
   cMatchLeaf :: a -> a -> [Constraint],
+  -- | @ 'cMatchNode' q q'@, returns constraints that guarantee \[\forall  \Gamma,u: T, b: B, v. T.\ \phi(\Gamma, \verb|node|\,u\,b\,v \mid Q) = \phi(\Gamma, u, b, v\mid Q')\]
   cMatchNode :: a -> a -> [Constraint],
+  -- | @ 'cLetBase' q p r p'@
   cLetBase :: a -> a -> a -> a -> [Constraint],
+  -- | @ 'cLet' q p p' ps ps' r@
   cLet :: Bool -> a -> a -> a -> AnnArray a -> AnnArray a -> a -> [Constraint],
-  cWeaken :: [RuleArg] -> a -> a -> a -> a -> [Constraint], 
+  -- | @ 'cWeaken' q q' p p'@
+  cWeaken :: [RuleArg] -> a -> a -> a -> a -> [Constraint],
+  -- | @ 'printPot' q@, prints the potential function represented by @q@.
   printPot :: a -> String}
 
 type GroundPot = Potential IndexedCoeffs
