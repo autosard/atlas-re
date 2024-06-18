@@ -69,14 +69,21 @@ letHole e v t = LetAnn (TypedExprAnn src t) v e
   where src = srcForBind e
 
 nmBind :: Type -> TypedExpr -> Norm (HoleExpr, TypedExpr)
-nmBind t e = if isImmediate e
-  then return (id, e)
-  else do
+nmBind t (LetAnn (TypedExprAnn srcOuter _) x e1 e2) = do
   v <- newVar
-  let hole = letHole e v t
-  let ann = TypedExprAnn src (getType e)
-  return (hole, VarAnn ann v)
-  where src = srcForBind e
+  let hole = letHole e2 v t
+  let annOuter = TypedExprAnn srcOuter t
+  let annVar = TypedExprAnn src (getType e2)
+  return (LetAnn annOuter x e1 . hole, VarAnn annVar v)
+    where src = srcForBind e2
+nmBind t e
+  | isImmediate e = return (id, e)
+  | otherwise = do
+      v <- newVar
+      let hole = letHole e v t
+      let ann = TypedExprAnn src (getType e)
+      return (hole, VarAnn ann v)
+        where src = srcForBind e
     
 
 nmBinds :: Type -> [TypedExpr] -> Norm (HoleExpr, [TypedExpr])

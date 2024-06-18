@@ -1,17 +1,14 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StrictData #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module Main (main) where
 
 import Options.Applicative
 import Control.Monad.IO.Class (MonadIO (..))
-import Data.Maybe(fromMaybe)
 import Data.Map(Map)
 import qualified Data.Map as M
 import System.Exit
@@ -19,7 +16,7 @@ import Data.Text(Text)
 import System.FilePath
 import qualified Data.Text.IO as TextIO
 import qualified Data.Text as T
-import Data.Maybe(catMaybes)
+import Data.Maybe(fromMaybe, catMaybes)
 import System.Directory
 
 import Colog (cmap, fmtMessage, logTextStdout, logWarning,
@@ -29,7 +26,7 @@ import Colog (cmap, fmtMessage, logTextStdout, logWarning,
 import System.Environment(lookupEnv)
 
 import Typing.Inference(inferExpr, inferModule)
-import Ast(TypedModule, TypedExpr)
+import Ast(TypedModule, TypedExpr, printProg)
 import Normalization(normalizeMod, normalizeExpr)
 import Parsing.Program(parseExpr, parseModule)
 import Parsing.Tactic
@@ -62,6 +59,7 @@ run Options{..} RunOptions{..} = do
   tactics <- case tacticsPath of
     Just path -> loadTactics (T.unpack modName) (fns normalizedProg) path
     Nothing -> return M.empty
+--  liftIO $ putStr (printProg normalizedProg)
   (derivs, cs) <- liftIO $ case runProof normalizedProg logPot tactics of
         Left srcErr -> die $ printSrcError srcErr contents
         Right v -> return v
@@ -85,10 +83,10 @@ loadExpr contents ctx = do
   return $ normalizeExpr typed
 
 loadTactics :: String -> [Id] -> FilePath -> App (Map Id Tactic)
-loadTactics modName fns path = (M.fromList . catMaybes) <$> mapM loadOne fns
+loadTactics modName fns path = M.fromList . catMaybes <$> mapM loadOne fns
   where loadOne :: Id -> App (Maybe (Id, Tactic))
         loadOne fn = do
-          let fileName = path </> modName </> (T.unpack fn) <.> "txt"
+          let fileName = path </> modName </> T.unpack fn <.> "txt"
           exists <- liftIO $ doesFileExist fileName
           if exists then do
             contents <- liftIO $ TextIO.readFile fileName

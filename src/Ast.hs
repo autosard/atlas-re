@@ -12,13 +12,14 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Map(Map)
 import Text.Megaparsec(SourcePos)
+import Data.List(intercalate)
 
 import Primitive(Id)
 import Typing.Type (Type)
 import Typing.Subst(Types(apply, tv))
 import Typing.Scheme (Scheme)
 import CostAnalysis.Potential (Potential)
-
+import Data.Ratio(numerator, denominator)
 
 type Fqn = (Text, Text)
 
@@ -140,12 +141,43 @@ printExprHead (Let {}) = "let"
 printExprHead (Tick _ _) = "tick"
 printExprHead (Coin _) = "coin"
 
--- printExpr :: Expr a -> String
--- printExpr (Var id) = T.unpack id
--- printExpr (Lit l) = show l
--- printExpr (Const "(,)" [x1, x2]) = "(" ++ printExpr x1 ++ ", " ++ printExpr x2 ++ ")"
--- printExpr (Const id args) = id ++ unwords args
+printPatVar :: PatternVar -> String
+printPatVar (Id id) = T.unpack id
+printPatVar WildcardVar = "_"
 
+printPat :: Pattern a -> String
+printPat (ConstPat _ id vars) = T.unpack id ++ " " ++(unwords . map printPatVar $ vars)
+printPat (Alias _ id) = T.unpack id
+printPat (WildcardPat _) = "_"
+
+printMatchArm :: MatchArm a -> String
+printMatchArm (MatchArmAnn _ pat e) = "| " ++ printPat pat ++ " -> " ++ printExpr e 
+
+printRat r = (show . numerator $ r) ++ "/" ++ (show . denominator $ r)
+
+printExpr :: Expr a -> String
+printExpr (Var id) = T.unpack id 
+printExpr (Lit l) = show l
+printExpr (Const "(,)" [x1, x2]) = "(" ++ printExpr x1 ++ ", " ++ printExpr x2 ++ ")"
+printExpr (Const id args) = T.unpack id ++ " " ++ unwords (map printExpr args)
+printExpr (Ite e1 e2 e3) = "(if " ++ printExpr e1 ++ " then "
+                           ++ printExpr e2 ++ " else " ++ printExpr e3 ++ ")"
+printExpr (Match e arms) = "(match " ++ printExpr e ++ "\n" ++ printedArms ++ ")"
+  where printedArms = intercalate "\n" . map printMatchArm $ arms
+printExpr (App id args) = "(" ++ T.unpack id ++ " "
+                          ++(unwords . map printExpr $ args) ++ ")" 
+printExpr (Let id e1 e2) = "(let " ++ T.unpack id ++ " = " ++ printExpr e1
+                           ++ " in \n" ++ printExpr e2
+printExpr (Tick c e) = "~" ++  frac c ++ printExpr e
+  where frac = maybe "" printRat 
+printExpr (Coin p) = "coin " ++ printRat p
+
+printFun :: FunDef a -> String
+printFun (Fn id args body) = T.unpack id ++ " " ++ printedArgs ++ " = " ++ printExpr body
+  where printedArgs = unwords . map T.unpack $ args
+
+printProg :: Module a -> String
+printProg = intercalate "\n\n" . map printFun
 
 class Annotated a b where
   getAnn :: a b -> XExprAnn b
