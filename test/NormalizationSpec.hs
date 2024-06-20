@@ -8,7 +8,6 @@ import Parsing.Program (initialPos)
 import Ast
 import Normalization
 import Typing.Type
-import Debug.Trace
 
 sp = initialPos "test.ml"
 testAnn :: Type -> TypedExprAnn
@@ -72,8 +71,7 @@ spec = do
          
          let result = LetAnn annDeriv "?:0" (ConstAnn ann "node" [VarAnn ann "br", VarAnn annNum "c", VarAnn ann  "cr"]) (LetAnn annDeriv "?:1" (ConstAnn ann "node" [VarAnn ann "ar", VarAnn annNum "b", VarAnn annDeriv "?:0"]) (ConstAnn ann "node" [VarAnn ann "al", VarAnn annNum "a", VarAnn annDeriv "?:1"]))
          let is = runNorm (nmExpr e)
-         
-         trace (printExpr is) is `shouldBe` trace (printExpr result) result 
+         is `shouldBe` result 
         
         
     

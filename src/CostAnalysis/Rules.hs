@@ -16,8 +16,9 @@ data Rule
   | Let 
   | App 
   | TickNow 
-  | TickDefer 
-  | Weaken [RuleArg] 
+  | TickDefer
+  | WeakenVar
+  | Weaken [RuleArg]
   | Shift 
   deriving(Eq, Show)
 

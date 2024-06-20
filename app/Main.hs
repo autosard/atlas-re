@@ -60,10 +60,13 @@ run Options{..} RunOptions{..} = do
     Just path -> loadTactics (T.unpack modName) (fns normalizedProg) path
     Nothing -> return M.empty
 --  liftIO $ putStr (printProg normalizedProg)
-  (derivs, cs) <- liftIO $ case runProof normalizedProg logPot tactics of
+  let _aRange = [0,1]
+  let _bRange = [0,2]
+  let args = LogPotArgs _aRange _bRange _aRange _bRange (-1 : _bRange)
+  (derivs, cs) <- liftIO $ case runProof normalizedProg (logPot args) tactics of
         Left srcErr -> die $ printSrcError srcErr contents
         Right v -> return v
-  liftIO $ mapM_ (print . show) cs
+  liftIO $ print (show cs)
 
 eval :: Options -> EvalOptions -> App ()
 eval Options{..} EvalOptions{..} = do

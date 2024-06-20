@@ -11,7 +11,7 @@ import CostAnalysis.Rules ( RuleArg )
 data Coeff
   = Unknown Int Text Text [Int]
   | Known Int Text Text [Int] Rational
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 printCoeff :: Coeff -> String
 printCoeff (Unknown id label kind idx) =
@@ -24,7 +24,7 @@ printIdx :: [Int] -> String
 printIdx idx = "(" ++ intercalate "," (map show idx) ++ ")" 
 
 data IndexedCoeffs = IndexedCoeffs Int (Map [Int] Coeff)
-  deriving (Show)
+  deriving (Eq, Show)
 
 infixl 9 !
 (!) :: IndexedCoeffs -> [Int] -> Coeff
@@ -55,7 +55,7 @@ data Constraint =
   | EqMinusConst Coeff Coeff Rational
   -- | 'EqMinusVar' q p = \[q = p - k \]
   | EqMinusVar Coeff Coeff
-  -- | 'EqPlusMulti' q p r = \[ q = p \cdot k r\]
+  -- | 'EqPlusMulti' q p r = \[ q = p + k r\]
   | EqPlusMulti Coeff Coeff Coeff
   -- | 'Zero' q = \[q = 0 \]
   | Zero Coeff
@@ -67,7 +67,7 @@ data Constraint =
   | GeSum [Coeff] Coeff
   -- | 'GeSum' c1 c2 = \[C_1 \Rightarrow C_2 \]
   | Impl Constraint Constraint
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 data FunRsrcAnn a = FunRsrcAnn {
   withCost :: (a, a),
@@ -81,8 +81,8 @@ data Potential a = Potential {
   rsrcAnn :: Int -> Text -> Int -> a,
   -- | @ 'enumAnn' len neg @ enumerates coefficient indicies of length @len@. If neg is @True@, allow negative values for the annotation constant. 
   enumAnn :: Int -> Bool -> [[Int]],
-  -- | @ 'forAllIdx' idxs ids q@ constructs a fresh annotation of length @len@ for every index from @idxs@ using @ids@ as identifiers. 
-  forAllIdx :: [[Int]] -> [Int] -> Int -> AnnArray a,
+  -- | @ 'forAllIdx' idxs ids len label@ constructs a fresh annotation of length @len@ with label @label@ for every index from @idxs@ using @ids@ as identifiers. 
+  forAllIdx :: [[Int]] -> [Int] -> Int -> Text -> AnnArray a,
   -- | @ 'elems' a@ converts an annotation array to a list.
   elems :: AnnArray a -> [a],
   -- | @ 'annLen' q' @ returns the length (number of tree arguments) of the annotation @q@. 
@@ -96,7 +96,7 @@ data Potential a = Potential {
   cMinusConst :: a -> a -> Rational -> [Constraint],
   -- | @ 'cMinusVar' q p@, returns constraints that guarantee \[\phi(*\mid P) = \phi(*\mid Q) - K\] where @k@ is a fresh variable.
   cMinusVar :: a -> a -> [Constraint],
-  -- | @ 'cPlusMulti' q p r@, returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid Q) - K\] where @k@ is a fresh variable.
+  -- | @ 'cPlusMulti' q p r@, returns constraints that guarantee \[\phi(*\mid Q) = \phi(* \mid P) + \phi(*\mid R) \cdot K\] where @k@ is a fresh variable.
   cPlusMulti :: a -> a -> a -> [Constraint],
   -- | @ 'cLeaf' q q'@, returns constraints that guarantee \[\phi(\varnothing\mid Q) = \phi(\verb|leaf| \mid Q')\]  
   cLeaf :: a -> a -> [Constraint],
@@ -112,6 +112,8 @@ data Potential a = Potential {
   cLetBase :: a -> a -> a -> a -> [Constraint],
   -- | @ 'cLet' q p p' ps ps' r@
   cLet :: Bool -> a -> a -> a -> AnnArray a -> AnnArray a -> a -> [Constraint],
+  -- | @ 'cWeakenVar' q r @
+  cWeakenVar :: a -> a -> [Constraint],
   -- | @ 'cWeaken' q q' p p'@
   cWeaken :: [RuleArg] -> a -> a -> a -> a -> [Constraint],
   -- | @ 'printPot' q@, prints the potential function represented by @q@.

@@ -9,8 +9,8 @@ import Data.Tree(Tree)
 import qualified Data.Tree as T
 import Data.Map(Map)
 import qualified Data.Map as M
-import Data.Text(Text)
-import Z3.Monad ( AST, getBoolValue )
+import qualified Data.Set as S
+import Z3.Monad ( AST )
 import Ast hiding (Coefficient)
 import Primitive(Id)
 import Control.Monad.RWS
@@ -25,7 +25,7 @@ import StaticAnalysis(freeVars)
 import Data.Maybe (fromMaybe)
 import SourceError
 
-import qualified Debug.Trace(trace)
+import Debug.Trace (trace)
 traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
 
 --type Context = [Id]
@@ -139,9 +139,12 @@ proveVar :: Prove a TypedExpr Derivation
 proveVar _ _ _ e _ _ = return $ T.Node (RuleApp R.Var [] e) []
 
 provePair :: Prove a TypedExpr Derivation
-provePair _ _ ctx e@(Tuple (Var x1) (Var x2)) _ _ = do
-  if not $ isTree (ctx M.!x1) && isTree (ctx M.!x2) then
-    return $ T.Node (RuleApp R.Var [] e) []
+provePair _ _ ctx e@(Tuple (Var x1) (Var x2)) q q' = do
+  if not $ isTree (ctx M.!x1) && isTree (ctx M.!x2) then do
+    pot <- view potential
+    let cs = cPair pot q q'
+    tell cs
+    return $ T.Node (RuleApp R.Pair [] e) []
   else errorFrom (SynExpr e) "pair rule applied to more then one tree type."
 
 proveIte :: Prove a TypedExpr Derivation
@@ -227,6 +230,7 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       let pIdxs = enumAnn pot (annLen pot r) neg
       pIds <- genAnnIds (length pIdxs)
       let ps = forAllIdx pot pIdxs pIds (annLen pot p)
+      
       let p'Idxs = enumAnn pot (annLen pot r) neg
       p'Ids <- genAnnIds (length p'Idxs)
       let ps' = forAllIdx pot p'Idxs p'Ids (annLen pot p')
@@ -235,9 +239,10 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       deriv2 <- proveExpr t2 cf ctxE2 e2 r q'      
       --cfDerivs <- zipWithM (proveExpr t1 True ctxE1 e1) (elems pot ps) (elems pot ps')
 
-      let cs = cLet pot neg q p p' ps ps' r
-      tell cs
-      return $ T.Node (RuleApp R.Let cs e) (deriv1:[deriv2])-- :cfDerivs)
+      --let cs = cLet pot neg q p p' ps ps' r
+      let cs = []
+      --tell cs
+      return $ T.Node (RuleApp R.Let cs e) [deriv1, deriv2] -- :cfDerivs)
   | otherwise = do
       pot <- view potential
       let [t1, t2] = subTactics 2 tactic
@@ -266,7 +271,22 @@ proveApp tactic cf ctx e@(App id _) q q' = do
         ++ cPlusMulti pot q' p' r'
   tell cs
   return $ T.Node (RuleApp R.App cs e) []
-  
+
+proveWeakenVar :: Prove a TypedExpr Derivation
+proveWeakenVar tactic cf ctx e q q' = do
+  pot <- view potential
+  let redundantVars = M.keysSet ctx S.\\ freeVars e
+  var <- if S.null redundantVars then
+        errorFrom (SynExpr e) "Could not find a redundant variable to eleminate with the (w:var) rule."
+        else
+        return $ S.elemAt 0 redundantVars
+  let ctx' = M.delete var ctx 
+  let [t] = subTactics 1 tactic
+  r <- rsrcAnn pot <$> genAnnId <*> pure "R" <*> pure (annLen pot q - 1)
+  deriv <- proveExpr t cf ctx' e r q'
+  let cs = cWeakenVar pot q r
+  tell cs
+  return $ T.Node (RuleApp R.WeakenVar cs e) [deriv]
   
 proveWeaken :: Prove a TypedExpr Derivation
 proveWeaken tactic@(Rule (R.Weaken args) _) cf ctx e q q' = do
@@ -315,6 +335,7 @@ proveExpr tactic@(Rule R.Match _) cf ctx e@(Match {}) = proveMatch tactic cf ctx
 proveExpr tactic@(Rule R.Ite _) cf ctx e@(Ite {}) = proveIte tactic cf ctx e
 proveExpr tactic@(Rule R.Let _) cf ctx e@(Let {}) = proveLet tactic cf ctx e
 proveExpr tactic@(Rule R.TickDefer _) cf ctx e = proveTickDefer tactic cf ctx e
+proveExpr tactic@(Rule R.WeakenVar _) cf ctx e = proveWeakenVar tactic cf ctx e
 proveExpr tactic@(Rule (R.Weaken _) _) cf ctx e = proveWeaken tactic cf ctx e
 proveExpr tactic@(Rule R.Shift _) cf ctx e = proveShift tactic cf ctx e
 proveExpr tactic@(Rule R.App _) cf ctx e@(App {}) = proveApp Auto cf ctx e

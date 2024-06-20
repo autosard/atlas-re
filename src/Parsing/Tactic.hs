@@ -38,6 +38,7 @@ pNonAtomic = Rule Ite <$ symbol "ite" <*> count 2 pRule
   <|> Rule Let <$ symbol "let" <*> count 2 pRule 
   <|> Rule TickNow <$ symbol "tick:now" <*> count 1 pRule
   <|> Rule TickDefer <$ symbol "tick:defer" <*> count 1 pRule
+  <|> Rule WeakenVar <$ symbol "w:var" <*> count 1 pRule
   <|> (do rule <- Weaken <$ symbol "w" <*> pRuleArgs
           Rule rule <$> count 1 pRule)
   <|> Rule Shift <$ symbol "shift" <*> count 1 pRule
