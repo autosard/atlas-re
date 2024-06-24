@@ -1,8 +1,8 @@
 (match
   (w{mono}
-    (let:tree:cf
+    (let
       leaf
-      (let:tree:cf
+      (let
         leaf
         (w{mono}
           node
@@ -11,7 +11,7 @@
     )
   )
   (w{l2xy mono}
-    (let:tree:cf
+    (let
       (shift
         app
       )
@@ -19,15 +19,17 @@
         (w{mono}
           leaf
         )
+	(let cmp
         (ite
           (w{mono}
             node
           )
+	  (let cmp
           (ite
             (w{mono}
-              (let:tree:cf
+              (let
                 leaf
-                (let:tree:cf
+                (let
                   node
                   (w{mono}
                     node
@@ -36,9 +38,9 @@
               )
             )
             (w{mono}
-              (let:tree:cf
+              (let
                 leaf
-                (let:tree:cf
+                (let
                   node
                   (w{mono}
                     node
@@ -46,8 +48,8 @@
                 )
               )
             )
-          )
-        )
+          ))
+        ))
       )
     )
   )

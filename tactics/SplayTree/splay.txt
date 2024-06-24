@@ -1,12 +1,16 @@
 (match
   (w{mono} leaf)
+  (let cmp
   (ite
     (w{mono} node)
+    (let cmp
     (ite
       (match
         (w{mono} (let leaf (w{mono} node)))
+	(let cmp
         (ite
           (w{mono} (let node (w{mono} node)))
+	  (let cmp
           (ite
             (match
               (w{mono} (let leaf (let node (w{mono} node))))
@@ -44,13 +48,15 @@
                 )
               )
             )
-          )
-        )
+          ))
+        ))
       )
       (match
         (w{mono} (let leaf (w{mono} node)))
+	(let cmp
         (ite
           (w{mono} (let node (w{mono} node)))
+	  (let cmp
           (ite
             (match
               (w{mono} (let leaf (let node (w{mono} node))))
@@ -76,9 +82,9 @@
                 )
               )
             )
-          )
-        )
+          ))
+        ))
       )
-    )
-  )
+    ))
+  ))
 )

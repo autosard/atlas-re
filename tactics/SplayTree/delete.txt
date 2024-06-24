@@ -1,5 +1,5 @@
 (w{l2xy mono}
-  (let:tree:cf
+  (let
     (tick:defer
       (shift
         app
@@ -9,13 +9,14 @@
       (w{mono}
         leaf
       )
+      (let cmp
       (ite
         (match
           (w{mono}
             var
           )
           (w{l2xy mono}
-            (let:tree:cf
+            (let
               (tick:defer
                 (shift
                   app
@@ -39,7 +40,7 @@
         (w{mono}
           node
         )
-      )
+      ))
     )
   )
 )
