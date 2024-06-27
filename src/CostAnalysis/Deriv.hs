@@ -10,6 +10,7 @@ import qualified Data.Tree as T
 import Data.Map(Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.Text(Text)
 import Z3.Monad ( AST )
 import Ast hiding (Coefficient)
 import Primitive(Id)
@@ -20,7 +21,7 @@ import Typing.Type
 import Typing.Scheme (toType)
 import CostAnalysis.Tactic
 import qualified CostAnalysis.Rules as R
-import CostAnalysis.Potential
+import CostAnalysis.Potential hiding (Factor(..))
 import StaticAnalysis(freeVars)
 import Data.Maybe (fromMaybe)
 import SourceError
@@ -90,24 +91,32 @@ genAnnId = do
   annIdGen .= g+1
   return g
 
+forAllCombinations' :: Bool -> [Id] -> Id -> Text -> [Id] -> ProveMonad a (AnnArray a)
+forAllCombinations' neg xs x label ys = do
+  pot <- view potential
+  g <- use annIdGen
+  let (array, g') = forAllCombinations pot neg xs x g label ys
+  annIdGen .= g'
+  return array
+
 genFunRsrcAnn :: TypedFunDef -> ProveMonad a (FunRsrcAnn a)
 genFunRsrcAnn fun = do
   pot <- view potential
-  let (tFrom, tTo) = splitFnType . toType . tfType . funAnn $ fun
-  let lenFrom = countTrees tFrom
-  let lenTo = countTrees tTo
+  let (ctxFrom, (argTo, tTo)) = ctxFromFn fun
   (fromId, toId) <- genAnnIdPair
-  let from = rsrcAnn pot fromId "Q" lenFrom
-  let to = rsrcAnn pot toId "Q'" lenTo
+  let argsFrom = M.keys (M.filter isTree ctxFrom)
+  let argsTo = [argTo | isTree tTo]
+  let from = rsrcAnn pot fromId "Q" argsFrom
+  let to = rsrcAnn pot toId "Q'" argsTo
   (fromIdCf, toIdCf) <- genAnnIdPair
-  let fromCf = rsrcAnn pot fromId "P" lenFrom
-  let toCf = rsrcAnn pot toId "P'" lenTo
+  let fromCf = rsrcAnn pot fromId "P" argsFrom
+  let toCf = rsrcAnn pot toId "P'" argsTo
   return $ FunRsrcAnn (from, to) (fromCf, toCf)
- 
+
 
 type TypeCtx = Map Id Type
 
-type Prove p e a = Tactic -> Bool -> TypeCtx -> e -> p -> p -> ProveMonad p a
+type Prove p e a = Tactic -> Bool -> TypeCtx -> e -> RsrcAnn p -> RsrcAnn p -> ProveMonad p a
 
 errorFrom :: Syntax Typed -> String -> ProveMonad p a
 errorFrom e msg = throwError $ SourceError loc msg
@@ -159,21 +168,20 @@ proveMatchArm :: Id -> Prove a TypedMatchArm ([Constraint], Derivation)
 proveMatchArm matchVar tactic cf ctx (MatchArm (PatTreeLeaf _) e) q q' = do
   pot <- view potential
   let ctx' = M.delete matchVar ctx
-  -- just p-leaf this is gonna work
-  p <- rsrcAnn pot <$> genAnnId <*> pure "P(leaf)" <*> pure (annLen pot q - 1) 
+  p <- rsrcAnn pot <$> genAnnId <*> pure "P(leaf)" <*> pure (M.keys ctx')
   deriv <- proveExpr tactic cf ctx' e p q'
-  let cs = cMatchLeaf pot q p
+  let cs = cMatchLeaf pot q p matchVar
   tell cs
   return (cs, deriv)
 proveMatchArm matchVar tactic cf ctx
-  (MatchArm pat@(PatTreeNode _ (Id idR) _ (Id idL)) e) q q' = do
+  (MatchArm pat@(PatTreeNode _ (Id idL) _ (Id idR)) e) q q' = do
   pot <- view potential
   let tTree = getType pat
   let tValue = treeValueType tTree
   let ctx' = M.delete matchVar ctx `M.union` M.fromList [(idL, tTree), (idR, tTree)]
-  r <- rsrcAnn pot <$> genAnnId <*> pure "R(node)" <*> pure (annLen pot q + 1)
+  r <- rsrcAnn pot <$> genAnnId <*> pure "R(node)" <*> pure (M.keys ctx')
   deriv <- proveExpr tactic cf ctx' e r q'
-  let cs = cMatchNode pot q r
+  let cs = cMatchNode pot q r matchVar idL idR 
   tell cs
   return (cs, deriv)
 proveMatchArm matchVar tactic cf ctx
@@ -221,38 +229,34 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       let [t1, t2] = subTactics 2 tactic
       (ctxE1, ctxE2) <- splitLetCtx ctx e1 e2
 
-      -- TODO if let binds a recursive call then use negive numbers for e
+      -- TODO if let binds a recursive call then use negative numbers for e
       let neg = True
       
-      p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (length ctxE1)
-      p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure 0
-      r <- rsrcAnn pot <$> genAnnId <*> pure "R" <*> pure (length ctxE2)
-      let pIdxs = enumAnn pot (annLen pot r) neg
-      pIds <- genAnnIds (length pIdxs)
-      let ps = forAllIdx pot pIdxs pIds (annLen pot p)
+      p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (M.keys ctxE1)
+      p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure ["e"]
+      r <- rsrcAnn pot <$> genAnnId <*> pure "R" <*> pure (M.keys ctxE2)
       
-      let p'Idxs = enumAnn pot (annLen pot r) neg
-      p'Ids <- genAnnIds (length p'Idxs)
-      let ps' = forAllIdx pot p'Idxs p'Ids (annLen pot p')
+      ps <- forAllCombinations' neg (M.keys ctxE2) x "P" (M.keys ctxE1)
+      ps' <- forAllCombinations' neg (M.keys ctxE2) x "P'" ["e"]
 
       deriv1 <- proveExpr t1 cf ctxE1 e1 p p'
       deriv2 <- proveExpr t2 cf ctxE2 e2 r q'      
       --cfDerivs <- zipWithM (proveExpr t1 True ctxE1 e1) (elems pot ps) (elems pot ps')
 
-      --let cs = cLet pot neg q p p' ps ps' r
-      let cs = []
-      --tell cs
+      let cs = cLet pot neg q p p' ps ps' r x
+      --let cs = []
+      tell cs
       return $ T.Node (RuleApp R.Let cs e) [deriv1, deriv2] -- :cfDerivs)
   | otherwise = do
       pot <- view potential
       let [t1, t2] = subTactics 2 tactic
       (ctxE1, ctxE2) <- splitLetCtx ctx e1 e2
 
-      p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (length ctxE1)
-      p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure 0
+      p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (M.keys ctxE1)
+      p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure []
       deriv1 <- proveExpr t1 cf ctxE1 e1 p p'
 
-      r <- rsrcAnn pot <$> genAnnId <*> pure "R" <*> pure (length ctxE2)
+      r <- rsrcAnn pot <$> genAnnId <*> pure "R" <*> pure (M.keys ctxE2)
       deriv2 <- proveExpr t2 cf ctxE2 e2 r q'
 
       let cs = cLetBase pot q p r p'
@@ -265,8 +269,8 @@ proveApp tactic cf ctx e@(App id _) q q' = do
   fnSig <- use sig
   let (p, p') = withCost $ fnSig M.! id
   let (r, r') = withoutCost $ fnSig M.! id
-  q <- rsrcAnn pot <$> genAnnId <*> pure "Q" <*> pure (annLen pot p)
-  q' <- rsrcAnn pot <$> genAnnId <*> pure "Q'" <*> pure (annLen pot p')
+  q <- rsrcAnn pot <$> genAnnId <*> pure "Q" <*> pure (args p)
+  q' <- rsrcAnn pot <$> genAnnId <*> pure "Q'" <*> pure (args p')
   let cs = cPlusMulti pot q p r
         ++ cPlusMulti pot q' p' r'
   tell cs
@@ -282,29 +286,29 @@ proveWeakenVar tactic cf ctx e q q' = do
         return $ S.elemAt 0 redundantVars
   let ctx' = M.delete var ctx 
   let [t] = subTactics 1 tactic
-  r <- rsrcAnn pot <$> genAnnId <*> pure "R" <*> pure (annLen pot q - 1)
+  r <- rsrcAnn pot <$> genAnnId <*> pure "R" <*> pure (M.keys ctx')
   deriv <- proveExpr t cf ctx' e r q'
   let cs = cWeakenVar pot q r
   tell cs
   return $ T.Node (RuleApp R.WeakenVar cs e) [deriv]
   
 proveWeaken :: Prove a TypedExpr Derivation
-proveWeaken tactic@(Rule (R.Weaken args) _) cf ctx e q q' = do
+proveWeaken tactic@(Rule (R.Weaken wArgs) _) cf ctx e q q' = do
   pot <- view potential
   let [t] = subTactics 1 tactic
-  p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (annLen pot q)
-  p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure (annLen pot q')
-  let cs = cWeaken pot args q q' p p'
+  p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (args q)
+  p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure (args q')
+  let cs = cWeaken pot wArgs q q' p p'
   tell cs
   deriv <- proveExpr t cf ctx e p p'
-  return $ T.Node (RuleApp (R.Weaken args) cs e) [deriv]
+  return $ T.Node (RuleApp (R.Weaken wArgs) cs e) [deriv]
 
 proveShift :: Prove a TypedExpr Derivation
 proveShift tactic cf ctx e q q' = do
   pot <- view potential
   let [subTactic] = subTactics 1 tactic
-  p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (annLen pot q)
-  p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure (annLen pot q')
+  p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (args q)
+  p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure (args q')
   let cs = cMinusVar pot p q
         ++ cMinusVar pot p' q'
   deriv <- proveExpr subTactic cf ctx e p p'
@@ -318,7 +322,7 @@ proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
     deriv <- proveExpr subTactic cf ctx e1 q q'
     return $ T.Node (RuleApp R.TickDefer [] e) [deriv]
   else do
-    p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (annLen pot q')
+    p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (args q')
     let cs = cPlusConst pot p q' (fromMaybe 1 c) 
     tell cs
     deriv <- proveExpr subTactic cf ctx e1 q p

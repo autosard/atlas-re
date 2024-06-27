@@ -11,16 +11,17 @@ module Ast where
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Map(Map)
+import qualified Data.Map as M
 import Text.Megaparsec(SourcePos)
 import Data.List(intercalate)
 
 import Primitive(Id)
-import Typing.Type (Type)
+import Typing.Type (Type, splitProdType, splitFnType)
 import Typing.Subst(Types(apply, tv))
-import Typing.Scheme (Scheme)
+import Typing.Scheme (Scheme, toType)
 import CostAnalysis.Potential (Potential)
 import Data.Ratio(numerator, denominator)
-
+    
 type Fqn = (Text, Text)
 
 type Number = Int
@@ -129,6 +130,8 @@ pattern MatchArm p e <- MatchArmAnn _ p e
 
 pattern Fn :: Id -> [Id] -> Expr a -> FunDef a
 pattern Fn id args e <- FunDef _ id args e
+
+
 
 printExprHead :: Expr a -> String
 printExprHead (Var _) = "var"
@@ -295,6 +298,13 @@ getType = teType . getAnn
 
 extendWithType :: Type -> XExprAnn Parsed -> XExprAnn Typed
 extendWithType t pos = TypedExprAnn (Loc pos) t
+
+ctxFromFn :: FunDef Typed -> (Map Id Type, (Id, Type))
+ctxFromFn (FunDef ann _ args _) =
+  let (tFrom, tTo) = splitFnType . toType . tfType $ ann
+      tsFrom = splitProdType tFrom
+      ctxFrom = M.fromList $ zip args tsFrom in
+    (ctxFrom, ("e", tTo))
 
 instance Types TypedExpr where
   apply s = mapAnn (\ann -> ann{teType = apply s (teType ann) })

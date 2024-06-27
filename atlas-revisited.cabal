@@ -36,7 +36,8 @@ library
                       CostAnalysis.Rules,
                       CostAnalysis.Potential
                       CostAnalysis.Log,
-                      CostAnalysis.Comb,
+                      CostAnalysis.AnnIdxQuoter,
+--                      CostAnalysis.Comb,
                       StaticAnalysis,
                       SourceError,
                       Normalization,
@@ -50,6 +51,7 @@ library
     -- other-extensions:
     build-depends:    base ^>= 4.17.2.1,
                       containers,
+                      template-haskell ^>= 2.19.0.0,
                       megaparsec,
                       text,
                       mtl,

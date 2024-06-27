@@ -1,20 +1,31 @@
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 module CostAnalysis.Log where
 
 import qualified Data.Map as M
 import Data.List(delete, intercalate)
-import Prelude hiding ((!!))
-import Data.Text(Text)
-import Control.Monad.Reader
+import qualified Data.List as L
+import qualified Data.Set as S
+import Data.Set(Set)
+import Prelude hiding ((!!), (^), exp)
 
-import CostAnalysis.Potential(IndexedCoeffs(IndexedCoeffs),
+import CostAnalysis.AnnIdxQuoter(mix)
+
+import Data.Text(Text)
+
+import CostAnalysis.Potential(GroundAnn,
                               Constraint(..),
                               Coeff(Unknown), (!),
+                              CoeffIdx(..),
+                              AnnArray, printCoeff, GroundPot,
+                              Potential (Potential),
+                              Factor(..),
+                              (^),
                               (!!),
-                              AnnArray, printCoeff, GroundPot, Potential (Potential))
+                              RsrcAnn(..))
 import qualified Data.Text as T
-import CostAnalysis.Rules (RuleArg)
+import Primitive(Id)
 
 data LogPotArgs = LogPotArgs {
   aRange :: ![Int],
@@ -29,249 +40,275 @@ data LogPotArgs = LogPotArgs {
 --eRange = bRange
 --eRangeNeg = -1 : eRange
   
-abIdx :: LogPotArgs
-  -> Int -> [[Int]]
-abIdx args 0 = [[x] | x <- bRange args]
-abIdx args n = [x:y | x <- aRange args, y <- abIdx args (n-1)]
+-- abIdx :: LogPotArgs
+--   -> Int -> [[Int]]
+-- abIdx args 0 = [[x] | x <- bRange args]
+-- abIdx args n = [x:y | x <- aRange args, y <- abIdx args (n-1)]
 
-aIdx :: LogPotArgs
-  -> Int -> [[Int]]
-aIdx args 1 = [[x] | x <- aRange args]
-aIdx args n
-  | n <= 0 = [[]]
-  | otherwise = [x:y | x <- aRange args, y <- aIdx args (n-1)]
+-- aIdx :: LogPotArgs
+--   -> Int -> [[Int]]
+-- aIdx args 1 = [[x] | x <- aRange args]
+-- aIdx args n
+--   | n <= 0 = [[]]
+--   | otherwise = [x:y | x <- aRange args, y <- aIdx args (n-1)]
+exp :: Id
+exp = "e"
+
+combi :: LogPotArgs -> [Id] -> [Set Factor]
+combi args xs = map S.fromList $
+  combi' args [[Const c | c > 0] | c <- bRange args] xs
+
+varCombi :: LogPotArgs -> [Id] -> [Set Factor]
+varCombi args xs = map S.fromList $ combi' args [[]] xs
+
+
+combi' :: LogPotArgs -> [[Factor]] -> [Id] -> [[Factor]]
+combi' args z [] = z
+combi' args z (x:xs) = [if a > 0 then x^a:y else y
+                       | a <- aRange args, y <- combi' args z xs]
+
 
 rsrcAnn :: LogPotArgs
-  -> Int -> Text -> Int -> IndexedCoeffs
-rsrcAnn args id label len = IndexedCoeffs len $ M.fromList (rankCoeffs ++ logCoeffs)
-  where rankCoeffs = [([x], Unknown id label "log" [x]) | x <- [1..len]]
-        logCoeffs = map (\idx -> (idx, Unknown id label "log" idx)) $ abIdx args len
+  -> Int -> Text -> [Id] -> GroundAnn
+rsrcAnn potArgs id label args = RsrcAnn args $ M.fromList (rankCoeffs ++ logCoeffs)
+  where rankCoeffs = [(Pure x, Unknown id label "log" (Pure x)) | (x,i) <- zip args [1..]]
+        logCoeffs = map ((\idx -> (idx, Unknown id label "log" idx)) . Mixed) $ combi potArgs args
 
-enumAnn :: LogPotArgs
-  -> Int -> Bool -> [[Int]]
-enumAnn args len neg = let k = len - 1
-                           _eRange = if neg then eRangeNeg args else eRange args in
-  [bs ++ [d,e] | 
-    bs <- aIdx args k,
-    bs /= replicate k 0,
-    d <- dRange args,
-    d /= 0,
-    e <- _eRange]
 
-forAllIdx :: LogPotArgs
-  -> [[Int]] -> [Int] -> Int -> Text -> AnnArray IndexedCoeffs
-forAllIdx args idxs ids len label = M.fromList $ zipWith go idxs ids
-  where go idx id = (idx, rsrcAnn args id (T.concat [label, "_", T.pack $ show idx]) len)
+forAllCombinations :: LogPotArgs
+  -> Bool -> [Id] -> Id -> Int -> Text -> [Id] -> (AnnArray GroundAnn, Int)
+forAllCombinations args neg xs x id label ys = (array, nextId)
+  where idxs = [S.unions [xIdx, xsIdx, cIdx]
+               | xIdx <- varCombi args [x], (not . S.null) xIdx,
+                 xsIdx <- varCombi args xs, (not . S.null) xsIdx,
+                 cIdx <- combi args []]
+        nextId = id + length idxs
+        arrIdx = Mixed . S.fromList
+        printIdx idx = "(" ++ intercalate "," (map show (S.toAscList idx)) ++ ")"
+        label' l idx = T.concat [l, "_", T.pack $ printIdx idx]
+        array = M.fromList [(idx, rsrcAnn args id (label' label idx) ys)
+                           | (idx, id) <- zip idxs [id..]]
 
-elems :: AnnArray IndexedCoeffs -> [IndexedCoeffs]
+
+elems :: AnnArray GroundAnn -> [GroundAnn]
 elems = M.elems
-  
-annLen :: IndexedCoeffs -> Int
-annLen (IndexedCoeffs len _ ) = len
 
 eqExceptConst :: LogPotArgs
-  -> IndexedCoeffs -> IndexedCoeffs -> [Constraint]
-eqExceptConst args q p = let m = annLen q in
-  [Eq (q![i]) (p![i]) | i <- [1..m]]
+  -> GroundAnn -> GroundAnn -> [Constraint]
+eqExceptConst potArgs q p = let qs = args q in
+  [Eq (q!x) (p!x) | x <- qs]
   ++ [Eq (q!idx) (p!idx)
-     | let idxs = [as ++ [b]
-                  | as <- aIdx args m, b <- bRange args],
-       idx <- idxs, idx /= replicate m 0 ++ [2]]
+     | idx <- combi potArgs qs, idx /= [mix|2|]]
        
--- P = Q + c
 cPlusConst :: LogPotArgs
-  -> IndexedCoeffs -> IndexedCoeffs -> Rational -> [Constraint]
-cPlusConst args q p c = let m = annLen q in
-  EqPlusConst (q!(replicate m 0 ++ [2])) (p!(replicate m 0 ++ [2])) c :
-  eqExceptConst args q p
+  -> GroundAnn -> GroundAnn -> Rational -> [Constraint]
+cPlusConst potArgs q p c = let qs = args q in
+  EqPlusConst (q![mix|2|]) (p![mix|2|]) c :
+  eqExceptConst potArgs q p
 
--- P = Q - c
 cMinusConst :: LogPotArgs
-  -> IndexedCoeffs -> IndexedCoeffs -> Rational -> [Constraint]
-cMinusConst args q p c  = let m = annLen q in
-  EqMinusConst (q!(replicate m 0 ++ [2])) (p!(replicate m 0 ++ [2])) c :
-  eqExceptConst args q p
+  -> GroundAnn -> GroundAnn -> Rational -> [Constraint]
+cMinusConst potArgs q p c = let qs = args q in
+  EqMinusConst (q![mix|2|]) (p![mix|2|]) c :
+  eqExceptConst potArgs q p
 
 cMinusVar :: LogPotArgs
-  -> IndexedCoeffs -> IndexedCoeffs -> [Constraint]
-cMinusVar args q p = let m = annLen q in
-  EqMinusVar (q!(replicate m 0 ++ [2])) (p!(replicate m 0 ++ [2])):
-  eqExceptConst args q p
+  -> GroundAnn -> GroundAnn -> [Constraint]
+cMinusVar potArgs q p = let qs = args q in 
+  EqMinusVar (q![mix|2|]) (p![mix|2|]) :
+  eqExceptConst potArgs q p
   
 cPlusMulti :: LogPotArgs
-  -> IndexedCoeffs -> IndexedCoeffs -> IndexedCoeffs -> [Constraint]
-cPlusMulti args q p r = let m = annLen q in
-  [EqPlusMulti (q![i]) (p![i]) (r![i]) | i <- [1..m]]
-  ++ [EqPlusMulti (q!(as ++ [b])) (p!(as ++ [b])) (r!(as ++ [b]))
-     | as <- aIdx args m, b <- bRange args]
+  -> GroundAnn -> GroundAnn -> GroundAnn -> [Constraint]
+cPlusMulti potArgs q p r = let qs = args q in 
+  [EqPlusMulti (q!x) (p!x) (r!x) | x <- qs]
+  ++ [EqPlusMulti (q!idx) (p!idx) (r!idx)
+     | idx <- combi potArgs qs]
 
 cLeaf :: LogPotArgs
-  -> IndexedCoeffs -> IndexedCoeffs -> [Constraint]
-cLeaf args q q' =
-  EqSum (q![2]) [q'![1], q'![0,2]] :
-  [EqSum (q![c]) [q'![a,b]
-                 | a <- aRange args,
-                   b <- bRange args, a + b == c]
-  | c <- bRange args, c > 2]
+  -> GroundAnn -> GroundAnn -> [Constraint]
+cLeaf potArgs q q' = 
+  EqSum (q![mix|2|]) [q'!exp, q'![mix|2|]] :
+  [EqSum (q![mix|2|]) [q'![mix|exp^a,b|]
+                 | a <- aRange potArgs,
+                   b <- bRange potArgs, a + b == c]
+  | c <- bRange potArgs, c > 2]
 
 cNode :: LogPotArgs
-  -> IndexedCoeffs -> IndexedCoeffs -> [Constraint]
-cNode args q q' =
-  Eq (q![1]) (q'![1]) :
-  Eq (q![2]) (q'![1]) :
-  Eq (q![1,0,0]) (q'![1]) :
-  Eq (q![0,1,0]) (q'![1]) :
-  [Eq (q![a,a,c]) (q'![a,c])
-  | a <- aRange args,
-    c <- bRange args]
+  -> GroundAnn -> GroundAnn -> [Constraint]
+cNode potArgs q q' = let [x1, x2] = args q in
+  Eq (q!x1) (q'!exp) :
+  Eq (q!x2) (q'!exp) :
+  Eq (q![mix|x1^1|]) (q'!exp) :
+  Eq (q![mix|x2^1|]) (q'!exp) :
+  [Eq (q![mix|x1^a,x2^a,c|]) (q'![mix|exp^a,c|])
+  | a <- aRange potArgs,
+    c <- bRange potArgs]
 
 cPair :: LogPotArgs
-  -> IndexedCoeffs -> IndexedCoeffs -> [Constraint]
-cPair args q q' =
-  Eq (q![1]) (q'![1]) :
-  [Eq (q![a,c]) (q'![a,c])
-  | a <- aRange args,
-    c <- bRange args]
+  -> GroundAnn -> GroundAnn -> [Constraint]
+cPair potArgs q q' = let [x] = args q in 
+  Eq (q!x) (q'!exp) :
+  [Eq (q!idxQ) (q'!idxQ')
+  | (idxQ, idxQ') <- zip (combi potArgs [x]) (combi potArgs [exp])]
 
-cMatchLeaf :: LogPotArgs
-  -> IndexedCoeffs -> IndexedCoeffs -> [Constraint]
-cMatchLeaf args q p = let m = annLen q - 1 in
-  [Eq (q![i]) (p![i]) | i <- [1..m]]
-  ++ [EqSum (p!(as ++ [c])) [q!(as ++ [a,b])
-                            | a <- aRange args,
-                              b <- bRange args,
+{- HLINT ignore cMatchLeaf "Move guards forward" -}
+cMatchLeaf :: LogPotArgs ->
+  GroundAnn -> GroundAnn -> Id -> [Constraint]
+cMatchLeaf potArgs q p t = let nonMatchVars = L.delete t (args q) in
+  [Eq (q!y) (p!y) | y <- nonMatchVars]
+  ++ [EqSum (p![mix|2|]) [q![mix|2|], q!t]]
+  ++ [EqSum (p!idx) [q![mix|_xs,t^a,b|]
+                            | a <- aRange potArgs,
+                              b <- bRange potArgs,
                               a + b == c]
-     | as <- aIdx args m,
-       c <- bRange args]
+     | xs <- varCombi potArgs nonMatchVars,
+       c <- bRange potArgs,
+       let idx = [mix|_xs,c|],
+       idx /= [mix|2|]]
 
 cMatchNode :: LogPotArgs
-  -> IndexedCoeffs -> IndexedCoeffs -> [Constraint]
-cMatchNode args q r = let m = annLen q - 1 in
-  Eq (r![m+1]) (q![m+1]) :
-  Eq (r![m+2]) (q![m+1]) :
-  Eq (r!(replicate m 0 ++ [1,0,0])) (q![m+1]) :
-  Eq (r!(replicate m 0 ++ [0,1,0])) (q![m+1]) :
-  [Eq (r!(as ++ [a,a,b])) (q!(as ++ [a,b]))
-  | as <- aIdx args m,
-    a <- aRange args,
-    b <- bRange args]
-  ++ [Eq (q![i]) (r![i]) | i <- [1..m]]
-  
+  -> GroundAnn -> GroundAnn -> Id -> Id -> Id -> [Constraint]
+cMatchNode potArgs q r t u v = let nonMatchVars = L.delete t (args q) in
+  Eq (r!u) (q!t) :
+  Eq (r!v) (q!t) :
+  Eq (r![mix|u^1|]) (q!t) :
+  Eq (r![mix|v^1|]) (q!t) :
+  [Eq (r![mix|_xs,u^a,v^a,b|]) (q![mix|_xs,t^a,b|])
+  | xs <- varCombi potArgs nonMatchVars,
+    a <- aRange potArgs,
+    b <- bRange potArgs]
+  ++ [Eq (q!y) (r!y) | y <- nonMatchVars]
 
 cLetBase :: LogPotArgs
-  -> IndexedCoeffs -> IndexedCoeffs -> IndexedCoeffs -> IndexedCoeffs -> [Constraint]
-cLetBase args q p r p' = let m = annLen p
-                             k = annLen r in
-  [Eq (r!(replicate k 0 ++ [c])) (p'![c]) | c <- bRange args]
-  ++ [Eq (r![j]) (q![m+j]) | j <- [1..k]] 
-  ++ [Eq (p![i]) (q![i]) | i <- [1..m]]
-  ++ [Eq (p!(as ++ [c])) (q!(as ++ replicate k 0 ++ [c]))
-     | as <- aIdx args m,
-       c <- bRange args]
-  ++ [Eq (q!(replicate m 0 ++ bs ++ [c])) (r!(bs ++ [c]))
-     | bs <- aIdx args k,
-       bs /= replicate k 0,
-       c <- bRange args]
+  -> GroundAnn -> GroundAnn -> GroundAnn -> GroundAnn -> [Constraint]
+cLetBase potArgs q p r p' = let xs = args p 
+                                ys = args r in
+  [Eq (r![mix|c|]) (p'![mix|c|]) | c <- bRange potArgs]
+  ++ [Eq (r!y) (q!y) | y <- ys]
+  ++ [Eq (p!x) (q!x) | x <- xs]
+  ++ [Eq (p![mix|_xs',c|]) (q![mix|_xs',c|])
+     | xs' <- varCombi potArgs xs,
+       c <- bRange potArgs]
+  ++ [Eq (q![mix|_ys', c|]) (r![mix|_ys',c|])
+     | ys' <- varCombi potArgs ys,
+       (not . S.null) ys', 
+       c <- bRange potArgs]
 
 cLet :: LogPotArgs
-  -> Bool -> IndexedCoeffs -> IndexedCoeffs
-  -> IndexedCoeffs -> AnnArray IndexedCoeffs
-  -> AnnArray IndexedCoeffs -> IndexedCoeffs -> [Constraint]
-cLet args neg q p p' ps ps' r = let m = annLen p
-                                    k = annLen r - 1
-                                    _eRange = if neg then eRangeNeg args else eRange args in
-  Eq (r![k+1]) (p'![1]) :
-  [Eq (p![i]) (q![i]) | i <- [1..m]]
-  ++ [Eq (p!(as ++ [c])) (q!(as ++ replicate k 0 ++ [c]))
-     | as <- aIdx args m, c <- bRange args]
-  ++ [Eq (r![j]) (q![m+j]) | j <- [1..k]]
-  ++ [Eq (r!(replicate k 0 ++ [d,e])) (p'![d,e])
-     | d <- aRange args, e <- bRange args] 
-  ++ [Eq (r!(bs ++ [0,c])) (q!(replicate m 0 ++ bs ++ [c]))
-     | bs <- aIdx args k,
-       bs /= replicate k 0,
-       c <- bRange args]
-  ++ [EqSum (q!(as ++ bs ++ [c])) [(ps!!(bs ++ [d,e]))!(as ++ [c + max (-e) 0])
-                                  | d <- delete 0 (dRange args),
-                                    e <- _eRange]
-     | bs <- aIdx args k,
-       bs /= replicate k 0,
-       as <- aIdx args m,
-       as /= replicate m 0,
-       c <- bRange args]
-  ++ [Eq (r!(bs ++ [d,e])) (ps'!!(bs ++ [d,e])![d, max e 0])
-     | bs <- aIdx args k,
-       bs /= replicate k 0,
-       d <- dRange args,
+  -> Bool -> GroundAnn -> GroundAnn
+  -> GroundAnn -> AnnArray GroundAnn
+  -> AnnArray GroundAnn -> GroundAnn
+  -> Id -> [Constraint]
+cLet potArgs neg q p p' ps ps' r x = let xs = args p
+                                         ys = L.delete x (args r) 
+                                         _eRange = if neg then
+                                           eRangeNeg potArgs
+                                           else eRange potArgs in
+  Eq (r!x) (p'!exp) :
+  [Eq (p!x) (q!x) | x <- xs]
+  ++ [Eq (p![mix|_xs',c|]) (q![mix|_xs',c|])
+     | xs' <- varCombi potArgs xs,
+       c <- bRange potArgs]
+  ++ [Eq (r!y) (q!y) | y <- ys]
+  ++ [Eq (r![mix|x^d,e|]) (p![mix|exp^d,e|])
+     | d <- aRange potArgs, e <- _eRange]
+  ++ [Eq (q![mix|_ys', c|]) (r![mix|_ys',c|])
+     | ys' <- varCombi potArgs ys,
+       (not . S.null) ys', 
+       c <- bRange potArgs]
+  ++ [EqSum (q![mix|_xs',_ys',c|]) [ps!![mix|_ys',x^d,e|]![mix|_xs',ce|]
+                                   | d <- dRange potArgs,
+                                     d /= 0,
+                                     e <- _eRange,
+                                     let ce = c + max e 0]
+     | xs' <- varCombi potArgs xs,
+       (not .S.null) xs',
+       ys' <- varCombi potArgs ys,
+       (not .S.null) ys',
+       c <- bRange potArgs]
+  ++ [Eq (r![mix|_ys',x^d,e|]) (ps'!![mix|_ys',x^d,e|]![mix|d,ePos|])
+     | ys' <- varCombi potArgs ys,
+       (not . S.null) ys',
+       d <- dRange potArgs,
        d /= 0,
-       e <- _eRange]
-  ++ [Zero (ps'!!(bs ++ [d,e])![d',e'])
-      | bs <- delete (replicate k 0) (aIdx args k),
-      d <- dRange args,
-      d /= 0,
-      e <- _eRange,
-      d' <- dRange args,
-      e' <- _eRange,
-      (d', e') /= (d, max e 0)]
-  ++ [GeSum [ps!!(bs ++ [d,e])!(as ++ [c])
-            | as <- aIdx args m, c <- bRange args]
-       (ps'!!(bs ++ [d,e])![d, max e 0])
-     | bs <- aIdx args k,
-       bs /= replicate k 0,
-       d <- delete 0 (dRange args),
-       e <- _eRange]
-  ++ [Impl (NotZero (ps!!(bs ++ [d,e])!(as ++ [c])))
-      (Le (ps'!!(bs ++ [d,e])![d, max e 0]) (ps!!(bs ++ [d,e])!(as ++ [c])))
-     | bs <- delete (replicate k 0) (aIdx args k),
-     d <- dRange args,
-     d /= 0,
-     e <- _eRange,
-     as <- aIdx args m,
-     as /= replicate m 0,
-     c <- bRange args]
+       e <- _eRange,
+       let ePos = max e 0]
+  ++ [Zero (ps'!![mix|_ys',x^d,e|]![mix|exp^d',e'|])
+     | ys' <- varCombi potArgs ys,
+       (not . S.null) ys',
+       d <- dRange potArgs,
+       d /= 0,
+       e <- _eRange,
+       let ePos = max e 0,
+       d' <- dRange potArgs,
+       e' <- _eRange,
+       (d', e') /= (d, ePos)]
+  ++ [GeSum [ps!![mix|_ys',x^d,e|]![mix|_xs',c|]
+            | xs' <- varCombi potArgs xs,
+              c <- bRange potArgs]
+       (ps'!![mix|_ys',x^d,e|]![mix|exp^d,ePos|])
+     | ys' <- varCombi potArgs ys,
+       (not . S.null) ys',
+       d <- dRange potArgs,
+       d /= 0,
+       e <- _eRange,
+       let ePos = max e 0]
+  ++ [Impl (NotZero (ps!![mix|_ys',x^d,e|]![mix|_xs',c|]))
+      (Le (ps'!![mix|_ys',x^d,e|]![mix|exp^d,ePos|])
+       (ps!![mix|_ys',x^d,e|]![mix|_xs',c|]))
+     | ys' <- varCombi potArgs ys,
+       (not . S.null) ys',
+       xs' <- varCombi potArgs xs,
+       (not . S.null) xs',
+       d <- dRange potArgs,
+       d /= 0,
+       e <- _eRange,
+       let ePos = max e 0,
+       c <- bRange potArgs]           
 
-cWeakenVar :: LogPotArgs
-  -> IndexedCoeffs -> IndexedCoeffs -> [Constraint]
-cWeakenVar args q r = let m = annLen r in 
-  [Eq (q![i]) (r![i]) | i <- [1..m]]
-  ++ [Eq (q!(as ++ [0,b])) (r!(as ++ [b])) | as <- aIdx args m, b <- bRange args]
+-- cWeakenVar :: LogPotArgs
+--   -> GroundAnn -> GroundAnn -> [Constraint]
+-- cWeakenVar args q r = let m = annLen r in 
+--   [Eq (q![i]) (r![i]) | i <- [1..m]]
+--   ++ [Eq (q!(as ++ [0,b])) (r!(as ++ [b])) | as <- aIdx args m, b <- bRange args]
 
-cWeaken :: LogPotArgs ->
-  [RuleArg] -> IndexedCoeffs -> IndexedCoeffs
-  -> IndexedCoeffs -> IndexedCoeffs -> [Constraint]
-cWeaken args ruleArgs q q' p p' = []
+-- cWeaken :: LogPotArgs ->
+--   [RuleArg] -> GroundAnn -> GroundAnn
+--   -> GroundAnn -> GroundAnn -> [Constraint]
+-- cWeaken args ruleArgs q q' p p' = []
 
 
 -- TODO accept arguments to be printed as well. 
-printPot :: LogPotArgs
-  -> IndexedCoeffs -> String
-printPot args qs@(IndexedCoeffs len _) = rankCoeffs ++ " " ++ logCoeffs 
-  where rankCoeffs = intercalate " + " [_printCoeff (qs![x]) ++ "rk(t)" | x <- [1..len]]
-        logCoeffs = intercalate " + " $ map (\idx -> _printCoeff (qs!idx) ++ printLog idx) (abIdx args len)
-        _printCoeff q = case printCoeff q of
-          "0" -> ""
-          s -> s
-        printLog :: [Int] -> String
-        printLog xs = "log(" ++ intercalate " + " (map show xs) ++ ")"
+-- printPot :: LogPotArgs
+--   -> GroundAnn -> String
+-- printPot args qs@(GroundAnn len _) = rankCoeffs ++ " " ++ logCoeffs 
+--   where rankCoeffs = intercalate " + " [_printCoeff (qs![x]) ++ "rk(t)" | x <- [1..len]]
+--         logCoeffs = intercalate " + " $ map (\idx -> _printCoeff (qs!idx) ++ printLog idx) (abIdx args len)
+--         _printCoeff q = case printCoeff q of
+--           "0" -> ""
+--           s -> s
+--         printLog :: [Int] -> String
+--         printLog xs = "log(" ++ intercalate " + " (map show xs) ++ ")"
 
-logPot :: LogPotArgs -> GroundPot
-logPot args = Potential
-  (rsrcAnn args)
-  (enumAnn args)
-  (forAllIdx args)
-  elems
-  annLen
-  (cPlusConst args)
-  (cMinusConst args)
-  (cMinusVar args)
-  (cPlusMulti args)
-  (cLeaf args)
-  (cNode args)
-  (cPair args)
-  (cMatchLeaf args)
-  (cMatchNode args)
-  (cLetBase args)
-  (cLet args)
-  (cWeakenVar args)
-  (cWeaken args)
-  (printPot args)
+-- logPot :: LogPotArgs -> GroundPot
+-- logPot args = Potential
+--   (rsrcAnn args)
+--   (enumAnn args)
+--   (forAllCombinations args)
+--   elems
+--   annLen
+--   (cPlusConst args)
+--   (cMinusConst args)
+--   (cMinusVar args)
+--   (cPlusMulti args)
+--   (cLeaf args)
+--   (cNode args)
+--   (cPair args)
+--   (cMatchLeaf args)
+--   (cMatchNode args)
+--   (cLetBase args)
+--   (cLet args)
+--   (cWeakenVar args)
+--   (cWeaken args)
+--   (printPot args)

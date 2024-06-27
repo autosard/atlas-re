@@ -1,9 +1,5 @@
 [[check]]
 type = "Exclude"
 id = "STAN-0103"
-file = "src/Typing/Inference.hs"
+file = "**"
 
-[[check]]
-type = "Exclude"
-id = "STAN-0103"
-file = "src/Typing/Scheme.hs"

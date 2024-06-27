@@ -47,6 +47,9 @@ splitTupleType :: Type -> (Type, Type)
 splitTupleType (TAp Prod [x1, x2]) = (x1, x2)
 splitTupleType t = error "Got non-tuple type."
 
+splitProdType :: Type -> [Type]
+splitProdType (TAp Prod ts) = ts
+
 countTrees :: Type -> Int
 countTrees (TAp Tree _) = 1
 countTrees (TAp Prod ts) = sum . map countTrees $ ts
