@@ -171,9 +171,9 @@ data Potential a = Potential {
   -- | @ 'cWeakenVar' q r @
   cWeakenVar :: RsrcAnn a -> RsrcAnn a -> [Constraint],
   -- | @ 'cWeaken' q q' p p'@
-  cWeaken :: [RuleArg] -> RsrcAnn a -> RsrcAnn a -> RsrcAnn a -> RsrcAnn a -> [Constraint],
+  cWeaken :: [RuleArg] -> RsrcAnn a -> RsrcAnn a -> RsrcAnn a -> RsrcAnn a -> [Constraint]}
   -- | @ 'printPot' q@, prints the potential function represented by @q@.
-  printPot :: RsrcAnn a -> String}
+  -- printPot :: RsrcAnn a -> String}
 
 type GroundPot = Potential GroundAnn 
 type CombPot = Potential CombinedAnn

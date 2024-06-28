@@ -264,16 +264,17 @@ spec = do
       let is = S.fromList (cLet potArgs neg q p p' ps ps' r x)
       let should = S.fromList cs
       is `shouldBe` should
-  -- describe "cWeakenVar" $ do
-  --   it "generates the correct constraints" $ do
-  --     let q = rsrcAnn args 0 "Q" 2
-  --     let r = rsrcAnn args 1 "R" 1
-  --     let should = [Eq (r![1]) (q![1]),
-  --                   Eq (r![0,0]) (q![0,0,0]),
-  --                   Eq (r![0,2]) (q![0,0,2]),
-  --                   Eq (r![1,0]) (q![1,0,0])
-  --                  ]
-  --     cWeakenVar args q r `shouldBe` should
+  describe "cWeakenVar" $ do
+    it "generates the correct constraints" $ do
+      let (x1, x2) = ("x1", "x2")
+      let q = rsrcAnn potArgs 0 "Q" [x1,x2]
+      let r = rsrcAnn potArgs 1 "R" [x2]
+      let should = [Eq (r!x2) (q!x2),
+                    Eq (r![mix||]) (q![mix||]),
+                    Eq (r![mix|2|]) (q![mix|2|]),
+                    Eq (r![mix|x2^1|]) (q![mix|x2^1|]),
+                    Eq (r![mix|x2^1,2|]) (q![mix|x2^1,2|])]
+      cWeakenVar potArgs q r `shouldBe` should
                    
       
       

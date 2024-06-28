@@ -10,7 +10,9 @@ import qualified Data.Set as S
 import Data.Set(Set)
 import Prelude hiding ((!!), (^), exp)
 
+
 import CostAnalysis.AnnIdxQuoter(mix)
+import CostAnalysis.Rules
 
 import Data.Text(Text)
 
@@ -267,16 +269,18 @@ cLet potArgs neg q p p' ps ps' r x = let xs = args p
        let ePos = max e 0,
        c <- bRange potArgs]           
 
--- cWeakenVar :: LogPotArgs
---   -> GroundAnn -> GroundAnn -> [Constraint]
--- cWeakenVar args q r = let m = annLen r in 
---   [Eq (q![i]) (r![i]) | i <- [1..m]]
---   ++ [Eq (q!(as ++ [0,b])) (r!(as ++ [b])) | as <- aIdx args m, b <- bRange args]
+cWeakenVar :: LogPotArgs
+  -> GroundAnn -> GroundAnn -> [Constraint]
+cWeakenVar potArgs q r = let xs = args r in
+  [Eq (r!x) (q!x) | x <- xs]
+  ++ [Eq (r![mix|_xs',b|]) (q![mix|_xs',b|])
+     | xs' <- varCombi potArgs xs,
+       b <- bRange potArgs]
 
--- cWeaken :: LogPotArgs ->
---   [RuleArg] -> GroundAnn -> GroundAnn
---   -> GroundAnn -> GroundAnn -> [Constraint]
--- cWeaken args ruleArgs q q' p p' = []
+cWeaken :: LogPotArgs ->
+  [RuleArg] -> GroundAnn -> GroundAnn
+  -> GroundAnn -> GroundAnn -> [Constraint]
+cWeaken args ruleArgs q q' p p' = []
 
 
 -- TODO accept arguments to be printed as well. 
