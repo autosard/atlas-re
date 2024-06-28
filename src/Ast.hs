@@ -191,7 +191,7 @@ instance Annotated Expr a where
   mapAnn f (ConstAnn ann id args) = ConstAnn (f ann) id $ map (mapAnn f) args
   mapAnn f (LitAnn ann l) = LitAnn (f ann) l
   mapAnn f (IteAnn ann e1 e2 e3) = IteAnn (f ann) (mapAnn f e1) (mapAnn f e2) (mapAnn f e3)
-  mapAnn f (MatchAnn ann e arms) = MatchAnn (f ann) e $ map (mapAnn f) arms
+  mapAnn f (MatchAnn ann e arms) = MatchAnn (f ann) (mapAnn f e) $ map (mapAnn f) arms
   mapAnn f (AppAnn ann id args) = AppAnn (f ann) id $ map (mapAnn f) args
   mapAnn f (LetAnn ann id e1 e2) = LetAnn (f ann) id (mapAnn f e1) (mapAnn f e2)
   mapAnn f (TickAnn ann c e) = TickAnn (f ann) c (mapAnn f e)
