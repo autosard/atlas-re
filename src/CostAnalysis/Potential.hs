@@ -95,9 +95,10 @@ type instance AnnArray CombinedAnn = [Map (Set Factor) GroundAnn]
 
 infixl 9 !!
 (!!) :: AnnArray GroundAnn -> Set Factor -> GroundAnn
-(!!) arr k = case M.lookup k arr of
-  Just c -> c
-  Nothing -> error $ "Invalid index '" ++ show k ++ "' for annotation array."
+(!!) arr k = let k' = S.filter factorGTZero k in
+    case M.lookup k' arr of
+      Just c -> c
+      Nothing -> error $ "Invalid index '" ++ show k ++ "' for annotation array."
 
 data Constraint =
   -- | 'Eq' q p = \[q = p\]

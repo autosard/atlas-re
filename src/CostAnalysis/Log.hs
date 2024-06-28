@@ -211,9 +211,9 @@ cLet potArgs neg q p p' ps ps' r x = let xs = args p
      | xs' <- varCombi potArgs xs,
        c <- bRange potArgs]
   ++ [Eq (r!y) (q!y) | y <- ys]
-  ++ [Eq (r![mix|x^d,e|]) (p![mix|exp^d,e|])
+  ++ [Eq (r![mix|x^d,e|]) (p'![mix|exp^d,e|])
      | d <- aRange potArgs, e <- _eRange]
-  ++ [Eq (q![mix|_ys', c|]) (r![mix|_ys',c|])
+  ++ [Eq (r![mix|_ys',c|]) (q![mix|_ys', c|])
      | ys' <- varCombi potArgs ys,
        (not . S.null) ys', 
        c <- bRange potArgs]
@@ -221,13 +221,13 @@ cLet potArgs neg q p p' ps ps' r x = let xs = args p
                                    | d <- dRange potArgs,
                                      d /= 0,
                                      e <- _eRange,
-                                     let ce = c + max e 0]
+                                     let ce = c + max (-e) 0]
      | xs' <- varCombi potArgs xs,
        (not .S.null) xs',
        ys' <- varCombi potArgs ys,
        (not .S.null) ys',
        c <- bRange potArgs]
-  ++ [Eq (r![mix|_ys',x^d,e|]) (ps'!![mix|_ys',x^d,e|]![mix|d,ePos|])
+  ++ [Eq (r![mix|_ys',x^d,e|]) (ps'!![mix|_ys',x^d,e|]![mix|exp^d,ePos|])
      | ys' <- varCombi potArgs ys,
        (not . S.null) ys',
        d <- dRange potArgs,

@@ -14,7 +14,8 @@ import CostAnalysis.Potential(Coeff(Unknown),
                               RsrcAnn(..),
                               Factor(..),
                               CoeffIdx(..),
-                              (^))
+                              (^),
+                              (!!))
 import CostAnalysis.AnnIdxQuoter(mix)
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -206,58 +207,63 @@ spec = do
                     Eq (q![mix|t2^1|]) (r![mix|t2^1|]),
                     Eq (q![mix|t2^1,2|]) (r![mix|t2^1,2|])]
       cLetBase potArgs q p r p' `shouldBe` should
-  -- describe "cLet" $ do
-  --   it "generates the correct constraints" $ do
-  --     let neg = False
-  --     let (t1, t2, e) = ("t1", "t2", "e")
-  --     let x = "x"
-  --     let q = rsrcAnn potArgs 0 "Q" [t1, t2]
-  --     let p = rsrcAnn potArgs 1 "P" [t1]
-  --     let p' = rsrcAnn potArgs 2 "P'" [e]
-  --     let r = rsrcAnn potArgs 3 "R" [t2, x]
-  --     let ps = forAllCombinations potArgs neg [t2] x 4 "P" [t1]
-  --     let ps' = forAllCombinations potArgs neg [t2] x 6 "P'" [e]
+  describe "cLet" $ do
+    it "generates the correct constraints" $ do
+      let neg = False
+      let (t1, t2, e) = ("t1", "t2", "e")
+      let x = "x"
+      let q = rsrcAnn potArgs 0 "Q" [t1, t2]
+      let p = rsrcAnn potArgs 1 "P" [t1]
+      let p' = rsrcAnn potArgs 2 "P'" [e]
+      let r = rsrcAnn potArgs 3 "R" [t2, x]
+      let (ps, _) = forAllCombinations potArgs neg [t2] x 4 "P" [t1]
+      let (ps', _) = forAllCombinations potArgs neg [t2] x 6 "P'" [e]
 
-  --     let cs = [Eq (p!t1) (q!t1),
-  --                   Eq (p![0,0]) (q![0,0,0]),
-  --                   Eq (p![0,2]) (q![0,0,2]),
-  --                   Eq (p![1,0]) (q![1,0,0]),
-  --                   Eq (p![1,2]) (q![1,0,2]),
-  --                   Eq (r![1]) (q![2]),
-  --                   Eq (r![2]) (p'![1]),
-  --                   Eq (r![0,0,0]) (p'![0,0]),
-  --                   Eq (r![0,0,2]) (p'![0,2]),
-  --                   Eq (r![0,1,0]) (p'![1,0]),
-  --                   Eq (r![0,1,2]) (p'![1,2]),
-  --                   Eq (r![1,0,0]) (q![0,1,0]),
-  --                   Eq (r![1,0,2]) (q![0,1,2]),
-  --                   EqSum (q![1,1,0]) [ps!![1,1,0]![1,0],
-  --                                      ps!![1,1,2]![1,0]],
-  --                   EqSum (q![1,1,2]) [ps!![1,1,0]![1,2],
-  --                                      ps!![1,1,2]![1,2]],
-  --                   Eq (r![1,1,0]) (ps'!![1,1,0]![1,0]),
-  --                   Zero (ps'!![1,1,0]![0,0]),
-  --                   Zero (ps'!![1,1,0]![0,2]),
-  --                   Zero (ps'!![1,1,0]![1,2]),
-  --                   GeSum [ps!![1,1,0]![0,0],
-  --                          ps!![1,1,0]![0,2],
-  --                          ps!![1,1,0]![1,0],
-  --                          ps!![1,1,0]![1,2]] (ps'!![1,1,0]![1,0]),
-  --                   Impl (NotZero (ps!![1,1,0]![1,0])) (Le (ps'!![1,1,0]![1,0]) (ps!![1,1,0]![1,0])),
-  --                   Impl (NotZero (ps!![1,1,0]![1,2])) (Le (ps'!![1,1,0]![1,0]) (ps!![1,1,0]![1,2])),
-  --                   Eq (r![1,1,2]) (ps'!![1,1,2]![1,2]),
-  --                   Zero (ps'!![1,1,2]![0,0]),
-  --                   Zero (ps'!![1,1,2]![0,2]),
-  --                   Zero (ps'!![1,1,2]![1,0]),
-  --                   GeSum [ps!![1,1,2]![0,0],
-  --                          ps!![1,1,2]![0,2],
-  --                          ps!![1,1,2]![1,0],
-  --                          ps!![1,1,2]![1,2]] (ps'!![1,1,2]![1,2]),
-  --                   Impl (NotZero (ps!![1,1,2]![1,0])) (Le (ps'!![1,1,2]![1,2]) (ps!![1,1,2]![1,0])),
-  --                   Impl (NotZero (ps!![1,1,2]![1,2])) (Le (ps'!![1,1,2]![1,2]) (ps!![1,1,2]![1,2]))]
-  --     let is = S.fromList (cLet potArgs neg q p p' ps ps' r)
-  --     let should = S.fromList cs
-  --     is `shouldBe` should
+      let cs = [Eq (p!t1) (q!t1),
+                    Eq (p![mix||]) (q![mix||]),
+                    Eq (p![mix|2|]) (q![mix|2|]),
+                    Eq (p![mix|t1^1|]) (q![mix|t1^1|]),
+                    Eq (p![mix|t1^1,2|]) (q![mix|t1^1,2|]),
+                    Eq (r!t2) (q!t2),
+                    Eq (r!x) (p'!e),
+                    Eq (r![mix||]) (p'![mix||]),
+                    Eq (r![mix|2|]) (p'![mix|2|]),
+                    Eq (r![mix|x^1|]) (p'![mix|e^1|]),
+                    Eq (r![mix|x^1,2|]) (p'![mix|e^1,2|]),
+                    Eq (r![mix|t2^1|]) (q![mix|t2^1|]),
+                    Eq (r![mix|t2^1,2|]) (q![mix|t2^1,2|]),
+                    EqSum (q![mix|t1^1,t2^1|]) [ps!![mix|t2^1,x^1|]![mix|t1^1|],
+                                                ps!![mix|t2^1,x^1,2|]![mix|t1^1|]],
+                    EqSum (q![mix|t1^1,t2^1,2|]) [ps!![mix|t2^1,x^1|]![mix|t1^1,2|],
+                                                ps!![mix|t2^1,x^1,2|]![mix|t1^1,2|]],
+                    Eq (r![mix|t2^1,x^1|]) (ps'!![mix|t2^1,x^1|]![mix|e^1|]),
+                    Zero (ps'!![mix|t2^1,x^1|]![mix||]),
+                    Zero (ps'!![mix|t2^1,x^1|]![mix|2|]),
+                    Zero (ps'!![mix|t2^1,x^1|]![mix|e^1,2|]),
+                    GeSum [ps!![mix|t2^1,x^1|]![mix||],
+                           ps!![mix|t2^1,x^1|]![mix|2|],
+                           ps!![mix|t2^1,x^1|]![mix|t1^1|],
+                           ps!![mix|t2^1,x^1|]![mix|t1^1,2|]]
+                                 (ps'!![mix|t2^1,x^1|]![mix|e^1|]),
+                    Impl (NotZero (ps!![mix|t2^1,x^1|]![mix|t1^1|]))
+                                 (Le (ps'!![mix|t2^1,x^1|]![mix|e^1|]) (ps!![mix|t2^1,x^1|]![mix|t1^1|])),
+                    Impl (NotZero (ps!![mix|t2^1,x^1|]![mix|t1^1,2|]))
+                                 (Le (ps'!![mix|t2^1,x^1|]![mix|e^1|]) (ps!![mix|t2^1,x^1|]![mix|t1^1,2|])),
+                    Eq (r![mix|t2^1,x^1,2|]) (ps'!![mix|t2^1,x^1,2|]![mix|e^1,2|]),
+                    Zero (ps'!![mix|t2^1,x^1,2|]![mix||]),
+                    Zero (ps'!![mix|t2^1,x^1,2|]![mix|2|]),
+                    Zero (ps'!![mix|t2^1,x^1,2|]![mix|e^1|]),
+                    GeSum [ps!![mix|t2^1,x^1,2|]![mix||],
+                           ps!![mix|t2^1,x^1,2|]![mix|2|],
+                           ps!![mix|t2^1,x^1,2|]![mix|t1^1|],
+                           ps!![mix|t2^1,x^1,2|]![mix|t1^1,2|]] (ps'!![mix|t2^1,x^1,2|]![mix|e^1,2|]),
+                    Impl (NotZero (ps!![mix|t2^1,x^1,2|]![mix|t1^1|]))
+                                 (Le (ps'!![mix|t2^1,x^1,2|]![mix|e^1,2|]) (ps!![mix|t2^1,x^1,2|]![mix|t1^1|])),
+                    Impl (NotZero (ps!![mix|t2^1,x^1,2|]![mix|t1^1,2|]))
+                                 (Le (ps'!![mix|t2^1,x^1,2|]![mix|e^1,2|]) (ps!![mix|t2^1,x^1,2|]![mix|t1^1,2|]))]
+      let is = S.fromList (cLet potArgs neg q p p' ps ps' r x)
+      let should = S.fromList cs
+      is `shouldBe` should
   -- describe "cWeakenVar" $ do
   --   it "generates the correct constraints" $ do
   --     let q = rsrcAnn args 0 "Q" 2
