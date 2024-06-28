@@ -91,7 +91,7 @@ genAnnId = do
   annIdGen .= g+1
   return g
 
-forAllCombinations' :: Bool -> [Id] -> Id -> Text -> [Id] -> ProveMonad a (AnnArray a)
+forAllCombinations' :: Bool -> [Id] -> Id -> Text -> [Id] -> ProveMonad a (AnnArray (RsrcAnn a))
 forAllCombinations' neg xs x label ys = do
   pot <- view potential
   g <- use annIdGen
@@ -228,25 +228,24 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       pot <- view potential
       let [t1, t2] = subTactics 2 tactic
       (ctxE1, ctxE2) <- splitLetCtx ctx e1 e2
-
+      let ctxE2' = M.insert x (getType e1) ctxE2 
       -- TODO if let binds a recursive call then use negative numbers for e
-      let neg = True
+      let neg = False
       
       p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (M.keys ctxE1)
       p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure ["e"]
-      r <- rsrcAnn pot <$> genAnnId <*> pure "R" <*> pure (M.keys ctxE2)
+      r <- rsrcAnn pot <$> genAnnId <*> pure "R" <*> pure (M.keys ctxE2')
       
-      ps <- forAllCombinations' neg (M.keys ctxE2) x "P" (M.keys ctxE1)
-      ps' <- forAllCombinations' neg (M.keys ctxE2) x "P'" ["e"]
+      ps <- forAllCombinations' neg (M.keys ctxE2') x "P" (M.keys ctxE1)
+      ps' <- forAllCombinations' neg (M.keys ctxE2') x "P'" ["e"]
 
       deriv1 <- proveExpr t1 cf ctxE1 e1 p p'
-      deriv2 <- proveExpr t2 cf ctxE2 e2 r q'      
-      --cfDerivs <- zipWithM (proveExpr t1 True ctxE1 e1) (elems pot ps) (elems pot ps')
+      deriv2 <- proveExpr t2 cf ctxE2' e2 r q'      
+      cfDerivs <- zipWithM (proveExpr t1 True ctxE1 e1) (elems pot ps) (elems pot ps')
 
       let cs = cLet pot neg q p p' ps ps' r x
-      --let cs = []
       tell cs
-      return $ T.Node (RuleApp R.Let cs e) [deriv1, deriv2] -- :cfDerivs)
+      return $ T.Node (RuleApp R.Let cs e) ([deriv1, deriv2] ++ cfDerivs)
   | otherwise = do
       pot <- view potential
       let [t1, t2] = subTactics 2 tactic
@@ -269,8 +268,8 @@ proveApp tactic cf ctx e@(App id _) q q' = do
   fnSig <- use sig
   let (p, p') = withCost $ fnSig M.! id
   let (r, r') = withoutCost $ fnSig M.! id
-  q <- rsrcAnn pot <$> genAnnId <*> pure "Q" <*> pure (args p)
-  q' <- rsrcAnn pot <$> genAnnId <*> pure "Q'" <*> pure (args p')
+  -- q <- rsrcAnn pot <$> genAnnId <*> pure "Q" <*> pure (args p)
+  -- q' <- rsrcAnn pot <$> genAnnId <*> pure "Q'" <*> pure (args p')
   let cs = cPlusMulti pot q p r
         ++ cPlusMulti pot q' p' r'
   tell cs

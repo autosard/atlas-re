@@ -137,10 +137,10 @@ data Potential a = Potential {
   rsrcAnn :: Int -> Text -> [Id] -> RsrcAnn a,
   
   -- | @ 'forAllIdx' neg xs x id label ys@ for all combinations of variables in @xs@ with the var @x@, construct a fresh annotation starting with id @id@ and with vars in @ys@. @neg@ allows negative constants. Returns the last used id + 1. 
-  forAllCombinations :: Bool -> [Id] -> Id -> Int -> Text -> [Id] -> (AnnArray a, Int),
+  forAllCombinations :: Bool -> [Id] -> Id -> Int -> Text -> [Id] -> (AnnArray (RsrcAnn a), Int),
   
   -- | @ 'elems' a@ converts an annotation array to a list.
-  elems :: AnnArray a -> [RsrcAnn a],
+  elems :: AnnArray (RsrcAnn a) -> [RsrcAnn a],
 
   
   -- Constraint generation
@@ -151,7 +151,7 @@ data Potential a = Potential {
   cMinusConst :: RsrcAnn a -> RsrcAnn a -> Rational -> [Constraint],
   -- | @ 'cMinusVar' q p@, returns constraints that guarantee \[\phi(*\mid P) = \phi(*\mid Q) - K\] where @k@ is RsrcAnn a fresh variable.
   cMinusVar :: RsrcAnn a -> RsrcAnn a -> [Constraint],
-  -- | @ 'cPlusMulti' q p r@, returns constraints that guarantee \[\phi(*\mid Q) = \phi(* \mid P) + \phi(*\mid R) \cdot K\] where @k@ is RsrcAnn a fresh variable.
+  -- | @ 'cPlusMulti' q p r@, returns constraints that guarantee \[\phi(*\mid Q) = \phi(* \mid P) + \phi(*\mid R) \cdot K\] where @k@ is a fresh variable.
   cPlusMulti :: RsrcAnn a -> RsrcAnn a -> RsrcAnn a -> [Constraint],
   -- | @ 'cLeaf' q q'@, returns constraints that guarantee \[\phi(\varnothing\mid Q) = \phi(\verb|leaf| \mid Q')\]  
   cLeaf :: RsrcAnn a -> RsrcAnn a -> [Constraint],
@@ -167,7 +167,7 @@ data Potential a = Potential {
   cLetBase :: RsrcAnn a -> RsrcAnn a -> RsrcAnn a -> RsrcAnn a -> [Constraint],
   -- | @ 'cLet' q p p' ps ps' r x@
   cLet :: Bool -> RsrcAnn a -> RsrcAnn a -> RsrcAnn a
-    -> AnnArray a -> AnnArray a -> RsrcAnn a -> Id -> [Constraint],
+    -> AnnArray (RsrcAnn a) -> AnnArray (RsrcAnn a) -> RsrcAnn a -> Id -> [Constraint],
   -- | @ 'cWeakenVar' q r @
   cWeakenVar :: RsrcAnn a -> RsrcAnn a -> [Constraint],
   -- | @ 'cWeaken' q q' p p'@
@@ -175,5 +175,5 @@ data Potential a = Potential {
   -- | @ 'printPot' q@, prints the potential function represented by @q@.
   -- printPot :: RsrcAnn a -> String}
 
-type GroundPot = Potential GroundAnn 
-type CombPot = Potential CombinedAnn
+type GroundPot = Potential CoeffsMap
+type CombPot = Potential [CoeffsMap]

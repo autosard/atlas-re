@@ -210,7 +210,3 @@ spec = do
         let (t, state) = runTI testState (tiFun ctx f)
         let s = subst state 
         apply s . fst <$> t `shouldBe` Right tFun
-    
-    
-
-        

@@ -17,6 +17,7 @@ import Data.List(uncons)
 import qualified Data.List as L
   
 import Typing.Type
+    ( fn, Tycon(Prod, Num, Bool, Arrow), Type(..), Tyvar(..) )
 import Typing.Subst
 import Typing.Scheme
 import Ast

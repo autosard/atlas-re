@@ -59,7 +59,6 @@ run Options{..} RunOptions{..} = do
   tactics <- case tacticsPath of
     Just path -> loadTactics (T.unpack modName) (fns normalizedProg) path
     Nothing -> return M.empty
---  liftIO $ putStr (printProg normalizedProg)
   let _aRange = [0,1]
   let _bRange = [0,2]
   let args = LogPotArgs _aRange _bRange _aRange _bRange (-1 : _bRange)

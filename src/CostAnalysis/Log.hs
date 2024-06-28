@@ -122,10 +122,11 @@ cMinusVar potArgs q p = let qs = args q in
   
 cPlusMulti :: LogPotArgs
   -> GroundAnn -> GroundAnn -> GroundAnn -> [Constraint]
-cPlusMulti potArgs q p r = let qs = args q in 
-  [EqPlusMulti (q!x) (p!x) (r!x) | x <- qs]
-  ++ [EqPlusMulti (q!idx) (p!idx) (r!idx)
-     | idx <- combi potArgs qs]
+cPlusMulti potArgs q p r = let xs = args q
+                               ys = args p in 
+  [EqPlusMulti (q!x) (p!y) (r!y) | (x,y) <- zip xs ys]
+  ++ [EqPlusMulti (q!idxQ) (p!idxP) (r!idxP)
+     | (idxQ, idxP) <- zip (combi potArgs xs) (combi potArgs ys)]
 
 cLeaf :: LogPotArgs
   -> GroundAnn -> GroundAnn -> [Constraint]
@@ -214,16 +215,16 @@ cLet potArgs neg q p p' ps ps' r x = let xs = args p
        c <- bRange potArgs]
   ++ [Eq (r!y) (q!y) | y <- ys]
   ++ [Eq (r![mix|x^d,e|]) (p'![mix|exp^d,e|])
-     | d <- aRange potArgs, e <- _eRange]
+     | d <- dRange potArgs, e <- _eRange]
   ++ [Eq (r![mix|_ys',c|]) (q![mix|_ys', c|])
      | ys' <- varCombi potArgs ys,
        (not . S.null) ys', 
        c <- bRange potArgs]
-  ++ [EqSum (q![mix|_xs',_ys',c|]) [ps!![mix|_ys',x^d,e|]![mix|_xs',ce|]
+  ++ [EqSum (q![mix|_xs',_ys',c|]) [ps!![mix|_ys',x^d,e|]![mix|_xs',c|]
                                    | d <- dRange potArgs,
                                      d /= 0,
-                                     e <- _eRange,
-                                     let ce = c + max (-e) 0]
+                                     e <- _eRange]
+                                     -- let ce = c + max (-e) 0] check wether is even can work
      | xs' <- varCombi potArgs xs,
        (not .S.null) xs',
        ys' <- varCombi potArgs ys,
@@ -295,24 +296,22 @@ cWeaken args ruleArgs q q' p p' = []
 --         printLog :: [Int] -> String
 --         printLog xs = "log(" ++ intercalate " + " (map show xs) ++ ")"
 
--- logPot :: LogPotArgs -> GroundPot
--- logPot args = Potential
---   (rsrcAnn args)
---   (enumAnn args)
---   (forAllCombinations args)
---   elems
---   annLen
---   (cPlusConst args)
---   (cMinusConst args)
---   (cMinusVar args)
---   (cPlusMulti args)
---   (cLeaf args)
---   (cNode args)
---   (cPair args)
---   (cMatchLeaf args)
---   (cMatchNode args)
---   (cLetBase args)
---   (cLet args)
---   (cWeakenVar args)
---   (cWeaken args)
---   (printPot args)
+logPot :: LogPotArgs -> GroundPot
+logPot args = Potential
+  (rsrcAnn args)
+  (forAllCombinations args)
+  elems
+  (cPlusConst args)
+  (cMinusConst args)
+  (cMinusVar args)
+  (cPlusMulti args)
+  (cLeaf args)
+  (cNode args)
+  (cPair args)
+  (cMatchLeaf args)
+  (cMatchNode args)
+  (cLetBase args)
+  (cLet args)
+  (cWeakenVar args)
+  (cWeaken args)
+  --(printPot args)
