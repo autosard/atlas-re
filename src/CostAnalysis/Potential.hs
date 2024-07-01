@@ -5,49 +5,14 @@
 
 module CostAnalysis.Potential where
 import Data.Text(Text, unpack)
-import Data.List(intercalate)
 import Data.Map(Map)
 import Data.Set(Set)
 import qualified Data.Set as S
-import qualified Data.Text as T
-import qualified Data.List(intercalate)
 import Primitive(Id)
 import qualified Data.Map as M
 import CostAnalysis.Rules ( RuleArg )
-
-
-data Coeff
-  = Unknown Int Text Text CoeffIdx
-  | Known Int Text Text CoeffIdx Rational
-  deriving (Eq, Ord, Show)
-
-printCoeff :: Coeff -> String
--- printCoeff (Unknown id label kind) =
---   unpack label ++ "_" ++ show id ++ "_" ++ unpack kind ++ "_" 
-printCoeff (Known _ _ _ _ v) = show v
-
--- printIdx :: [Int] -> String
--- printIdx idx = "(" ++ intercalate "," (map show idx) ++ ")" 
-
-data Factor = Const Int | Arg Id Int
-  deriving (Eq, Ord)
-
-instance Show Factor where
-  show (Const c) = show c
-  show (Arg x a) = T.unpack x ++ "^" ++ show a
-
-infixl 9 ^
-(^) :: Id -> Int -> Factor
-(^) = Arg
-
-data CoeffIdx = Pure Id | Mixed (Set Factor)
-  deriving (Eq, Ord)
-
-instance Show CoeffIdx where
-  show (Pure x) = "(" ++ T.unpack x ++ ")"
-  show (Mixed xs) = "(" ++ intercalate "," (map show (S.toDescList xs)) ++ ")"
-
-type CoeffsMap = Map CoeffIdx Coeff
+import CostAnalysis.Solving
+import CostAnalysis.Coeff
 
 
 data RsrcAnn a = RsrcAnn {
@@ -100,30 +65,6 @@ infixl 9 !!
       Just c -> c
       Nothing -> error $ "Invalid index '" ++ show k ++ "' for annotation array."
 
-data Constraint =
-  -- | 'Eq' q p = \[q = p\]
-  Eq Coeff Coeff 
-  -- | 'EqSum' q ps = \[q = \sum^N_{i=1} p_i \]
-  | EqSum Coeff [Coeff]
-  -- | 'EqPlusConst' q p c = \[q = p + c \]
-  | EqPlusConst Coeff Coeff Rational
-  -- | 'EqMinusConst' q p c = \[q = p - c \]
-  | EqMinusConst Coeff Coeff Rational
-  -- | 'EqMinusVar' q p = \[q = p - k \]
-  | EqMinusVar Coeff Coeff
-  -- | 'EqPlusMulti' q p r = \[ q = p + k r\]
-  | EqPlusMulti Coeff Coeff Coeff
-  -- | 'Zero' q = \[q = 0 \]
-  | Zero Coeff
-  -- | 'NotZero' q = \[q \neq 0 \]
-  | NotZero Coeff
-  -- | 'Le' q p = \[q < p \]
-  | Le Coeff Coeff
-  -- | 'GeSum' q ps = \[q \geq \sum^N_{i=1} p_i \]
-  | GeSum [Coeff] Coeff
-  -- | 'GeSum' c1 c2 = \[C_1 \Rightarrow C_2 \]
-  | Impl Constraint Constraint
-  deriving (Eq, Ord, Show)
 
 data FunRsrcAnn a = FunRsrcAnn {
   withCost :: (RsrcAnn a, RsrcAnn a),

@@ -16,14 +16,11 @@ import CostAnalysis.Rules
 
 import Data.Text(Text)
 
-import CostAnalysis.Potential(GroundAnn,
-                              Constraint(..),
-                              Coeff(Unknown), (!),
-                              CoeffIdx(..),
-                              AnnArray, printCoeff, GroundPot,
+import CostAnalysis.Coeff(Coeff(..), Factor(..), CoeffIdx(..), (^))
+import CostAnalysis.Solving(Constraint(..))
+import CostAnalysis.Potential(GroundAnn, (!),
+                              AnnArray, GroundPot,
                               Potential (Potential),
-                              Factor(..),
-                              (^),
                               (!!),
                               RsrcAnn(..))
 import qualified Data.Text as T
@@ -36,23 +33,6 @@ data LogPotArgs = LogPotArgs {
   eRange :: ![Int],
   eRangeNeg :: ![Int]}
 
---aRange = [1, 0]
---bRange = [0, 2]
---dRange = aRange
---eRange = bRange
---eRangeNeg = -1 : eRange
-  
--- abIdx :: LogPotArgs
---   -> Int -> [[Int]]
--- abIdx args 0 = [[x] | x <- bRange args]
--- abIdx args n = [x:y | x <- aRange args, y <- abIdx args (n-1)]
-
--- aIdx :: LogPotArgs
---   -> Int -> [[Int]]
--- aIdx args 1 = [[x] | x <- aRange args]
--- aIdx args n
---   | n <= 0 = [[]]
---   | otherwise = [x:y | x <- aRange args, y <- aIdx args (n-1)]
 exp :: Id
 exp = "e"
 

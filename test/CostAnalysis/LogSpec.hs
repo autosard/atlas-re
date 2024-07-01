@@ -8,22 +8,16 @@ import Test.Hspec
 import CostAnalysis.Log
 import Prelude hiding ((!), (!!), (^))
 import Primitive(Id)
-import CostAnalysis.Potential(Coeff(Unknown),
-                              Constraint (..),
-                              (!),
-                              RsrcAnn(..),
-                              Factor(..),
-                              CoeffIdx(..),
-                              (^),
-                              (!!))
+
+import CostAnalysis.Coeff(Coeff(..), Factor(..), CoeffIdx(..), (^))
+import CostAnalysis.Solving(Constraint(..))
+import CostAnalysis.Potential((!), RsrcAnn(..), (!!))
 import CostAnalysis.AnnIdxQuoter(mix)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Text(Text)
 import Debug.Trace (trace)
 
---coeffIdx :: [Factor] -> CoeffIdx
---coeffIdx = Mixed . S.fromList
 arrIdx = S.fromList
 
 coeff :: [Factor] -> (CoeffIdx, Coeff)

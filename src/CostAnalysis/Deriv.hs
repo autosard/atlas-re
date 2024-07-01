@@ -11,7 +11,7 @@ import Data.Map(Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Text(Text)
-import Z3.Monad ( AST )
+
 import Ast hiding (Coefficient)
 import Primitive(Id)
 import Control.Monad.RWS
@@ -22,24 +22,13 @@ import Typing.Scheme (toType)
 import CostAnalysis.Tactic
 import qualified CostAnalysis.Rules as R
 import CostAnalysis.Potential hiding (Factor(..))
+import CostAnalysis.Solving(Constraint(..))
 import StaticAnalysis(freeVars)
 import Data.Maybe (fromMaybe)
 import SourceError
 
 import Debug.Trace (trace)
 traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
-
---type Context = [Id]
-
---linRsrcAnn :: Int -> Int -> IndexedCoeffs
---linRsrcAnn id len = M.fromList [([x], Unknown id "Q" "lin" [x]) | x <- [1..(len+1)]]
-
---linPot :: GroundPot
---linPot = Potential linRsrcAnn 
-  
-class Encodeable a where
-  toZ3 :: a -> AST
-  fromZ3 :: AST -> a
 
 data RuleApp = RuleApp R.Rule [Constraint] TypedExpr
 

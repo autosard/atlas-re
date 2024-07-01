@@ -18,7 +18,7 @@ import qualified Text.Megaparsec.Char.Lexer as L
 import Language.Haskell.TH
 import Language.Haskell.TH.Quote
 
-import qualified CostAnalysis.Potential as P
+import qualified CostAnalysis.Coeff as Coeff
 
 data Atom = Lit !Int | Var !String | SetVar !String
 data Factor = Atom !Atom | Arg !Atom !Atom
@@ -41,7 +41,7 @@ compile :: String -> Q Exp
 compile s =
   case runParser pIdx "" s of
     Left  err    -> fail $ errorBundlePretty err
-    Right (Idx []) -> [|S.empty :: Set P.Factor|]
+    Right (Idx []) -> [|S.empty :: Set Coeff.Factor|]
     Right (Idx factors) -> do
       let exps = map factorToQ factors
       foldl1 (\x y -> appE (appE (varE 'S.union) x) y) exps
@@ -51,10 +51,10 @@ getName (VarE name) = name
 getName _ = error "not a variable. This cannot happen."
 
 factorToQ :: Factor -> Q Exp
-factorToQ (Atom a@(Lit _)) = [| S.singleton (P.Const $(atomToQ a)) |]
+factorToQ (Atom a@(Lit _)) = [| S.singleton (Coeff.Const $(atomToQ a)) |]
 factorToQ (Atom a@(SetVar _)) = atomToQ a
-factorToQ (Atom a@(Var _)) = [| S.singleton (P.Const $(atomToQ a)) |]
-factorToQ (Arg x y) = [| S.singleton (P.Arg $(atomToQ x) $(atomToQ y)) |] 
+factorToQ (Atom a@(Var _)) = [| S.singleton (Coeff.Const $(atomToQ a)) |]
+factorToQ (Arg x y) = [| S.singleton (Coeff.Arg $(atomToQ x) $(atomToQ y)) |] 
 
 atomToQ :: Atom -> Q Exp
 atomToQ (Lit n) = [|n|]
