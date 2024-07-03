@@ -20,7 +20,7 @@ import Data.Maybe(fromMaybe, catMaybes)
 import System.Directory
 
 import Colog (cmap, fmtMessage, logTextStdout, logWarning,
-              usingLoggerT, LoggerT, Msg, Severity)
+              usingLoggerT, logInfo, logError, LoggerT, Msg, Severity)
 
 
 import System.Environment(lookupEnv)
@@ -36,6 +36,7 @@ import Primitive(Id)
 import CostAnalysis.Tactic 
 import CostAnalysis.Log
 import CostAnalysis.Deriv
+import CostAnalysis.Solving
 
 import Cli(Options(..), RunOptions(..), EvalOptions(..), Command(..), cliP)
 
@@ -62,10 +63,14 @@ run Options{..} RunOptions{..} = do
   let _aRange = [0,1]
   let _bRange = [0,2]
   let args = LogPotArgs _aRange _bRange _aRange _bRange (-1 : _bRange)
-  (derivs, cs) <- liftIO $ case runProof normalizedProg (logPot args) tactics of
+  let pot = logPot args
+  (derivs, cs, fns) <- liftIO $ case runProof normalizedProg pot tactics of
         Left srcErr -> die $ printSrcError srcErr contents
         Right v -> return v
-  liftIO $ print (show cs)
+  solution <- liftIO $ solveZ3 pot fns cs
+  case solution of
+    (Left _) -> logError "error"
+    (Right _) -> logInfo "finished"
 
 eval :: Options -> EvalOptions -> App ()
 eval Options{..} EvalOptions{..} = do

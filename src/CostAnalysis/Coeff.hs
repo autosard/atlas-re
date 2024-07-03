@@ -12,12 +12,18 @@ import qualified Data.List as L
 import Primitive(Id)
 
 data Coeff
-  = Unknown Int Text Text CoeffIdx
-  | Known Int Text Text CoeffIdx Rational
+  = AnnCoeff -- ^ Annotation coefficient 
+    Int -- ^ Unique identifier for the annotation; used together with coefficent index to identify coeffients when encoding them for smt. 
+    Text -- ^ Human readable label, e.g. \"Q\", \"P\", ...
+    Text -- ^ Human readable comment, to trace the origin of the coefficient, e.g. "log".
+    CoeffIdx -- ^ An index to identify the coefficient.
+  | GenCoeff -- ^ Generic coefficient
+    Int -- ^ Unique identifier
   deriving (Eq, Ord, Show)
 
 printCoeff :: Coeff -> String
-printCoeff (Known _ _ _ _ v) = show v
+printCoeff (AnnCoeff id label comment idx) = "q" ++ show id ++ "_" ++ show idx
+  ++ "{" ++ T.unpack label ++ "," ++ T.unpack comment ++ "}"
 
 data Factor = Const Int | Arg Id Int
   deriving (Eq, Ord)

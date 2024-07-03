@@ -22,7 +22,8 @@ import Typing.Scheme (toType)
 import CostAnalysis.Tactic
 import qualified CostAnalysis.Rules as R
 import CostAnalysis.Potential hiding (Factor(..))
-import CostAnalysis.Solving(Constraint(..))
+import CostAnalysis.RsrcAnn
+import CostAnalysis.Constraint
 import StaticAnalysis(freeVars)
 import Data.Maybe (fromMaybe)
 import SourceError
@@ -52,12 +53,13 @@ makeLenses ''ProofEnv
 
 type ProveMonad p a = ExceptT SourceError (RWS (ProofEnv p) [Constraint] (ProofState p)) a
 
-type ProofResult = ([Derivation], [Constraint])
+type ProofResult a = ([Derivation], [Constraint], [FunRsrcAnn a])
 
 runProof :: TypedModule -> Potential a -> Map Id Tactic
-  -> Either SourceError ProofResult
-runProof mod pot tactics = (,cs) <$> deriv
-  where (deriv, cs) = evalRWS rws env state  
+  -> Either SourceError (ProofResult a)
+runProof mod pot tactics = (,cs,fns) <$> deriv
+  where (deriv, state', cs) = runRWS rws env state
+        fns = M.elems (state' ^. sig)
         rws = runExceptT $ proveModule mod
         env = ProofEnv pot tactics
         state = ProofState M.empty 0

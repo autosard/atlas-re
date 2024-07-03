@@ -4,27 +4,26 @@
 module CostAnalysis.Log where
 
 import qualified Data.Map as M
-import Data.List(delete, intercalate)
+import Data.List(intercalate)
 import qualified Data.List as L
 import qualified Data.Set as S
 import Data.Set(Set)
 import Prelude hiding ((!!), (^), exp)
+import qualified Prelude as P((^))
+import Data.Text(Text)
+import qualified Data.Text as T
+import Control.Monad (zipWithM)
+import Data.Foldable (foldrM)
 
-
+import Primitive(Id)
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Rules
+import CostAnalysis.Coeff
+import CostAnalysis.Constraint
+import CostAnalysis.RsrcAnn
+import CostAnalysis.Potential(Potential (Potential), GroundPot)       
+import CostAnalysis.Optimization
 
-import Data.Text(Text)
-
-import CostAnalysis.Coeff(Coeff(..), Factor(..), CoeffIdx(..), (^))
-import CostAnalysis.Solving(Constraint(..))
-import CostAnalysis.Potential(GroundAnn, (!),
-                              AnnArray, GroundPot,
-                              Potential (Potential),
-                              (!!),
-                              RsrcAnn(..))
-import qualified Data.Text as T
-import Primitive(Id)
 
 data LogPotArgs = LogPotArgs {
   aRange :: ![Int],
@@ -53,8 +52,8 @@ combi' args z (x:xs) = [if a > 0 then x^a:y else y
 rsrcAnn :: LogPotArgs
   -> Int -> Text -> [Id] -> GroundAnn
 rsrcAnn potArgs id label args = RsrcAnn args $ M.fromList (rankCoeffs ++ logCoeffs)
-  where rankCoeffs = [(Pure x, Unknown id label "log" (Pure x)) | (x,i) <- zip args [1..]]
-        logCoeffs = map ((\idx -> (idx, Unknown id label "log" idx)) . Mixed) $ combi potArgs args
+  where rankCoeffs = [(Pure x, AnnCoeff id label "log" (Pure x)) | (x,i) <- zip args [1..]]
+        logCoeffs = map ((\idx -> (idx, AnnCoeff id label "log" idx)) . Mixed) $ combi potArgs args
 
 
 forAllCombinations :: LogPotArgs
@@ -258,11 +257,66 @@ cWeakenVar potArgs q r = let xs = args r in
      | xs' <- varCombi potArgs xs,
        b <- bRange potArgs]
 
+-- TODO
 cWeaken :: LogPotArgs ->
   [RuleArg] -> GroundAnn -> GroundAnn
   -> GroundAnn -> GroundAnn -> [Constraint]
 cWeaken args ruleArgs q q' p p' = []
 
+
+rankDifference :: GroundAnn -> GroundAnn -> OptiMonad Target
+rankDifference q q' = do
+  target <- freshCoeff
+  (ds, diffs) <- bindToCoeffs (diff (q'!("e" :: Id))) (args q)
+  let sum = EqSum target ds
+  return (target, sum:diffs)
+  where diff :: Coeff -> Coeff -> Id -> Constraint
+        diff rankQ' d x = EqSub d [q!x, rankQ']
+
+
+weightedNonRankDifference :: LogPotArgs -> GroundAnn -> GroundAnn -> OptiMonad Target
+weightedNonRankDifference potArgs q q' = do
+  target <- freshCoeff
+  (ds, diffs) <- bindToCoeffs (\coeff (p, p', _) -> EqSub coeff [p, p']) pairs
+  (ws, weightedDiffs) <- bindToCoeffs (\coeff (d, (_, _, (a,b))) -> EqMultConst coeff d (w a b)) (zip ds pairs)
+  let sum = EqSum target ws
+  return (target, sum:(diffs ++ weightedDiffs))
+  where pairs = [(q![mix|x^a,b|], q'![mix|y^a,b|], (a,b))
+                | a <- aRange potArgs,
+                  b <- bRange potArgs,
+                  (a, b) /= (0, 2),
+                  let x = annVar q,
+                  let y = annVar q']
+        annVar p = case args p of
+                     [x] -> x
+                     _multiArg -> error "Index weight is only defined for annotations of length 1."
+        w :: Int -> Int -> Rational
+        w 0 2 = 0
+        w a b = fromIntegral (a + (b+1) P.^ 2) P.^ 2
+                       
+constantDifference :: GroundAnn -> GroundAnn -> OptiMonad Target
+constantDifference q q' = do
+  target <- freshCoeff
+  let diff = EqSub target [q![mix|2|], q'![mix|2|]]
+  return (target, [diff])                                     
+
+absoluteValue :: LogPotArgs -> GroundAnn -> OptiMonad Target
+absoluteValue potArgs q = do
+  target <- freshCoeff
+  let sum = EqSum target [q!idx | idx <- combi potArgs (args q)]
+  return (target, [sum])
+  
+cOptimize :: LogPotArgs ->
+  GroundAnn -> GroundAnn -> OptiMonad Target
+cOptimize potArgs q q' = do
+  target <- freshCoeff
+  (subTargets, cs) <- unzip <$> sequence [
+        rankDifference q q',
+        weightedNonRankDifference potArgs q q',
+        constantDifference q q',
+        absoluteValue potArgs q]
+  let sum = EqSum target subTargets
+  return (target, sum:concat cs)
 
 -- TODO accept arguments to be printed as well. 
 -- printPot :: LogPotArgs
@@ -294,4 +348,5 @@ logPot args = Potential
   (cLet args)
   (cWeakenVar args)
   (cWeaken args)
+  (cOptimize args)
   --(printPot args)

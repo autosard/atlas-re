@@ -10,7 +10,7 @@ import Prelude hiding ((!), (!!), (^))
 import Primitive(Id)
 
 import CostAnalysis.Coeff(Coeff(..), Factor(..), CoeffIdx(..), (^))
-import CostAnalysis.Solving(Constraint(..))
+import CostAnalysis.Constraint
 import CostAnalysis.Potential((!), RsrcAnn(..), (!!))
 import CostAnalysis.AnnIdxQuoter(mix)
 import qualified Data.Map as M
@@ -18,15 +18,16 @@ import qualified Data.Set as S
 import Data.Text(Text)
 import Debug.Trace (trace)
 
+arrIdx :: [Factor] -> S.Set Factor
 arrIdx = S.fromList
 
 coeff :: [Factor] -> (CoeffIdx, Coeff)
 coeff idx = let idx' = Mixed . S.fromList $ idx in
-  (idx', Unknown 0 "Q" "log" idx')
+  (idx', AnnCoeff 0 "Q" "log" idx')
 
 coeff' :: Id -> (CoeffIdx, Coeff)
 coeff' id = let idx = Pure id in
-  (idx, Unknown 0 "Q" "log" idx)
+  (idx, AnnCoeff 0 "Q" "log" idx)
 
 _aRange = [0,1]
 _bRange = [0,2]
