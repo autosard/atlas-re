@@ -14,7 +14,7 @@ import qualified Data.Set as S
 import Primitive(Id)
 import CostAnalysis.Coeff
 
-data RsrcAnn a = RsrcAnn {
+data HasCoeffs a => RsrcAnn a = RsrcAnn {
   -- | Number of tree arguments
   --len :: Int,
   -- | Tree args
@@ -69,3 +69,26 @@ data FunRsrcAnn a = FunRsrcAnn {
   withCost :: (RsrcAnn a, RsrcAnn a),
   withoutCost :: (RsrcAnn a, RsrcAnn a)}
   deriving(Show)
+
+type RsrcSignature a = Map Id (FunRsrcAnn a)
+
+class HasCoeffs a where
+  getCoeffs :: a -> [Coeff]
+
+instance HasCoeffs CoeffsMap where
+  getCoeffs = M.elems
+
+instance HasCoeffs [CoeffsMap] where
+  getCoeffs = concatMap M.elems  
+
+instance HasCoeffs a => HasCoeffs (RsrcAnn a) where
+  getCoeffs = getCoeffs . coeffs
+
+instance (HasCoeffs a, HasCoeffs b) => HasCoeffs (a,b) where
+  getCoeffs (x,y) = getCoeffs x ++ getCoeffs y
+  
+instance HasCoeffs a => HasCoeffs (FunRsrcAnn a) where
+  getCoeffs ann = (getCoeffs . withCost) ann ++ (getCoeffs . withoutCost) ann
+
+instance HasCoeffs a => HasCoeffs (RsrcSignature a) where
+  getCoeffs = concatMap getCoeffs . M.elems

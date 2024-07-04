@@ -18,6 +18,8 @@ import qualified Data.Text.IO as TextIO
 import qualified Data.Text as T
 import Data.Maybe(fromMaybe, catMaybes)
 import System.Directory
+import qualified Data.Set as S
+import CostAnalysis.RsrcAnn
 
 import Colog (cmap, fmtMessage, logTextStdout, logWarning,
               usingLoggerT, logInfo, logError, LoggerT, Msg, Severity)
@@ -64,13 +66,14 @@ run Options{..} RunOptions{..} = do
   let _bRange = [0,2]
   let args = LogPotArgs _aRange _bRange _aRange _bRange (-1 : _bRange)
   let pot = logPot args
-  (derivs, cs, fns) <- liftIO $ case runProof normalizedProg pot tactics of
+  (derivs, cs, sig) <- liftIO $ case runProof normalizedProg pot tactics of
         Left srcErr -> die $ printSrcError srcErr contents
         Right v -> return v
-  solution <- liftIO $ solveZ3 pot fns cs
+  solution <- liftIO $ solveZ3 pot sig cs
   case solution of
     (Left _) -> logError "error"
-    (Right _) -> logInfo "finished"
+    (Right coeffs) -> let coeffs' = M.restrictKeys coeffs (S.fromList (getCoeffs . withCost $ (sig M.! funName))) in
+                        liftIO $ print (show coeffs')
 
 eval :: Options -> EvalOptions -> App ()
 eval Options{..} EvalOptions{..} = do

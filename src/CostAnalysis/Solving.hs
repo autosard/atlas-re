@@ -1,18 +1,26 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE RankNTypes #-}
 
 module CostAnalysis.Solving where
 
+import Primitive(Id)
 import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.Optimization
 import CostAnalysis.Potential
+import Ast
 import Data.Ratio(numerator, denominator)
 import Z3.Monad 
-import CostAnalysis.RsrcAnn (FunRsrcAnn(withCost))
+import CostAnalysis.RsrcAnn
 import Control.Monad (mapAndUnzipM)
-import Control.Monad.State (evalState)
+import Control.Monad.State (evalState, MonadState (get))
+
+
 import Data.List (intercalate)
+import Data.Map(Map)
+import qualified Data.Map as M
+import qualified Data.Set as S
 
 import Debug.Trace (trace)
 traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
@@ -21,7 +29,7 @@ class Encodeable a where
   toZ3 :: (MonadZ3 z3) => a -> z3 AST
 
 instance Encodeable Coeff where
-  toZ3 (GenCoeff _) = mkFreshRealVar ""
+  toZ3 (GenCoeff id) = mkRealVar =<< mkStringSymbol ("opt_" ++ show id)
   toZ3 q@(AnnCoeff {}) = mkRealVar =<< mkStringSymbol (printCoeff q)
 
 instance Encodeable Rational where
@@ -89,7 +97,7 @@ instance Encodeable Constraint where
     mkEq q' =<< mkMul [p', c']
 
     
-type Solution = Either [Constraint] (Coeff -> Rational)
+type Solution a = Either [Constraint] (Map Coeff Rational)
 
 genOptiTarget :: Potential a -> [FunRsrcAnn a] -> Target
 genOptiTarget pot fns = evalState buildTarget (OptimizationState 0)
@@ -101,28 +109,43 @@ genOptiTarget pot fns = evalState buildTarget (OptimizationState 0)
           let (q, q') = withCost fn
           cOptimize pot q q'
 
-solveZ3 :: Potential a -> [FunRsrcAnn a] -> [Constraint] -> IO Solution
-solveZ3 pot fns cs = do
-  let (optiTarget, optiCs) = genOptiTarget pot fns
-  
-  evalZ3 $ solveZ3' optiTarget (cs ++ optiCs)
+solveZ3 :: HasCoeffs a => Potential a -> RsrcSignature a -> [Constraint] -> IO (Solution a)
+solveZ3 pot sig cs = do
+  let (optiTarget, optiCs) = genOptiTarget pot (M.elems sig)
+  evalZ3 $ solveZ3' optiTarget sig (cs ++ optiCs)
 
-solveZ3' :: (MonadOptimize z3) => Coeff -> [Constraint] -> z3 Solution
-solveZ3' target cs = do
-   cs' <- mapM toZ3 cs
-   target' <- toZ3 target
-   mapM_ optimizeAssert cs'
-   optimizeMinimize target'
-   result <- optimizeCheck []
-   case result of
-     Sat -> do
-       model <- optimizeGetModel
-       error <$> showModel model
-     Unsat -> do
-       unsatCore <- optimizeGetUnsatCore
-       astStrings <- mapM astToString unsatCore
-       error $ intercalate "\n" astStrings
-     Undef -> error "Z3 returned undef."
+
+evalCoeffs :: MonadZ3 z3 => Model -> [Coeff] -> z3 (Map Coeff Rational)
+evalCoeffs m qs = do
+  M.fromList <$> mapM evalCoeff qs
+  where evalCoeff q = do
+          q' <- toZ3 q
+          evalResult <- evalReal m q'
+          case evalResult of
+            Just r -> return (q, r)
+            Nothing -> error $ "Evaluation of coefficient " ++ show q ++ " in z3 model failed."
+
+solveZ3' :: HasCoeffs a => (MonadOptimize z3) => Coeff -> RsrcSignature a -> [Constraint] -> z3 (Solution a)
+solveZ3' target sig cs = do
+  let coeffs = S.unions $ map (S.fromList . getCoeffs) cs
+  coeffs' <- mapM toZ3 (S.toList coeffs)
+  positiveCs <- mapM (\coeff -> mkGt coeff =<< mkReal 0 1) coeffs'
+  mapM_ optimizeAssert positiveCs
+  
+  cs' <- mapM toZ3 cs
+  target' <- toZ3 target
+  mapM_ optimizeAssert cs'
+  optimizeMinimize target'
+  result <- optimizeCheck []
+  case result of
+    Sat -> do
+      model <- optimizeGetModel
+      Right <$> evalCoeffs model (getCoeffs sig)
+    Unsat -> do
+      unsatCore <- optimizeGetUnsatCore
+      astStrings <- mapM astToString unsatCore
+      error $ intercalate "\n" astStrings
+    Undef -> error "Z3 returned undef."
    
    
    

@@ -3,6 +3,7 @@
 module CostAnalysis.Constraint where
 
 import CostAnalysis.Coeff
+import CostAnalysis.RsrcAnn 
 
 data Constraint =
   -- | 'Eq' q p = \[q = p\]
@@ -34,3 +35,21 @@ data Constraint =
   -- | @'Minimize' q@ minimize coefficient @q@
   | Minimize Coeff
   deriving (Eq, Ord, Show)
+
+instance HasCoeffs Constraint where
+  getCoeffs (Eq q p) = [q, p]
+  getCoeffs (EqSum q qs) = q:qs
+  getCoeffs (EqPlusConst q p _) = [q,p]
+  getCoeffs (EqMinusConst q p _) = [q,p]
+  getCoeffs (EqMinusVar q p) = [q,p]
+  getCoeffs (EqPlusMulti q p r) = [q,p,r]
+  getCoeffs (Zero q) = [q]
+  getCoeffs (NotZero q) = [q]
+  getCoeffs (Le q p) = [q,p]
+  getCoeffs (GeSum qs p) = p:qs
+  getCoeffs (Impl c1 c2) = getCoeffs c1 ++ getCoeffs c2
+  getCoeffs (EqSub q ps) = q:ps
+  getCoeffs (EqMultConst q p _) = [q,p]
+  getCoeffs (Minimize q) = [q]
+  
+
