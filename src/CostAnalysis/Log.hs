@@ -21,6 +21,7 @@ import CostAnalysis.Constraint
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Potential(Potential (Potential), GroundPot)       
 import CostAnalysis.Optimization
+import Typing.Type
 
 
 data LogPotArgs = LogPotArgs {
@@ -32,6 +33,8 @@ data LogPotArgs = LogPotArgs {
 
 exp :: Id
 exp = "e"
+
+types = [TreeType]
 
 combi :: LogPotArgs -> [Id] -> [Set Factor]
 combi args xs = map S.fromList $
@@ -48,14 +51,16 @@ combi' args z (x:xs) = [if a > 0 then x^a:y else y
 
 
 rsrcAnn :: LogPotArgs
-  -> Int -> Text -> [Id] -> GroundAnn
-rsrcAnn potArgs id label args = RsrcAnn args $ M.fromList (rankCoeffs ++ logCoeffs)
-  where rankCoeffs = [(Pure x, AnnCoeff id label "log" (Pure x)) | (x,i) <- zip args [1..]]
-        logCoeffs = map ((\idx -> (idx, AnnCoeff id label "log" idx)) . Mixed) $ combi potArgs args
+  -> Int -> Text -> [(Id, Type)] -> GroundAnn
+rsrcAnn potArgs id label args = RsrcAnn args' $ M.fromList (rankCoeffs ++ logCoeffs)
+  where rankCoeffs = [(Pure x, AnnCoeff id label "log" (Pure x)) | (x,i) <- zip vars [1..]]
+        logCoeffs = map ((\idx -> (idx, AnnCoeff id label "log" idx)) . Mixed) $ combi potArgs vars
+        args' = filter (\(x, t) -> matchesTypes t types) args
+        vars = map fst args'
 
 
 forAllCombinations :: LogPotArgs
-  -> Bool -> [Id] -> Id -> Int -> Text -> [Id] -> (AnnArray GroundAnn, Int)
+  -> Bool -> [Id] -> Id -> Int -> Text -> [(Id, Type)] -> (AnnArray GroundAnn, Int)
 forAllCombinations args neg xs x id label ys = (array, nextId)
   where idxs = [S.unions [xIdx, xsIdx, cIdx]
                | xIdx <- varCombi args [x], (not . S.null) xIdx,
@@ -74,7 +79,7 @@ elems = M.elems
 
 eqExceptConst :: LogPotArgs
   -> GroundAnn -> GroundAnn -> [Constraint]
-eqExceptConst potArgs q p = let qs = args q in
+eqExceptConst potArgs q p = let qs = annVars q in
   [Eq (q!x) (p!x) | x <- qs]
   ++ [Eq (q!idx) (p!idx)
      | idx <- combi potArgs qs, idx /= [mix|2|]]
@@ -93,8 +98,8 @@ cMinusVar potArgs q p = let qs = args q in
   
 cPlusMulti :: LogPotArgs
   -> GroundAnn -> GroundAnn -> GroundAnn -> [Constraint]
-cPlusMulti potArgs q p r = let xs = args q
-                               ys = args p in 
+cPlusMulti potArgs q p r = let xs = annVars q
+                               ys = annVars p in 
   [EqPlusMulti (q!x) (p!y) (r!y) | (x,y) <- zip xs ys]
   ++ [EqPlusMulti (q!idxQ) (p!idxP) (r!idxP)
      | (idxQ, idxP) <- zip (combi potArgs xs) (combi potArgs ys)]
@@ -109,7 +114,7 @@ cEq potArgs q q'
                               b <- bRange potArgs, a + b == c]
                         | c <- bRange potArgs, c > 2]
   | (length . args $ q) == 2 && (length . args $ q') == 1 =
-    let [x1, x2] = args q in
+    let [x1, x2] = annVars q in
       Eq (q!x1) (q'!exp) :
       Eq (q!x2) (q'!exp) :
       Eq (q![mix|x1^1|]) (q'!exp) :
@@ -118,16 +123,21 @@ cEq potArgs q q'
       | a <- aRange potArgs,
         c <- bRange potArgs]
   | (length . args $ q) == 1 && (length .args $ q') == 1 =
-    let [x] = args q in 
+    let [x] = annVars q in 
       Eq (q!x) (q'!exp) :
       [Eq (q!idxQ) (q'!idxQ')
       | (idxQ, idxQ') <- zip (combi potArgs [x]) (combi potArgs [exp])]
 
-{- HLINT ignore cMatch "Move guards forward" -}
 cMatch :: LogPotArgs ->
+  GroundAnn -> GroundAnn -> Id -> [(Id, Type)] -> [Constraint]
+cMatch potArgs q p x ys = cMatch' potArgs q p x (map fst ys')
+  where ys' = filter (\(x, t) -> matchesTypes t types) ys
+  
+{- HLINT ignore cMatch' "Move guards forward" -}
+cMatch' :: LogPotArgs ->
   GroundAnn -> GroundAnn -> Id -> [Id] -> [Constraint]
-cMatch potArgs q p x [] =
-  let nonMatchVars = L.delete x (args q) in
+cMatch' potArgs q p x [] =
+  let nonMatchVars = L.delete x (annVars q) in
       [Eq (q!y) (p!y) | y <- nonMatchVars]
       ++ [EqSum (p![mix|2|]) [q![mix|2|], q!x]]
       ++ [EqSum (p!idx) [q![mix|_xs,x^a,b|]
@@ -138,8 +148,8 @@ cMatch potArgs q p x [] =
            c <- bRange potArgs,
            let idx = [mix|_xs,c|],
            idx /= [mix|2|]]
-cMatch potArgs q r x [u, v] =
-  let nonMatchVars = L.delete x (args q) in
+cMatch' potArgs q r x [u, v] =
+  let nonMatchVars = L.delete x (annVars q) in
     Eq (r!u) (q!x) :
     Eq (r!v) (q!x) :
     Eq (r![mix|u^1|]) (q!x) :
@@ -149,39 +159,12 @@ cMatch potArgs q r x [u, v] =
       a <- aRange potArgs,
       b <- bRange potArgs]
     ++ [Eq (q!y) (r!y) | y <- nonMatchVars]
- 
-{- HLINT ignore cMatchLeaf "Move guards forward" -}
-cMatchLeaf :: LogPotArgs ->
-  GroundAnn -> GroundAnn -> Id -> [Constraint]
-cMatchLeaf potArgs q p t = let nonMatchVars = L.delete t (args q) in
-  [Eq (q!y) (p!y) | y <- nonMatchVars]
-  ++ [EqSum (p![mix|2|]) [q![mix|2|], q!t]]
-  ++ [EqSum (p!idx) [q![mix|_xs,t^a,b|]
-                            | a <- aRange potArgs,
-                              b <- bRange potArgs,
-                              a + b == c]
-     | xs <- varCombi potArgs nonMatchVars,
-       c <- bRange potArgs,
-       let idx = [mix|_xs,c|],
-       idx /= [mix|2|]]
-
-cMatchNode :: LogPotArgs
-  -> GroundAnn -> GroundAnn -> Id -> Id -> Id -> [Constraint]
-cMatchNode potArgs q r t u v = let nonMatchVars = L.delete t (args q) in
-  Eq (r!u) (q!t) :
-  Eq (r!v) (q!t) :
-  Eq (r![mix|u^1|]) (q!t) :
-  Eq (r![mix|v^1|]) (q!t) :
-  [Eq (r![mix|_xs,u^a,v^a,b|]) (q![mix|_xs,t^a,b|])
-  | xs <- varCombi potArgs nonMatchVars,
-    a <- aRange potArgs,
-    b <- bRange potArgs]
-  ++ [Eq (q!y) (r!y) | y <- nonMatchVars]
+cMatch' _ _ _ x ys = error $ "xs: " ++ show x ++ ", ys: " ++ show ys
 
 cLetBase :: LogPotArgs
   -> GroundAnn -> GroundAnn -> GroundAnn -> GroundAnn -> [Constraint]
-cLetBase potArgs q p r p' = let xs = args p 
-                                ys = args r in
+cLetBase potArgs q p r p' = let xs = annVars p 
+                                ys = annVars r in
   [Eq (r![mix|c|]) (p'![mix|c|]) | c <- bRange potArgs]
   ++ [Eq (r!y) (q!y) | y <- ys]
   ++ [Eq (p!x) (q!x) | x <- xs]
@@ -198,8 +181,8 @@ cLet :: LogPotArgs
   -> GroundAnn -> AnnArray GroundAnn
   -> AnnArray GroundAnn -> GroundAnn
   -> Id -> [Constraint]
-cLet potArgs neg q p p' ps ps' r x = let xs = args p
-                                         ys = L.delete x (args r) 
+cLet potArgs neg q p p' ps ps' r x = let xs = annVars p
+                                         ys = L.delete x (annVars r) 
                                          _eRange = if neg then
                                            eRangeNeg potArgs
                                            else eRange potArgs in
@@ -267,7 +250,7 @@ cLet potArgs neg q p p' ps ps' r x = let xs = args p
 
 cWeakenVar :: LogPotArgs
   -> GroundAnn -> GroundAnn -> [Constraint]
-cWeakenVar potArgs q r = let xs = args r in
+cWeakenVar potArgs q r = let xs = annVars r in
   [Eq (r!x) (q!x) | x <- xs]
   ++ [Eq (r![mix|_xs',b|]) (q![mix|_xs',b|])
      | xs' <- varCombi potArgs xs,
@@ -283,7 +266,7 @@ cWeaken args ruleArgs q q' p p' = []
 rankDifference :: GroundAnn -> GroundAnn -> OptiMonad Target
 rankDifference q q' = do
   target <- freshCoeff
-  (ds, diffs) <- bindToCoeffs (diff (q'!("e" :: Id))) (args q)
+  (ds, diffs) <- bindToCoeffs (diff (q'!("e" :: Id))) (annVars q)
   let sum = EqSum target ds
   return (target, sum:diffs)
   where diff :: Coeff -> Coeff -> Id -> Constraint
@@ -303,7 +286,7 @@ weightedNonRankDifference potArgs q q' = do
                   (a, b) /= (0, 2),
                   let x = annVar q,
                   let y = annVar q']
-        annVar p = case args p of
+        annVar p = case annVars p of
                      [x] -> x
                      _multiArg -> error "Index weight is only defined for annotations of length 1."
         w :: Int -> Int -> Rational
@@ -319,7 +302,7 @@ constantDifference q q' = do
 absoluteValue :: LogPotArgs -> GroundAnn -> OptiMonad Target
 absoluteValue potArgs q = do
   target <- freshCoeff
-  let sum = EqSum target [q!idx | idx <- combi potArgs (args q)]
+  let sum = EqSum target [q!idx | idx <- combi potArgs (annVars q)]
   return (target, [sum])
   
 cOptimize :: LogPotArgs ->
@@ -349,6 +332,7 @@ cOptimize potArgs q q' = do
 
 logPot :: LogPotArgs -> GroundPot
 logPot args = Potential
+  types
   (rsrcAnn args)
   (forAllCombinations args)
   elems

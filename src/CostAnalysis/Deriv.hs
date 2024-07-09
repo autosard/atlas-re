@@ -83,7 +83,7 @@ genAnnId = do
   annIdGen .= g+1
   return g
 
-forAllCombinations' :: Bool -> [Id] -> Id -> Text -> [Id] -> ProveMonad a (AnnArray (RsrcAnn a))
+forAllCombinations' :: Bool -> [Id] -> Id -> Text -> [(Id, Type)] -> ProveMonad a (AnnArray (RsrcAnn a))
 forAllCombinations' neg xs x label ys = do
   pot <- view potential
   g <- use annIdGen
@@ -94,15 +94,14 @@ forAllCombinations' neg xs x label ys = do
 genFunRsrcAnn :: TypedFunDef -> ProveMonad a (FunRsrcAnn a)
 genFunRsrcAnn fun = do
   pot <- view potential
-  let (ctxFrom, (argTo, tTo)) = ctxFromFn fun
+  let (ctxFrom, argTo) = ctxFromFn fun
   (fromId, toId) <- genAnnIdPair
-  let argsFrom = M.keys (M.filter isTree ctxFrom)
-  let argsTo = [argTo | isTree tTo]
+  let argsFrom = M.toAscList ctxFrom
   let from = rsrcAnn pot fromId "Q" argsFrom
-  let to = rsrcAnn pot toId "Q'" argsTo
+  let to = rsrcAnn pot toId "Q'" [argTo]
   (fromIdCf, toIdCf) <- genAnnIdPair
   let fromCf = rsrcAnn pot fromId "P" argsFrom
-  let toCf = rsrcAnn pot toId "P'" argsTo
+  let toCf = rsrcAnn pot toId "P'" [argTo]
   return $ FunRsrcAnn (from, to) (fromCf, toCf)
 
 
@@ -162,9 +161,9 @@ proveMatchArm matchVar tactic cf ctx
   (MatchArm pat@(ConstPat _ id patVars) e) q q' = do
   pot <- view potential
   let tMatch = getType pat
-  let (vars, tVars) = unzip $ mapMaybe getVar patVars
-  let ctx' = M.delete matchVar ctx `M.union` M.fromList (zip vars tVars)
-  p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (M.keys ctx')
+  let vars = mapMaybe getVar patVars
+  let ctx' = M.delete matchVar ctx `M.union` M.fromList vars
+  p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (M.toAscList ctx')
   deriv <- proveExpr tactic cf ctx' e p q'
   let cs = cMatch pot q p matchVar vars
   tell cs
@@ -197,9 +196,10 @@ splitLetCtx ctx e1 e2 = do
   let ctxE1 = M.restrictKeys ctx varsE1
   let ctxE2 = M.restrictKeys ctx varsE2
   
-  if (ctx M.\\ (ctxE1 `M.union` ctxE2)) /= M.empty then
-    errorFrom (SynExpr e1) $ "Found free variables in the body of a let binding which do not occur in Δ." ++ show ctxE1 ++ show ctxE2 ++ show ctx
-  else return (ctxE1, ctxE2)
+  -- if (ctx M.\\ (ctxE1 `M.union` ctxE2)) /= M.empty then
+  --   errorFrom (SynExpr e1) $ "Found free variables in the body of a let binding which do not occur in Δ."
+  --   ++ "\nΓ: " ++ show ctxE1 ++ "\nΔ: " ++  show ctxE2 ++ "\n(Γ,Δ): " ++ show ctx
+  return (ctxE1, ctxE2)
 
 proveLet :: Prove TypedExpr Derivation
 proveLet tactic cf ctx e@(Let x e1 e2) q q'
@@ -211,12 +211,12 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       -- TODO if let binds a recursive call then use negative numbers for e
       let neg = False
       
-      p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (M.keys ctxE1)
-      p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure ["e"]
-      r <- rsrcAnn pot <$> genAnnId <*> pure "R" <*> pure (M.keys ctxE2')
+      p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (M.toAscList ctxE1)
+      p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure [("e", getType e1)]
+      r <- rsrcAnn pot <$> genAnnId <*> pure "R" <*> pure (M.toAscList ctxE2')
       
-      ps <- forAllCombinations' neg (M.keys ctxE2') x "P" (M.keys ctxE1)
-      ps' <- forAllCombinations' neg (M.keys ctxE2') x "P'" ["e"]
+      ps <- forAllCombinations' neg (M.keys ctxE2') x "P" (M.toAscList ctxE1)
+      ps' <- forAllCombinations' neg (M.keys ctxE2') x "P'" [("e", getType e1)]
 
       deriv1 <- proveExpr t1 cf ctxE1 e1 p p'
       deriv2 <- proveExpr t2 cf ctxE2' e2 r q'      
@@ -230,11 +230,11 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       let [t1, t2] = subTactics 2 tactic
       (ctxE1, ctxE2) <- splitLetCtx ctx e1 e2
 
-      p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (M.keys ctxE1)
+      p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (M.toAscList ctxE1)
       p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure []
       deriv1 <- proveExpr t1 cf ctxE1 e1 p p'
 
-      r <- rsrcAnn pot <$> genAnnId <*> pure "R" <*> pure (M.keys ctxE2)
+      r <- rsrcAnn pot <$> genAnnId <*> pure "R" <*> pure (M.toAscList ctxE2)
       deriv2 <- proveExpr t2 cf ctxE2 e2 r q'
 
       let cs = cLetBase pot q p r p'
@@ -262,7 +262,7 @@ proveWeakenVar tactic cf ctx e q q' = do
         return $ S.elemAt 0 redundantVars
   let ctx' = M.delete var ctx 
   let [t] = subTactics 1 tactic
-  r <- rsrcAnn pot <$> genAnnId <*> pure "R" <*> pure (M.keys ctx')
+  r <- rsrcAnn pot <$> genAnnId <*> pure "R" <*> pure (M.toAscList ctx')
   deriv <- proveExpr t cf ctx' e r q'
   let cs = cWeakenVar pot q r
   tell cs
@@ -333,7 +333,7 @@ proveExpr tactic _ _ e = \_ _ -> errorFrom (SynExpr e) $ "Could not apply tactic
 
 
 ctxFromProdType :: Type -> [Id] -> TypeCtx
-ctxFromProdType (TAp Prod ts) args = M.fromList $ filter (\(x, t) -> isTree t) $ zip args ts
+ctxFromProdType (TAp Prod ts) args = M.fromList $ zip args ts
 ctxFromProdType t _ = error $ "Cannot construct a type context from the non product type '" ++ show t ++ "'."
 
 proveFun :: Prove TypedFunDef Derivation

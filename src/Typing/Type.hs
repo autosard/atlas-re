@@ -1,4 +1,5 @@
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Typing.Type where
 
@@ -10,7 +11,6 @@ import Primitive(Id)
 newtype Tyvar = Tyvar Id 
   deriving (Eq, Ord, Show)
 
--- Type constructor of arity n
 data Tycon = Num
   | Bool
   | Tree
@@ -62,3 +62,15 @@ isTree _ = False
 isBool :: Type -> Bool
 isBool (TAp Bool []) = True
 isBool _ = False
+
+-- no proper unification just top level check
+matchesType :: Type -> Type -> Bool
+matchesType (TAp c1 _) (TAp c2 _) | c1 == c2 = True
+matchesType _ _ = False
+
+matchesTypes :: Type -> [Type] -> Bool
+matchesTypes t = any (matchesType t)
+
+pattern TreeType :: Type
+pattern TreeType <- TAp Tree _
+  where TreeType = TAp Tree [TGen 0]

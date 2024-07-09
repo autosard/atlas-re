@@ -7,7 +7,7 @@
     )
     (match
       (w{mono}
-        leaf
+        const
       )
       (let cmp
       (ite
@@ -25,12 +25,12 @@
               (match
                 (w{mono}
                   (w:var
-                    leaf
+                    const
                   )
                 )
                 (w{l2xy mono}
                   (w:var
-                    node
+                    const
                   )
                 )
               )
@@ -38,7 +38,7 @@
           )
         )
         (w{mono}
-          node
+          const
         )
       ))
     )

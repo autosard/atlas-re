@@ -206,14 +206,13 @@ instance Annotated Expr a where
   getAnn (TickAnn ann _ _) = ann
   getAnn (CoinAnn ann _) = ann
 
-
 instance Annotated MatchArm a where
   mapAnn f (MatchArmAnn ann p e) = MatchArmAnn (f ann) (mapAnn f p) (mapAnn f e)
   getAnn (MatchArmAnn ann _ _) = ann
   
 
 instance Annotated Pattern a where
-  mapAnn f (ConstPat ann id vars) = ConstPat (f ann) id vars
+  mapAnn f (ConstPat ann id vars) = ConstPat (f ann) id (map (mapAnn f) vars)
   mapAnn f (Alias ann id) = Alias (f ann) id
   mapAnn f (WildcardPat ann) = WildcardPat (f ann)
 

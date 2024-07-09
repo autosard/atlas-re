@@ -1,11 +1,11 @@
 (match
   (w{mono}
     (let
-      leaf
+      const
       (let
-        leaf
+        const
         (w{mono}
-          node
+          const
         )
       )
     )
@@ -17,33 +17,33 @@
       )
       (match
         (w{mono}
-          leaf
+          const
         )
 	(let cmp
         (ite
           (w{mono}
-            node
+            const
           )
 	  (let cmp
           (ite
             (w{mono}
               (let
-                leaf
+                const
                 (let
-                  node
+                  const
                   (w{mono}
-                    node
+                    const
                   )
                 )
               )
             )
             (w{mono}
               (let
-                leaf
+                const 
                 (let
-                  node
+                  const
                   (w{mono}
-                    node
+                    const
                   )
                 )
               )

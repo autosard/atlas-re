@@ -13,15 +13,19 @@ import qualified Data.Set as S
 
 import Primitive(Id)
 import CostAnalysis.Coeff
+import Typing.Type
 
 data HasCoeffs a => RsrcAnn a = RsrcAnn {
   -- | Number of tree arguments
   --len :: Int,
   -- | Tree args
-  args :: [Id],
+  args :: [(Id, Type)],
   -- | Map of variables to coefficients
   coeffs :: a}
   deriving (Eq, Show)
+
+annVars :: HasCoeffs a => RsrcAnn a -> [Id]
+annVars = map fst . args
 
 type GroundAnn = RsrcAnn CoeffsMap
 type CombinedAnn = RsrcAnn [CoeffsMap]
