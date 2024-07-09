@@ -68,7 +68,7 @@ spec = do
       it "returns the correct type" $ do
         let ctx = M.fromList [("t", toScheme (TVar $ Tyvar "t")), ("arm1", toScheme tNum), ("arm2", toScheme tNum)]
         let arm1 = MatchArmAnn sp (PatTreeLeaf sp) (VarAnn sp "arm1")
-        let arm2 = MatchArmAnn sp (PatTreeNode sp (Id "l") (Id "v") (Id "r")) (VarAnn sp "arm2")
+        let arm2 = MatchArmAnn sp (PatTreeNode sp (Id sp "l") (Id sp "v") (Id sp "r")) (VarAnn sp "arm2")
         let e = MatchAnn sp (VarAnn sp "t") [arm1, arm2]
         let (e', state) = runTI testState (tiExpr ctx e)
         let s = subst state 
@@ -130,7 +130,7 @@ spec = do
     context "given an id" $ do
       it "should bind the id" $ do
         let ctx = M.empty 
-        let v = Id "a"
+        let v = Id sp "a"
         let t = evalTI testState (tiPatternVar ctx v)
         t `shouldSatisfy` either (const False) (\(ctx, t) -> M.member "a" ctx)
 
@@ -139,7 +139,7 @@ spec = do
     context "given a tree pattern" $ do
       it "should bind tree components and return tree type" $ do
         let ctx = M.empty
-        let p = PatTreeNode sp (Id "l") (Id "v") (Id "r")
+        let p = PatTreeNode sp (Id sp "l") (Id sp "v") (Id sp "r")
         let (r, state) = runTI testState (tiPattern ctx p)
         let isCorrect (ctx, t) = fromMaybe False (do
                                      l <- ctx M.!? "l"
@@ -155,7 +155,7 @@ spec = do
     context "given a valid match arm" $ do
       it "returns its type" $ do
         let ctx = M.empty
-        let p = PatTreeNode sp (Id "l") (Id "v") (Id "r")
+        let p = PatTreeNode sp (Id sp "l") (Id sp "v") (Id sp "r")
         let e = VarAnn sp "l" 
         let arm = MatchArmAnn sp p e
         let (r, state) = runTI testState (tiMatchArm ctx arm)

@@ -27,7 +27,7 @@ import CostAnalysis.Potential hiding (Factor(..))
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Constraint
 import StaticAnalysis(freeVars)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import SourceError
 
 import Debug.Trace (trace)
@@ -150,33 +150,27 @@ proveIte tactic cf ctx e@(Ite _ e1 e2) q q' = do
 
 
 proveMatchArm :: Id -> Prove TypedMatchArm ([Constraint], Derivation)
-proveMatchArm matchVar tactic cf ctx (MatchArm (PatTreeLeaf _) e) q q' = do
-  pot <- view potential
-  let ctx' = M.delete matchVar ctx
-  p <- rsrcAnn pot <$> genAnnId <*> pure "P(leaf)" <*> pure (M.keys ctx')
-  deriv <- proveExpr tactic cf ctx' e p q'
-  let cs = cMatchLeaf pot q p matchVar
-  tell cs
-  return (cs, deriv)
 proveMatchArm matchVar tactic cf ctx
-  (MatchArm pat@(PatTreeNode _ (Id idL) _ (Id idR)) e) q q' = do
-  pot <- view potential
-  let tTree = getType pat
-  let tValue = treeValueType tTree
-  let ctx' = M.delete matchVar ctx `M.union` M.fromList [(idL, tTree), (idR, tTree)]
-  r <- rsrcAnn pot <$> genAnnId <*> pure "R(node)" <*> pure (M.keys ctx')
-  deriv <- proveExpr tactic cf ctx' e r q'
-  let cs = cMatchNode pot q r matchVar idL idR 
-  tell cs
-  return (cs, deriv)
-proveMatchArm matchVar tactic cf ctx
-  arm@(MatchArm (PatTuple _ (Id x1) (Id x2)) e) q q' = do
+  arm@(MatchArm (PatTuple _ (Id _ x1) (Id _ x2)) e) q q' = do
   let (tx1, tx2) = splitTupleType $ getType arm
   if not $ isTree tx1 && isTree tx2 then do
     let ctx' = ctx `M.union` M.fromList [(x1, tx1), (x2, tx2)]
     deriv <- proveExpr tactic cf ctx' e q q'
     return ([], deriv)
-  else errorFrom (SynArm arm) "match-pair rule applied to a pair with more then one tree type."
+  else errorFrom (SynArm arm) "match rule applied to a pair with more then one tree type."
+proveMatchArm matchVar tactic cf ctx
+  (MatchArm pat@(ConstPat _ id patVars) e) q q' = do
+  pot <- view potential
+  let tMatch = getType pat
+  let (vars, tVars) = unzip $ mapMaybe getVar patVars
+  let ctx' = M.delete matchVar ctx `M.union` M.fromList (zip vars tVars)
+  p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (M.keys ctx')
+  deriv <- proveExpr tactic cf ctx' e p q'
+  let cs = cMatch pot q p matchVar vars
+  tell cs
+  return (cs, deriv)
+  where getVar v@(Id _ id) = Just (id, getType v)
+        getVar (WildcardVar _) = Nothing
 proveMatchArm matchVar tactic cf ctx arm@(MatchArm pat@(Alias _ x) e) q q' = do
   if M.member x ctx then do
     deriv <- proveExpr tactic cf ctx e q q'

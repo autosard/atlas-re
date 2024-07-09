@@ -19,7 +19,6 @@ import Primitive(Id)
 import Typing.Type (Type, splitProdType, splitFnType)
 import Typing.Subst(Types(apply, tv))
 import Typing.Scheme (Scheme, toType)
-import CostAnalysis.Potential (Potential)
 import Data.Ratio(numerator, denominator)
     
 type Fqn = (Text, Text)
@@ -40,14 +39,15 @@ data Syntax a
    = SynExpr (Expr a)
    | SynArm (MatchArm a)
    | SynPat (Pattern a)
+   | SynPatVar (PatternVar a)
 
 data MatchArm a = MatchArmAnn (XExprAnn a) (Pattern a) (Expr a)
 
-data PatternVar = Id Id | WildcardVar
-  deriving (Eq, Show)
+data PatternVar a = Id (XExprAnn a) Id
+  | WildcardVar (XExprAnn a)
 
 data Pattern a
-  = ConstPat (XExprAnn a) Id [PatternVar]
+  = ConstPat (XExprAnn a) Id [PatternVar a]
   | Alias (XExprAnn a) Id
   | WildcardPat (XExprAnn a) 
 
@@ -71,13 +71,13 @@ funAnn :: FunDef a -> XFunAnn a
 funAnn (FunDef ann _ _ _) = ann
   
 -- pattern synomyms for constructor patterns
-pattern PatTreeNode :: XExprAnn a -> PatternVar -> PatternVar -> PatternVar -> Pattern a
+pattern PatTreeNode :: XExprAnn a -> PatternVar a -> PatternVar a -> PatternVar a -> Pattern a
 pattern PatTreeNode ann l v r <- ConstPat ann "node" [l, v, r]
   where PatTreeNode ann l v r = ConstPat ann "node" [l, v, r]
 pattern PatTreeLeaf :: XExprAnn a -> Pattern a
 pattern PatTreeLeaf ann <- ConstPat ann "leaf" []
   where PatTreeLeaf ann = ConstPat ann "leaf" []
-pattern PatTuple :: XExprAnn a -> PatternVar -> PatternVar -> Pattern a
+pattern PatTuple :: XExprAnn a -> PatternVar a -> PatternVar a -> Pattern a
 pattern PatTuple ann x y <- ConstPat ann "(,)" [x, y]
   where PatTuple ann x y = ConstPat ann "(,)" [x, y]
 
@@ -117,7 +117,6 @@ isCmp (Const "LT" _ ) = True
 isCmp (Const "GT" _ ) = True
 isCmp _ = False
 
-
 pattern PatWildcard :: XExprAnn a -> Pattern a
 pattern PatWildcard ann <- WildcardPat ann
   where PatWildcard ann = WildcardPat ann
@@ -144,9 +143,9 @@ printExprHead (Let {}) = "let"
 printExprHead (Tick _ _) = "tick"
 printExprHead (Coin _) = "coin"
 
-printPatVar :: PatternVar -> String
-printPatVar (Id id) = T.unpack id
-printPatVar WildcardVar = "_"
+printPatVar :: PatternVar a -> String
+printPatVar (Id _ id) = T.unpack id
+printPatVar (WildcardVar _) = "_"
 
 printPat :: Pattern a -> String
 printPat (ConstPat _ id vars) = T.unpack id ++ " " ++(unwords . map printPatVar $ vars)
@@ -222,6 +221,12 @@ instance Annotated Pattern a where
   getAnn (Alias ann _) = ann
   getAnn (WildcardPat ann) = ann
 
+instance Annotated PatternVar a where
+  mapAnn f (Id ann id) = Id (f ann) id
+  mapAnn f (WildcardVar ann) = WildcardVar (f ann)
+  getAnn (Id ann _) = ann
+  getAnn (WildcardVar ann) = ann
+
 instance Annotated Syntax a where
   mapAnn f (SynExpr e) = SynExpr $ mapAnn f e
   mapAnn f (SynArm arm) = SynArm $ mapAnn f arm
@@ -237,11 +242,12 @@ type ParsedFunDef = FunDef Parsed
 type ParsedExpr = Expr Parsed
 type ParsedMatchArm = MatchArm Parsed
 type ParsedPattern = Pattern Parsed
+type ParsedPatternVar = PatternVar Parsed
 
+deriving instance Show ParsedPatternVar
 deriving instance Show ParsedPattern
 deriving instance Show ParsedMatchArm
 deriving instance Show ParsedExpr
-
 
 data ParsedFunAnn = ParsedFunAnn {
   pfLoc :: SourcePos,
@@ -263,7 +269,10 @@ type TypedFunDef = FunDef Typed
 type TypedExpr = Expr Typed
 type TypedMatchArm = MatchArm Typed
 type TypedPattern = Pattern Typed
+type TypedPatternVar = PatternVar Typed
 
+deriving instance Show TypedPatternVar
+deriving instance Eq TypedPatternVar
 deriving instance Show TypedPattern
 deriving instance Eq TypedPattern
 deriving instance Show TypedMatchArm

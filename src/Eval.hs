@@ -87,11 +87,11 @@ match val (Alias _ id) = Just $ M.singleton id val
 match _ (WildcardPat _) = Just M.empty
 match _ _ = Nothing
 
-bindPatVars :: [PatternVar] -> [Val] -> Env
+bindPatVars :: [PatternVar a] -> [Val] -> Env
 bindPatVars vars vals = foldr go M.empty $ zip vars vals
   where go (var, val) env = case var of
-          (Id id) -> M.insert id val env
-          WildcardVar -> env
+          (Id _ id) -> M.insert id val env
+          (WildcardVar _) -> env
 
 evalExpr :: Env -> TypedExpr -> Eval Val
 evalExpr env (Var id) = find id env

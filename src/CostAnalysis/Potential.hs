@@ -36,10 +36,8 @@ data Potential a = Potential {
   cPlusMulti :: RsrcAnn a -> RsrcAnn a -> RsrcAnn a -> [Constraint],
   -- | @ 'cEq' q q'@ returns constraints that guarantee \[\phi(\Gamma \mid Q) = \phi(\Delta \mid Q') \text{ where } |\Gamma| = |Q|, |\Delta| = |Q'|\]  
   cEq :: RsrcAnn a -> RsrcAnn a -> [Constraint],
-  -- | @ 'cMatchLeaf' q q' t@ returns constraints that guarantee \[\forall  \Gamma.\ \phi(\Gamma, \verb|leaf| \mid Q) = \phi(\Gamma, \mid Q')\] where @t@ is the variable that matched.
-  cMatchLeaf :: RsrcAnn a -> RsrcAnn a -> Id -> [Constraint],
-  -- | @ 'cMatchNode' q q' t u v@ returns constraints that guarantee \[\forall  \Gamma,u: T, b: B, v. T.\ \phi(\Gamma, \verb|node|\,u\,b\,v \mid Q) = \phi(\Gamma, u, b, v\mid Q')\] where @t@ is the variable that matched.
-  cMatchNode :: RsrcAnn a -> RsrcAnn a -> Id -> Id -> Id -> [Constraint],
+  -- | @ 'cMatch' q p x ys@ returns constraints that guarantee \[\phi(\Gamma, x \mid Q) = \phi(\Gamma, \vec{y} \mid P)\] where @x@ is the variable that matched and @ys@ is the pattern variables.
+  cMatch :: RsrcAnn a -> RsrcAnn a -> Id -> [Id] -> [Constraint],
   -- | @ 'cLetBase' q p r p'@
   cLetBase :: RsrcAnn a -> RsrcAnn a -> RsrcAnn a -> RsrcAnn a -> [Constraint],
   -- | @ 'cLet' q p p' ps ps' r x@

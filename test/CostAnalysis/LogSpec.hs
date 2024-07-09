@@ -159,7 +159,7 @@ spec = do
                     Eq (q!["x"^1, Const 2]) (q'!["e"^1, Const 2])]
       cEq potArgs q q' `shouldBe` should
   describe "cMatch" $ do
-    it "generates the correct constraints" $ do
+    it "generates the correct constraints or the leaf case" $ do
       let (x1, x2) = ("x1", "x2") 
       let q = rsrcAnn potArgs 0 "Q" [x1, x2]
       let p = rsrcAnn potArgs 1 "P" [x1]
@@ -168,9 +168,8 @@ spec = do
                     EqSum (p!empty) [q!empty],
                     EqSum (p!["x1"^1]) [q!["x1"^1]],
                     EqSum (p!["x1"^1,Const 2]) [q!["x1"^1, Const 2]]]
-      cMatchLeaf potArgs q p x2 `shouldBe` should
-  describe "cMatchNode" $ do
-    it "generates the correct constraints" $ do
+      cMatch potArgs q p x2 [] `shouldBe` should
+    it "generates the correct constraints for the node case" $ do
       let (t, u, v) = ("t", "u", "v") 
       let q = rsrcAnn potArgs 0 "Q" [t]
       let r = rsrcAnn potArgs 1 "R" [u, v]
@@ -182,7 +181,7 @@ spec = do
                     Eq (r![mix|2|]) (q![mix|2|]),
                     Eq (r![mix|u^1,v^1|]) (q![mix|t^1|]),
                     Eq (r![mix|u^1,v^1,2|]) (q![mix|t^1,2|])]
-      cMatchNode potArgs q r t u v`shouldBe` should
+      cMatch potArgs q r t [u,v] `shouldBe` should
   describe "cLetBase" $ do
     it "generates the correct constraints" $ do
       let (t1, t2) = ("t1", "t2")

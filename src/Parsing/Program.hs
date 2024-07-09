@@ -196,10 +196,10 @@ pConstPattern pos = do
     <|> ("(,)",) <$> try (pParens ((\x y -> [x, y]) <$> pPatternVar <* symbol "," <*> pPatternVar))
   return $ ConstPat pos name args
 
-pPatternVar :: Parser PatternVar
-pPatternVar = (WildcardVar <$ symbol "_")
-  <|> (Id <$> pIdentifier)
-
+pPatternVar :: Parser ParsedPatternVar
+pPatternVar = do
+  pos <- getSourcePos
+  WildcardVar pos <$ symbol "_" <|> (Id pos <$> pIdentifier)
 
 pApplication :: Parser ParsedExpr
 pApplication = AppAnn <$> getSourcePos <*> pIdentifier <*> some pArg

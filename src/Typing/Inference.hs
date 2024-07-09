@@ -149,22 +149,25 @@ type Infer e t = Context -> e -> TI t
 litScheme :: Literal -> Scheme
 litScheme (LitNum _) = Forall 0 (TAp Num [])
 
-tiPatternVar :: Infer PatternVar (Context, Type)
-tiPatternVar ctx (Id id) = do
-  v <- newTVar
-  return (M.insert id (Forall 0 v) ctx, v)
-tiPatternVar ctx WildcardVar = do
+tiPatternVar :: Infer ParsedPatternVar (Context, TypedPatternVar)
+tiPatternVar ctx (Id ann id) = do
   t <- newTVar
-  return (M.empty, t)
+  let ann' = extendWithType t ann
+  return (M.insert id (Forall 0 t) ctx, Id ann' id)
+tiPatternVar ctx (WildcardVar ann) = do
+  t <- newTVar
+  let ann' = extendWithType t ann
+  return (M.empty, WildcardVar ann')
 
 tiPattern :: Infer ParsedPattern (Context, TypedPattern)
 tiPattern ctx (ConstPat ann id vars) = do
   tp <- newTVar
   constT <- instScheme (constType id)
-  (ctxs, varTs) <- mapAndUnzipM (tiPatternVar ctx) vars
+  (ctxs, vars') <- mapAndUnzipM (tiPatternVar ctx) vars
+  let varTs = map getType vars'
   unify constT (varTs `fn` tp)
   let ann' = extendWithType tp ann
-  return (M.unions (ctxs ++ [ctx]), ConstPat ann' id vars)
+  return (M.unions (ctxs ++ [ctx]), ConstPat ann' id vars')
 tiPattern ctx (PatAlias ann id) = do
   v <- newTVar
   let ann' = extendWithType v ann

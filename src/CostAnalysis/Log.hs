@@ -12,8 +12,6 @@ import Prelude hiding ((!!), (^), exp)
 import qualified Prelude as P((^))
 import Data.Text(Text)
 import qualified Data.Text as T
-import Control.Monad (zipWithM)
-import Data.Foldable (foldrM)
 
 import Primitive(Id)
 import CostAnalysis.AnnIdxQuoter(mix)
@@ -365,8 +363,7 @@ logPot args = Potential
   (cMinusVar args)
   (cPlusMulti args)
   (cEq args)
-  (cMatchLeaf args)
-  (cMatchNode args)
+  (cMatch args)
   (cLetBase args)
   (cLet args)
   (cWeakenVar args)

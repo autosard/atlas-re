@@ -57,7 +57,7 @@ spec = do
         let matched = ConstVal "node" [ConstVal "leaf" [], LitVal (LitNum 3), ConstVal "leaf" []]
         let env = M.fromList [("matched", matched), ("x", v)]
         let arm1 = MatchArmAnn testAnn (PatTreeLeaf testAnn) (VarAnn testAnn "arm1")
-        let arm2 = MatchArmAnn testAnn (PatTreeNode testAnn (Id "l") (Id "v") (Id "r")) (VarAnn testAnn "v")
+        let arm2 = MatchArmAnn testAnn (PatTreeNode testAnn (Id testAnn "l") (Id testAnn "v") (Id testAnn "r")) (VarAnn testAnn "v")
         let e = MatchAnn testAnn (VarAnn testAnn "matched") [arm1, arm2]
         let r = testEval $ evalExpr env e
         r `shouldBe` Right (0, v)
