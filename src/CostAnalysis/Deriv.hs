@@ -116,19 +116,12 @@ errorFrom e msg = throwError $ SourceError loc msg
           (Loc pos) -> pos
           (DerivedFrom pos) -> pos
 
-proveLeaf :: Prove TypedExpr Derivation
-proveLeaf _ _ ctx e q q' = do
+proveConst :: Prove TypedExpr Derivation
+proveConst _ _ ctx e q q' = do
   p <- view potential
-  let cs = cLeaf p q q'
+  let cs = cEq p q q'
   tell cs
-  return $ T.Node (RuleApp R.Leaf cs e) []
-
-proveNode :: Prove TypedExpr Derivation
-proveNode _ _ ctx e q q' = do
-  p <- view potential
-  let cs = cNode p q q'
-  tell cs
-  return $ T.Node (RuleApp R.Node cs e) []
+  return $ T.Node (RuleApp R.Const cs e) []
 
 proveCmp :: Prove TypedExpr Derivation
 proveCmp _ _ _ e _ _ = do
@@ -143,9 +136,9 @@ provePair :: Prove TypedExpr Derivation
 provePair _ _ ctx e@(Tuple (Var x1) (Var x2)) q q' = do
   if not $ isTree (ctx M.!x1) && isTree (ctx M.!x2) then do
     pot <- view potential
-    let cs = cPair pot q q'
+    let cs = cEq pot q q'
     tell cs
-    return $ T.Node (RuleApp R.Pair [] e) []
+    return $ T.Node (RuleApp R.Const [] e) []
   else errorFrom (SynExpr e) "pair rule applied to more then one tree type."
 
 proveIte :: Prove TypedExpr Derivation
@@ -260,8 +253,6 @@ proveApp tactic cf ctx e@(App id _) q q' = do
   fnSig <- use sig
   let (p, p') = withCost $ fnSig M.! id
   let (r, r') = withoutCost $ fnSig M.! id
-  -- q <- rsrcAnn pot <$> genAnnId <*> pure "Q" <*> pure (args p)
-  -- q' <- rsrcAnn pot <$> genAnnId <*> pure "Q'" <*> pure (args p')
   let cs = cPlusMulti pot q p r
         ++ cPlusMulti pot q' p' r'
   tell cs
@@ -303,6 +294,7 @@ proveShift tactic cf ctx e q q' = do
   p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure (args q')
   let cs = cMinusVar pot p q
         ++ cMinusVar pot p' q'
+  tell cs
   deriv <- proveExpr subTactic cf ctx e p p'
   return $ T.Node (RuleApp R.Shift cs e) [deriv]
 
@@ -324,9 +316,9 @@ proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
 proveExpr :: Prove TypedExpr Derivation
 -- manual tactic
 proveExpr (Rule R.Var []) cf ctx e@(Var _) = proveVar Auto cf ctx e
-proveExpr (Rule R.Leaf []) cf ctx e@Leaf = proveLeaf Auto cf ctx e
-proveExpr (Rule R.Node []) cf ctx e@(Node {}) = proveNode  Auto cf ctx e
 proveExpr (Rule R.Cmp []) cf ctx e@(Const {}) | isCmp e = proveCmp Auto cf ctx e
+proveExpr (Rule R.Const []) cf ctx e@(Tuple {}) = provePair Auto cf ctx e
+proveExpr (Rule R.Const []) cf ctx e@(Const {}) = proveConst Auto cf ctx e
 proveExpr tactic@(Rule R.Match _) cf ctx e@(Match {}) = proveMatch tactic cf ctx e
 proveExpr tactic@(Rule R.Ite _) cf ctx e@(Ite {}) = proveIte tactic cf ctx e
 proveExpr tactic@(Rule R.Let _) cf ctx e@(Let {}) = proveLet tactic cf ctx e
@@ -336,11 +328,11 @@ proveExpr tactic@(Rule (R.Weaken _) _) cf ctx e = proveWeaken tactic cf ctx e
 proveExpr tactic@(Rule R.Shift _) cf ctx e = proveShift tactic cf ctx e
 proveExpr tactic@(Rule R.App _) cf ctx e@(App {}) = proveApp Auto cf ctx e
 -- auto tactic
-proveExpr Auto cf ctx e@Leaf = proveWeaken (Rule (R.Weaken []) [Auto]) cf ctx e
-proveExpr Auto cf ctx e@(Var _) = proveVar Auto cf ctx e
-proveExpr Auto cf ctx e@(Const _ _) | isCmp e = proveCmp Auto cf ctx e
-proveExpr Auto cf ctx e@(Node {}) = proveNode Auto cf ctx e
-proveExpr Auto cf ctx e@(Match _ _) = proveMatch Auto cf ctx e
+-- proveExpr Auto cf ctx e@Leaf = proveWeaken (Rule (R.Weaken []) [Auto]) cf ctx e
+-- proveExpr Auto cf ctx e@(Var _) = proveVar Auto cf ctx e
+-- proveExpr Auto cf ctx e@(Const _ _) | isCmp e = proveCmp Auto cf ctx e
+-- proveExpr Auto cf ctx e@(Node {}) = proveNode Auto cf ctx e
+-- proveExpr Auto cf ctx e@(Match _ _) = proveMatch Auto cf ctx e
 
 proveExpr tactic _ _ e = \_ _ -> errorFrom (SynExpr e) $ "Could not apply tactic to given "
   ++ printExprHead e ++ " expression. Tactic: '" ++ printTacticHead tactic ++ "'"

@@ -67,7 +67,8 @@ instance Encodeable Constraint where
     p' <- toZ3 p
     r' <- toZ3 r
     k <- mkFreshRealVar "k"
-    sum <- mkAdd [p', k]
+    prod <- mkMul [r', k]
+    sum <- mkAdd [p', prod]
     mkEq q' sum
   toZ3 (Zero q) = do
     q' <- toZ3 q
@@ -127,16 +128,14 @@ evalCoeffs m qs = do
 
 solveZ3' :: HasCoeffs a => (MonadOptimize z3) => Coeff -> RsrcSignature a -> [Constraint] -> z3 (Solution a)
 solveZ3' target sig cs = do
-  let coeffs = S.unions $ map (S.fromList . getCoeffs) cs
-  coeffs' <- mapM toZ3 (S.toList coeffs)
-  positiveCs <- mapM (\coeff -> mkGt coeff =<< mkReal 0 1) coeffs'
+  let annCoeffs = S.filter isAnnCoeff $ S.unions $ map (S.fromList . getCoeffs) cs
+  annCoeffs' <- mapM toZ3 (S.toList annCoeffs)
+  positiveCs <- mapM (\coeff -> mkGe coeff =<< mkReal 0 1) annCoeffs'
   mapM_ optimizeAssert positiveCs
-  
   cs' <- mapM toZ3 cs
   target' <- toZ3 target
-  mapM_ optimizeAssert cs'
-  optimizeMinimize target'
-  result <- optimizeCheck []
+  --optimizeMinimize target'
+  result <- optimizeCheck cs'
   case result of
     Sat -> do
       model <- optimizeGetModel
@@ -144,10 +143,10 @@ solveZ3' target sig cs = do
     Unsat -> do
       unsatCore <- optimizeGetUnsatCore
       astStrings <- mapM astToString unsatCore
-      error $ intercalate "\n" astStrings
+      error $ "unsat: " ++ intercalate "," astStrings
     Undef -> error "Z3 returned undef."
-   
-   
+   where isAnnCoeff (AnnCoeff {}) = True
+         isAnnCoeff _ = False
    
    
   

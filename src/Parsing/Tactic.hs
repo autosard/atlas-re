@@ -22,11 +22,9 @@ pRule :: Parser Tactic
 pRule = pAtomic <|> pParens pNonAtomic 
 
 pAtomic :: Parser Tactic
-pAtomic = Rule Leaf [] <$ symbol "leaf" 
-  <|> Rule Node [] <$ symbol "node"
+pAtomic = Rule Const [] <$ symbol "const" 
   <|> Rule Cmp [] <$ symbol "cmp"
   <|> Rule Var [] <$ symbol "var"
-  <|> Rule Pair [] <$ symbol "pair"
   <|> Rule App [] <$ symbol "app"
   <|> Hole <$ symbol "?"
   <|> Auto <$ symbol "_"

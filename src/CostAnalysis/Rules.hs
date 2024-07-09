@@ -6,11 +6,9 @@ data RuleArg = Mono | L2xy
   deriving (Eq, Show)
 
 data Rule 
-  = Leaf
-  | Node
+  = Const
   | Cmp
   | Var
-  | Pair
   | Ite 
   | Match 
   | Let 

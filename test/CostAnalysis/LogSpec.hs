@@ -11,7 +11,7 @@ import Primitive(Id)
 
 import CostAnalysis.Coeff(Coeff(..), Factor(..), CoeffIdx(..), (^))
 import CostAnalysis.Constraint
-import CostAnalysis.Potential((!), RsrcAnn(..), (!!))
+import CostAnalysis.RsrcAnn((!),(!!),RsrcAnn(..))
 import CostAnalysis.AnnIdxQuoter(mix)
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -126,15 +126,14 @@ spec = do
                     EqPlusMulti (q!["x"^1, Const 2]) (p!["x"^1, Const 2]) (r!["x"^1, Const 2])]
       let is = cPlusMulti potArgs q p r 
       is `shouldBe` should
-  describe "cLeaf" $ do
-    it "generates the correct constraints" $ do
+  describe "cEq" $ do
+    it "generates the correct constraints for the leaf case" $ do
       let q = rsrcAnn potArgs 0 "Q" []
       let q' = rsrcAnn potArgs 1 "Q'" ["e"]
       let e = ("e" :: Id)
       let should = [EqSum (q![Const 2]) [q'!e, q'![Const 2]]]
-      cLeaf potArgs q q' `shouldBe` should
-  describe "cNode" $ do
-    it "generates the correct constraints" $ do
+      cEq potArgs q q' `shouldBe` should
+    it "generates the correct constraints for the node case" $ do
       let [x1, x2] = ["x1", "x2"]
       let e = "e"
       let q = rsrcAnn potArgs 0 "Q" [x1, x2]
@@ -147,9 +146,9 @@ spec = do
                     Eq (q![Const 2]) (q'![Const 2]),
                     Eq (q!["x1"^1, "x2"^1]) (q'!["e"^1]),
                     Eq (q!["x1"^1, "x2"^1, Const 2]) (q'!["e"^1, Const 2])]
-      cNode potArgs q q' `shouldBe` should
-  describe "cPair" $ do
-    it "generates the correct constraints" $ do
+      cEq potArgs q q' `shouldBe` should
+  describe "cEq" $ do
+    it "generates the correct constraints for the pair case" $ do
       let (x, e) = ("x", "e")
       let q = rsrcAnn potArgs 0 "Q" [x]
       let q' = rsrcAnn potArgs 1 "Q'" [e]
@@ -158,8 +157,8 @@ spec = do
                     Eq (q![Const 2]) (q'![Const 2]),
                     Eq (q!["x"^1]) (q'!["e"^1]),
                     Eq (q!["x"^1, Const 2]) (q'!["e"^1, Const 2])]
-      cPair potArgs q q' `shouldBe` should
-  describe "cMatchLeaf" $ do
+      cEq potArgs q q' `shouldBe` should
+  describe "cMatch" $ do
     it "generates the correct constraints" $ do
       let (x1, x2) = ("x1", "x2") 
       let q = rsrcAnn potArgs 0 "Q" [x1, x2]

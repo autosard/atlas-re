@@ -17,7 +17,7 @@ import Data.Foldable (foldrM)
 
 import Primitive(Id)
 import CostAnalysis.AnnIdxQuoter(mix)
-import CostAnalysis.Rules
+import CostAnalysis.Rules ( RuleArg )
 import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.RsrcAnn
@@ -107,33 +107,57 @@ cPlusMulti potArgs q p r = let xs = args q
   ++ [EqPlusMulti (q!idxQ) (p!idxP) (r!idxP)
      | (idxQ, idxP) <- zip (combi potArgs xs) (combi potArgs ys)]
 
-cLeaf :: LogPotArgs
+cEq :: LogPotArgs
   -> GroundAnn -> GroundAnn -> [Constraint]
-cLeaf potArgs q q' = 
-  EqSum (q![mix|2|]) [q'!exp, q'![mix|2|]] :
-  [EqSum (q![mix|2|]) [q'![mix|exp^a,b|]
-                 | a <- aRange potArgs,
-                   b <- bRange potArgs, a + b == c]
-  | c <- bRange potArgs, c > 2]
+cEq potArgs q q'
+  | (null . args $ q) && (length . args $ q') == 1 =
+    EqSum (q![mix|2|]) [q'!exp, q'![mix|2|]] :
+    [EqSum (q![mix|2|]) [q'![mix|exp^a,b|]
+                            | a <- aRange potArgs,
+                              b <- bRange potArgs, a + b == c]
+                        | c <- bRange potArgs, c > 2]
+  | (length . args $ q) == 2 && (length . args $ q') == 1 =
+    let [x1, x2] = args q in
+      Eq (q!x1) (q'!exp) :
+      Eq (q!x2) (q'!exp) :
+      Eq (q![mix|x1^1|]) (q'!exp) :
+      Eq (q![mix|x2^1|]) (q'!exp) :
+      [Eq (q![mix|x1^a,x2^a,c|]) (q'![mix|exp^a,c|])
+      | a <- aRange potArgs,
+        c <- bRange potArgs]
+  | (length . args $ q) == 1 && (length .args $ q') == 1 =
+    let [x] = args q in 
+      Eq (q!x) (q'!exp) :
+      [Eq (q!idxQ) (q'!idxQ')
+      | (idxQ, idxQ') <- zip (combi potArgs [x]) (combi potArgs [exp])]
 
-cNode :: LogPotArgs
-  -> GroundAnn -> GroundAnn -> [Constraint]
-cNode potArgs q q' = let [x1, x2] = args q in
-  Eq (q!x1) (q'!exp) :
-  Eq (q!x2) (q'!exp) :
-  Eq (q![mix|x1^1|]) (q'!exp) :
-  Eq (q![mix|x2^1|]) (q'!exp) :
-  [Eq (q![mix|x1^a,x2^a,c|]) (q'![mix|exp^a,c|])
-  | a <- aRange potArgs,
-    c <- bRange potArgs]
-
-cPair :: LogPotArgs
-  -> GroundAnn -> GroundAnn -> [Constraint]
-cPair potArgs q q' = let [x] = args q in 
-  Eq (q!x) (q'!exp) :
-  [Eq (q!idxQ) (q'!idxQ')
-  | (idxQ, idxQ') <- zip (combi potArgs [x]) (combi potArgs [exp])]
-
+{- HLINT ignore cMatch "Move guards forward" -}
+cMatch :: LogPotArgs ->
+  GroundAnn -> GroundAnn -> Id -> [Id] -> [Constraint]
+cMatch potArgs q p x [] =
+  let nonMatchVars = L.delete x (args q) in
+      [Eq (q!y) (p!y) | y <- nonMatchVars]
+      ++ [EqSum (p![mix|2|]) [q![mix|2|], q!x]]
+      ++ [EqSum (p!idx) [q![mix|_xs,x^a,b|]
+                        | a <- aRange potArgs,
+                          b <- bRange potArgs,
+                          a + b == c]
+         | xs <- varCombi potArgs nonMatchVars,
+           c <- bRange potArgs,
+           let idx = [mix|_xs,c|],
+           idx /= [mix|2|]]
+cMatch potArgs q r x [u, v] =
+  let nonMatchVars = L.delete x (args q) in
+    Eq (r!u) (q!x) :
+    Eq (r!v) (q!x) :
+    Eq (r![mix|u^1|]) (q!x) :
+    Eq (r![mix|v^1|]) (q!x) :
+    [Eq (r![mix|_xs,u^a,v^a,b|]) (q![mix|_xs,x^a,b|])
+    | xs <- varCombi potArgs nonMatchVars,
+      a <- aRange potArgs,
+      b <- bRange potArgs]
+    ++ [Eq (q!y) (r!y) | y <- nonMatchVars]
+ 
 {- HLINT ignore cMatchLeaf "Move guards forward" -}
 cMatchLeaf :: LogPotArgs ->
   GroundAnn -> GroundAnn -> Id -> [Constraint]
@@ -315,8 +339,9 @@ cOptimize potArgs q q' = do
         weightedNonRankDifference potArgs q q',
         constantDifference q q',
         absoluteValue potArgs q]
-  let sum = EqSum target subTargets
-  return (target, sum:concat cs)
+  (weightedSubTargets, csWeighted) <- bindToCoeffs (\coeff (target, w) -> EqMultConst coeff target w) $ zip subTargets [16127, 997, 97, 2]
+  let sum = EqSum target weightedSubTargets
+  return (target, sum:concat cs ++ csWeighted)
 
 -- TODO accept arguments to be printed as well. 
 -- printPot :: LogPotArgs
@@ -339,9 +364,7 @@ logPot args = Potential
   (cMinusConst args)
   (cMinusVar args)
   (cPlusMulti args)
-  (cLeaf args)
-  (cNode args)
-  (cPair args)
+  (cEq args)
   (cMatchLeaf args)
   (cMatchNode args)
   (cLetBase args)

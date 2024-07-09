@@ -34,12 +34,8 @@ data Potential a = Potential {
   cMinusVar :: RsrcAnn a -> RsrcAnn a -> [Constraint],
   -- | @ 'cPlusMulti' q p r@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(* \mid P) + \phi(*\mid R) \cdot K\] where @k@ is a fresh variable.
   cPlusMulti :: RsrcAnn a -> RsrcAnn a -> RsrcAnn a -> [Constraint],
-  -- | @ 'cLeaf' q q'@ returns constraints that guarantee \[\phi(\varnothing\mid Q) = \phi(\verb|leaf| \mid Q')\]  
-  cLeaf :: RsrcAnn a -> RsrcAnn a -> [Constraint],
-  -- | @ 'cNode' q q'@ returns constraints that guarantee \[\forall u: T,b: B, v:T .\,\phi(u,v\mid Q) = \phi(\verb|node| \,u\, b\, v\mid Q')\]
-  cNode :: RsrcAnn a -> RsrcAnn a -> [Constraint],
-  -- | @ 'cPair' q q'@, returns constraints that guarantee \[\forall u: T, v:B .\,\phi(u,v\mid Q) = \phi((u, v) \mid Q')\]
-  cPair :: RsrcAnn a -> RsrcAnn a -> [Constraint],
+  -- | @ 'cEq' q q'@ returns constraints that guarantee \[\phi(\Gamma \mid Q) = \phi(\Delta \mid Q') \text{ where } |\Gamma| = |Q|, |\Delta| = |Q'|\]  
+  cEq :: RsrcAnn a -> RsrcAnn a -> [Constraint],
   -- | @ 'cMatchLeaf' q q' t@ returns constraints that guarantee \[\forall  \Gamma.\ \phi(\Gamma, \verb|leaf| \mid Q) = \phi(\Gamma, \mid Q')\] where @t@ is the variable that matched.
   cMatchLeaf :: RsrcAnn a -> RsrcAnn a -> Id -> [Constraint],
   -- | @ 'cMatchNode' q q' t u v@ returns constraints that guarantee \[\forall  \Gamma,u: T, b: B, v. T.\ \phi(\Gamma, \verb|node|\,u\,b\,v \mid Q) = \phi(\Gamma, u, b, v\mid Q')\] where @t@ is the variable that matched.

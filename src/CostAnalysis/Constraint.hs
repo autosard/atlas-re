@@ -24,9 +24,9 @@ data Constraint =
   | NotZero Coeff
   -- | 'Le' q p = \[q \leq p \]
   | Le Coeff Coeff
-  -- | 'GeSum' q ps = \[q \geq \sum^N_{i=1} p_i \]
+  -- | 'GeSum' ps q = \[\sum^N_{i=1} p_i \geq q\]
   | GeSum [Coeff] Coeff
-  -- | 'GeSum' c1 c2 = \[C_1 \Rightarrow C_2 \]
+  -- | 'GeImpl' c1 c2 = \[C_1 \Rightarrow C_2 \]
   | Impl Constraint Constraint
   -- | @'EqSub' q ps@ = \[q = p_1 - \dots - p_n\]
   | EqSub Coeff [Coeff]
