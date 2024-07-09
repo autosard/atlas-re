@@ -28,8 +28,6 @@ data Potential a = Potential {
   
   -- | @ 'cPlusConst' q p c@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) + C\] where @c@ is constant.
   cPlusConst :: RsrcAnn a -> RsrcAnn a -> Rational -> [Constraint],
-  -- | @ 'cMinusConst' q c p@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) - C\] where @c@ is constant.
-  cMinusConst :: RsrcAnn a -> RsrcAnn a -> Rational -> [Constraint],
   -- | @ 'cMinusVar' q p@ returns constraints that guarantee \[\phi(*\mid P) = \phi(*\mid Q) - K\] where @k@ is RsrcAnn a fresh variable.
   cMinusVar :: RsrcAnn a -> RsrcAnn a -> [Constraint],
   -- | @ 'cPlusMulti' q p r@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(* \mid P) + \phi(*\mid R) \cdot K\] where @k@ is a fresh variable.

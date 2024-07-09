@@ -84,19 +84,6 @@ spec = do
                     Eq (q!["x"^1]) (p!["x"^1]),
                     Eq (q!["x"^1, Const 2]) (p!["x"^1, Const 2])]
       cPlusConst potArgs q p c `shouldBe` should
-  describe "cMinusConst" $ do
-    it "generates the correct constraints" $ do
-      let args = ["x"]
-      let q = rsrcAnn potArgs 0 "Q" args
-      let p = rsrcAnn potArgs 1 "P" args
-      let c = 1
-      let x = ("x" :: Text)
-      let should = EqMinusConst (q![Const 2]) (p![Const 2]) c :
-                   [Eq (q!x) (p!x),
-                    Eq (q!empty) (p!empty),
-                    Eq (q!["x"^1]) (p!["x"^1]),
-                    Eq (q!["x"^1, Const 2]) (p!["x"^1, Const 2])]
-      cMinusConst potArgs q p c `shouldBe` should
   describe "cMinusVar" $ do
     it "generates the correct constraints" $ do
       let args = ["x"]

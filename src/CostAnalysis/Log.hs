@@ -85,12 +85,6 @@ cPlusConst potArgs q p c = let qs = args q in
   EqPlusConst (q![mix|2|]) (p![mix|2|]) c :
   eqExceptConst potArgs q p
 
-cMinusConst :: LogPotArgs
-  -> GroundAnn -> GroundAnn -> Rational -> [Constraint]
-cMinusConst potArgs q p c = let qs = args q in
-  EqMinusConst (q![mix|2|]) (p![mix|2|]) c :
-  eqExceptConst potArgs q p
-
 cMinusVar :: LogPotArgs
   -> GroundAnn -> GroundAnn -> [Constraint]
 cMinusVar potArgs q p = let qs = args q in 
@@ -359,7 +353,6 @@ logPot args = Potential
   (forAllCombinations args)
   elems
   (cPlusConst args)
-  (cMinusConst args)
   (cMinusVar args)
   (cPlusMulti args)
   (cEq args)
