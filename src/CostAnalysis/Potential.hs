@@ -27,7 +27,7 @@ data Potential = Potential {
   rsrcAnn :: Int -> Text -> [(Id, Type)] -> RsrcAnn,
   
   -- | @ 'forAllIdx' neg xs x id label ys@ for all combinations of variables in @xs@ with the var @x@, construct a fresh annotation starting with id @id@ and with vars in @ys@. @neg@ allows negative constants. Returns the last used id + 1. 
-  forAllCombinations :: Bool -> [Id] -> Id -> Int -> Text -> [(Id, Type)] -> (AnnArray, Int),
+  forAllCombinations :: Bool -> [(Id, Type)] -> Id -> Int -> Text -> [(Id, Type)] -> (AnnArray, Int),
   
   -- | @ 'elems' a@ converts an annotation array to a list.
   elems :: AnnArray -> [RsrcAnn],
@@ -67,8 +67,8 @@ calculateBound (from, to) solution = M.fromList $ map subtract (getCoeffs from)
           right = to!substitute idx arg in
           case solution M.!? right of
             Just rightValue -> case solution M.!? left of
-              Just leftValue -> let diff =  leftValue - rightValue in
-                if diff >= 0 then (left, diff) else error "Negative coefficient in result bound."
+              Just leftValue -> let diff =  leftValue - rightValue in (left, diff)
+                --if diff >= 0 then (left, diff) else error "Negative coefficient in result bound."
               Nothing -> error $ "No such base term on the left hand side for '" ++ show right ++ "'."
             Nothing -> case solution M.!? left of
               Just leftValue -> (left, leftValue)

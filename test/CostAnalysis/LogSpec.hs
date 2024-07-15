@@ -17,6 +17,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Text(Text)
 import Debug.Trace (trace)
+import Constants (treeT)
 
 arrIdx :: [Factor] -> S.Set Factor
 arrIdx = S.fromList
@@ -48,7 +49,7 @@ spec = do
       rsrcAnn potArgs id "Q" vars `shouldBe` should
     it "generates a resource annotation of length 2" $ do
       let id = 0
-      let vars = ["x1", "x2"]
+      let vars = [("x1", treeT), ("x2", treeT)]
       let coeffs = M.fromList [coeff' "x1", coeff' "x2",
                                coeff [], coeff [Const 2],
                                coeff["x1"^1], coeff["x1"^1,Const 2],
@@ -60,7 +61,7 @@ spec = do
       let neg = False
       let combLeft = ["x1", "x2"]
       let combRight = "x3"
-      let annArgs = ["y1"]
+      let annArgs = [("y1", treeT)]
       let idGen = 0
       let array = M.fromList [
             (arrIdx ["x1"^1, "x3"^1], rsrcAnn potArgs 2 "Q_(x1^1,x3^1)" annArgs),
@@ -73,7 +74,7 @@ spec = do
       forAllCombinations potArgs neg combLeft combRight idGen "Q" annArgs `shouldBe` (array, finalId)
   describe "cPlusConst" $ do
     it "generates the correct constraints" $ do
-      let args = ["x"]
+      let args = [("x", treeT)]
       let q = rsrcAnn potArgs 0 "Q" args
       let p = rsrcAnn potArgs 1 "P" args
       let c = 1
@@ -86,7 +87,7 @@ spec = do
       cPlusConst potArgs q p c `shouldBe` should
   describe "cMinusVar" $ do
     it "generates the correct constraints" $ do
-      let args = ["x"]
+      let args = [("x", treeT)]
       let q = rsrcAnn potArgs 0 "Q" args
       let p = rsrcAnn potArgs 1 "P" args
       let c = 1
@@ -99,7 +100,7 @@ spec = do
       cMinusVar potArgs q p `shouldBe` should
   describe "cPlusMulti" $ do
     it "generates the correct constraints" $ do
-      let args = ["x"]
+      let args = [("x", treeT)]
       let q = rsrcAnn potArgs 0 "Q" args
       let p = rsrcAnn potArgs 1 "P" args
       let r = rsrcAnn potArgs 2 "R" args
@@ -116,15 +117,15 @@ spec = do
   describe "cEq" $ do
     it "generates the correct constraints for the leaf case" $ do
       let q = rsrcAnn potArgs 0 "Q" []
-      let q' = rsrcAnn potArgs 1 "Q'" ["e"]
+      let q' = rsrcAnn potArgs 1 "Q'" [("e", treeT)]
       let e = ("e" :: Id)
       let should = [EqSum (q![Const 2]) [q'!e, q'![Const 2]]]
       cEq potArgs q q' `shouldBe` should
     it "generates the correct constraints for the node case" $ do
       let [x1, x2] = ["x1", "x2"]
       let e = "e"
-      let q = rsrcAnn potArgs 0 "Q" [x1, x2]
-      let q' = rsrcAnn potArgs 1 "Q'" [e]
+      let q = rsrcAnn potArgs 0 "Q" [(x1, treeT), (x2, treeT)]
+      let q' = rsrcAnn potArgs 1 "Q'" [(e, treeT)]
       let should = [Eq (q!x1) (q'!e),
                     Eq (q!x2) (q'!e),
                     Eq (q!["x1"^1]) (q'!e),
@@ -137,8 +138,8 @@ spec = do
   describe "cEq" $ do
     it "generates the correct constraints for the pair case" $ do
       let (x, e) = ("x", "e")
-      let q = rsrcAnn potArgs 0 "Q" [x]
-      let q' = rsrcAnn potArgs 1 "Q'" [e]
+      let q = rsrcAnn potArgs 0 "Q" [(x, treeT)]
+      let q' = rsrcAnn potArgs 1 "Q'" [(e, treeT)]
       let should = [Eq (q!x) (q'!e),
                     Eq (q!empty) (q'!empty),
                     Eq (q![Const 2]) (q'![Const 2]),
@@ -147,9 +148,9 @@ spec = do
       cEq potArgs q q' `shouldBe` should
   describe "cMatch" $ do
     it "generates the correct constraints or the leaf case" $ do
-      let (x1, x2) = ("x1", "x2") 
-      let q = rsrcAnn potArgs 0 "Q" [x1, x2]
-      let p = rsrcAnn potArgs 1 "P" [x1]
+      let (x1, x2) = ("x1" :: Text, "x2" :: Text) 
+      let q = rsrcAnn potArgs 0 "Q" [(x1, treeT), (x2, treeT)]
+      let p = rsrcAnn potArgs 1 "P" [(x1, treeT)]
       let should = [Eq (q!x1) (p!x1),
                     EqSum (p![Const 2]) [q![Const 2], q!x2],
                     EqSum (p!empty) [q!empty],
@@ -158,8 +159,8 @@ spec = do
       cMatch potArgs q p x2 [] `shouldBe` should
     it "generates the correct constraints for the node case" $ do
       let (t, u, v) = ("t", "u", "v") 
-      let q = rsrcAnn potArgs 0 "Q" [t]
-      let r = rsrcAnn potArgs 1 "R" [u, v]
+      let q = rsrcAnn potArgs 0 "Q" [(t, treeT)]
+      let r = rsrcAnn potArgs 1 "R" [(u, treeT), (v, treeT)]
       let should = [Eq (r!u) (q!t),
                     Eq (r!v) (q!t),
                     Eq (r![mix|u^1|]) (q!t),
@@ -168,13 +169,13 @@ spec = do
                     Eq (r![mix|2|]) (q![mix|2|]),
                     Eq (r![mix|u^1,v^1|]) (q![mix|t^1|]),
                     Eq (r![mix|u^1,v^1,2|]) (q![mix|t^1,2|])]
-      cMatch potArgs q r t [u,v] `shouldBe` should
+      cMatch potArgs q r t [(u, treeT), (v, treeT)] `shouldBe` should
   describe "cLetBase" $ do
     it "generates the correct constraints" $ do
       let (t1, t2) = ("t1", "t2")
-      let q = rsrcAnn potArgs 0 "Q" [t1, t2]
-      let r = rsrcAnn potArgs 1 "R" [t2]
-      let p = rsrcAnn potArgs 2 "P" [t1]
+      let q = rsrcAnn potArgs 0 "Q" [(t1, treeT), (t2, treeT)]
+      let r = rsrcAnn potArgs 1 "R" [(t2, treeT)]
+      let p = rsrcAnn potArgs 2 "P" [(t1, treeT)]
       let p' = rsrcAnn potArgs 3 "P'" []
       let should = [Eq (r![mix||]) (p'![mix||]),
                     Eq (r![mix|2|]) (p'![mix|2|]),
@@ -192,12 +193,12 @@ spec = do
       let neg = False
       let (t1, t2, e) = ("t1", "t2", "e")
       let x = "x"
-      let q = rsrcAnn potArgs 0 "Q" [t1, t2]
-      let p = rsrcAnn potArgs 1 "P" [t1]
-      let p' = rsrcAnn potArgs 2 "P'" [e]
-      let r = rsrcAnn potArgs 3 "R" [t2, x]
-      let (ps, _) = forAllCombinations potArgs neg [t2] x 4 "P" [t1]
-      let (ps', _) = forAllCombinations potArgs neg [t2] x 6 "P'" [e]
+      let q = rsrcAnn potArgs 0 "Q" [(t1, treeT), (t2, treeT)]
+      let p = rsrcAnn potArgs 1 "P" [(t1, treeT)]
+      let p' = rsrcAnn potArgs 2 "P'" [(e, treeT)]
+      let r = rsrcAnn potArgs 3 "R" [(t2, treeT), (x, treeT)]
+      let (ps, _) = forAllCombinations potArgs neg [t2] x 4 "P" [(t1, treeT)]
+      let (ps', _) = forAllCombinations potArgs neg [t2] x 6 "P'" [(e, treeT)]
 
       let cs = [Eq (p!t1) (q!t1),
                     Eq (p![mix||]) (q![mix||]),
@@ -247,8 +248,8 @@ spec = do
   describe "cWeakenVar" $ do
     it "generates the correct constraints" $ do
       let (x1, x2) = ("x1", "x2")
-      let q = rsrcAnn potArgs 0 "Q" [x1,x2]
-      let r = rsrcAnn potArgs 1 "R" [x2]
+      let q = rsrcAnn potArgs 0 "Q" [(x1, treeT), (x2, treeT)]
+      let r = rsrcAnn potArgs 1 "R" [(x2, treeT)]
       let should = [Eq (r!x2) (q!x2),
                     Eq (r![mix||]) (q![mix||]),
                     Eq (r![mix|2|]) (q![mix|2|]),

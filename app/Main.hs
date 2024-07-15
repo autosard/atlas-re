@@ -18,7 +18,9 @@ import qualified Data.Text.IO as TextIO
 import qualified Data.Text as T
 import Data.Maybe(fromMaybe, catMaybes)
 import System.Directory
+import Data.Set(Set)
 import qualified Data.Set as S
+import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
 
 import Colog (cmap, fmtMessage, logTextStdout, logWarning,
@@ -46,6 +48,8 @@ import System.Random (getStdGen)
 import Module (loadSimple)
 import SourceError (printSrcError)
 import CostAnalysis.Potential (printBound)
+import CostAnalysis.Constraint (Constraint)
+import CostAnalysis.Deriv (Derivation)
 
 type App a = LoggerT (Msg Severity) IO a
 
@@ -71,10 +75,17 @@ run Options{..} RunOptions{..} = do
         Left srcErr -> die $ printSrcError srcErr contents
         Right v -> return v
   solution <- liftIO $ solveZ3 pot sig cs
+  liftIO $ mapM (printDeriv (S.empty)) derivs
   case solution of
     (Left _) -> logError "error"
-    (Right coeffs) -> let target = withCost $ sig M.! funName in
+    (Right coeffs) -> let target = withCost $ sig M.! funName in do
+      --liftIO $ print solution
       liftIO $ putStr (printBound pot target coeffs)
+      
+
+printDeriv :: Set Constraint -> (Id, Derivation) -> IO ()
+printDeriv unsatCore (id, deriv) = putStr $ T.unpack id ++ ":\n\n" ++ drawTree deriv'
+  where deriv' = fmap (printRuleApp unsatCore) deriv
 
 eval :: Options -> EvalOptions -> App ()
 eval Options{..} EvalOptions{..} = do

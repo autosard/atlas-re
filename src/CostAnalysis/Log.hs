@@ -60,11 +60,13 @@ rsrcAnn potArgs id label args = RsrcAnn args' $ M.fromList (rankCoeffs ++ logCoe
 
 
 forAllCombinations :: LogPotArgs
-  -> Bool -> [Id] -> Id -> Int -> Text -> [(Id, Type)] -> (AnnArray, Int)
+  -> Bool -> [(Id, Type)] -> Id -> Int -> Text -> [(Id, Type)] -> (AnnArray, Int)
 forAllCombinations args neg xs x id label ys = (array, nextId)
-  where idxs = [S.unions [xIdx, xsIdx, cIdx]
+
+  where trees = map fst $ filter (\(_, t) -> isTree t) xs
+        idxs = [S.unions [xIdx, xsIdx, cIdx]
                | xIdx <- varCombi args [x], (not . S.null) xIdx,
-                 xsIdx <- varCombi args xs, (not . S.null) xsIdx,
+                 xsIdx <- varCombi args trees, (not . S.null) xsIdx,
                  cIdx <- combi args []]
         nextId = id + length idxs
         arrIdx = Mixed . S.fromList
@@ -288,7 +290,7 @@ weightedNonRankDifference potArgs q q' = do
                   let y = annVar q']
         annVar p = case annVars p of
                      [x] -> x
-                     _multiArg -> error "Index weight is only defined for annotations of length 1."
+                     _multiArg -> error $ "Index weight is only defined for annotations of length 1." ++ show (annVars p)
         w :: Int -> Int -> Rational
         w 0 2 = 0
         w a b = fromIntegral (a + (b+1) P.^ 2) P.^ 2

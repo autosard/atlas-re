@@ -58,6 +58,7 @@ instance Encodeable Constraint where
     q' <- toZ3 q
     p' <- toZ3 p
     k <- mkFreshRealVar "k"
+    mkGe k =<< mkReal 0 1
     sub <- mkSub [p', k]
     mkEq q' sub
   toZ3 (EqPlusMulti q p r) = do
@@ -65,6 +66,7 @@ instance Encodeable Constraint where
     p' <- toZ3 p
     r' <- toZ3 r
     k <- mkFreshRealVar "k"
+    mkGe k =<< mkReal 0 1
     prod <- mkMul [r', k]
     sum <- mkAdd [p', prod]
     mkEq q' sum
