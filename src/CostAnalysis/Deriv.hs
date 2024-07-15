@@ -37,53 +37,53 @@ data RuleApp = RuleApp R.Rule [Constraint] TypedExpr
 
 type Derivation = Tree RuleApp
 
-data ProofState a = ProofState {
-  _sig :: RsrcSignature a,
+data ProofState = ProofState {
+  _sig :: RsrcSignature,
   _annIdGen :: Int
   }
   deriving (Show)
 
 makeLenses ''ProofState
 
-data ProofEnv a = ProofEnv {
-  _potential :: Potential a,
+data ProofEnv = ProofEnv {
+  _potential :: Potential,
   _tactics :: Map Id Tactic
   }
 
 makeLenses ''ProofEnv
 
 
-type ProveMonad p a = ExceptT SourceError (RWS (ProofEnv p) [Constraint] (ProofState p)) a
+type ProveMonad a = ExceptT SourceError (RWS ProofEnv [Constraint] ProofState) a
 
-type ProofResult a = ([Derivation], [Constraint], RsrcSignature a)
+type ProofResult = ([Derivation], [Constraint], RsrcSignature)
 
-runProof :: HasCoeffs a => TypedModule -> Potential a -> Map Id Tactic
-  -> Either SourceError (ProofResult a)
+runProof :: TypedModule -> Potential -> Map Id Tactic
+  -> Either SourceError ProofResult
 runProof mod pot tactics = (,cs, state' ^. sig) <$> deriv
   where (deriv, state', cs) = runRWS rws env state
         rws = runExceptT $ proveModule mod
         env = ProofEnv pot tactics
         state = ProofState M.empty 0
 
-genAnnIds :: Int -> ProveMonad a [Int]
+genAnnIds :: Int -> ProveMonad [Int]
 genAnnIds n = do
   g <- use annIdGen
   annIdGen .= g+n
   return [g..(g+n-1)]
 
-genAnnIdPair :: ProveMonad a (Int, Int)
+genAnnIdPair :: ProveMonad (Int, Int)
 genAnnIdPair = do
   g <- use annIdGen
   annIdGen .= g+2
   return (g, g+1)
 
-genAnnId :: ProveMonad a Int
+genAnnId :: ProveMonad Int
 genAnnId = do
   g <- use annIdGen
   annIdGen .= g+1
   return g
 
-forAllCombinations' :: Bool -> [Id] -> Id -> Text -> [(Id, Type)] -> ProveMonad a (AnnArray (RsrcAnn a))
+forAllCombinations' :: Bool -> [Id] -> Id -> Text -> [(Id, Type)] -> ProveMonad AnnArray
 forAllCombinations' neg xs x label ys = do
   pot <- view potential
   g <- use annIdGen
@@ -91,7 +91,7 @@ forAllCombinations' neg xs x label ys = do
   annIdGen .= g'
   return array
 
-genFunRsrcAnn :: TypedFunDef -> ProveMonad a (FunRsrcAnn a)
+genFunRsrcAnn :: TypedFunDef -> ProveMonad FunRsrcAnn
 genFunRsrcAnn fun = do
   pot <- view potential
   let (ctxFrom, argTo) = ctxFromFn fun
@@ -107,9 +107,9 @@ genFunRsrcAnn fun = do
 
 type TypeCtx = Map Id Type
 
-type Prove e a = forall p. HasCoeffs p => Tactic -> Bool -> TypeCtx -> e -> RsrcAnn p -> RsrcAnn p -> ProveMonad p a
+type Prove e a = Tactic -> Bool -> TypeCtx -> e -> RsrcAnn -> RsrcAnn -> ProveMonad a
 
-errorFrom :: Syntax Typed -> String -> ProveMonad p a
+errorFrom :: Syntax Typed -> String -> ProveMonad a
 errorFrom e msg = throwError $ SourceError loc msg
   where loc = case (teSrc . getAnn) e of
           (Loc pos) -> pos
@@ -189,7 +189,7 @@ proveMatch tactic cf ctx e@(Match (Var x) arms) q q' = do
         proveArmWithTactic tactic arm = proveMatchArm x tactic cf ctx arm q q'
 
 
-splitLetCtx :: TypeCtx -> TypedExpr -> TypedExpr -> ProveMonad p (TypeCtx, TypeCtx)
+splitLetCtx :: TypeCtx -> TypedExpr -> TypedExpr -> ProveMonad (TypeCtx, TypeCtx)
 splitLetCtx ctx e1 e2 = do
   let varsE1 = freeVars e1
   let varsE2 = freeVars e2
@@ -343,7 +343,7 @@ proveFun _ _ _ (FunDef ann id args e) q q' = do
   tactic <- fromMaybe Auto . M.lookup id <$> view tactics
   proveExpr tactic False ctx e q q'
 
-proveModule :: HasCoeffs a => TypedModule -> ProveMonad a [Derivation]
+proveModule :: TypedModule -> ProveMonad [Derivation]
 proveModule mod = do
   s <- use sig
   -- TODO merge with existing signatures / or type check afterwards

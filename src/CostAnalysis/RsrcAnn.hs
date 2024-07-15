@@ -15,24 +15,21 @@ import Primitive(Id)
 import CostAnalysis.Coeff
 import Typing.Type
 
-data HasCoeffs a => RsrcAnn a = RsrcAnn {
+data RsrcAnn = RsrcAnn {
   -- | Number of tree arguments
   --len :: Int,
   -- | Tree args
   args :: [(Id, Type)],
   -- | Map of variables to coefficients
-  coeffs :: a}
+  coeffs :: CoeffsMap}
   deriving (Eq, Show)
 
-annVars :: HasCoeffs a => RsrcAnn a -> [Id]
+annVars :: RsrcAnn -> [Id]
 annVars = map fst . args
-
-type GroundAnn = RsrcAnn CoeffsMap
-type CombinedAnn = RsrcAnn [CoeffsMap]
 
 class Index a where
   infixl 9 !
-  (!) :: GroundAnn -> a -> Coeff
+  (!) :: RsrcAnn -> a -> Coeff
 
 instance Index Id where
   (!) ann@(RsrcAnn _ coeffs) x = case M.lookup (Pure x) coeffs of
@@ -40,7 +37,7 @@ instance Index Id where
     Nothing -> error $ "Invalid index '" ++ unpack x ++ "' for annotation '" ++ show ann ++ "'."
 
 instance Index [Factor] where
-  (!) :: GroundAnn -> [Factor] -> Coeff
+  (!) :: RsrcAnn -> [Factor] -> Coeff
   (!) ann factors = ann!S.fromList factors
 
 factorGTZero :: Factor -> Bool
@@ -48,33 +45,32 @@ factorGTZero (Arg _ a) = a > 0
 factorGTZero (Const c) = c > 0
 
 instance Index (Set Factor) where
-  (!) :: GroundAnn -> Set Factor -> Coeff
+  (!) :: RsrcAnn -> Set Factor -> Coeff
   (!) ann@(RsrcAnn _ coeffs) factors =
     let factors' = S.filter factorGTZero factors in
       case M.lookup (Mixed factors') coeffs of
         Just c -> c
         Nothing -> error $ "Invalid index '" ++ show factors ++ "' for annotation '" ++ show ann ++ "'."
 
-type family AnnArray a
-
-
-type instance AnnArray GroundAnn = Map (Set Factor) GroundAnn
-type instance AnnArray CombinedAnn = [Map (Set Factor) GroundAnn]
+type AnnArray = Map (Set Factor) RsrcAnn
 
 infixl 9 !!
-(!!) :: AnnArray GroundAnn -> Set Factor -> GroundAnn
+(!!) :: AnnArray -> Set Factor -> RsrcAnn
 (!!) arr k = let k' = S.filter factorGTZero k in
     case M.lookup k' arr of
       Just c -> c
       Nothing -> error $ "Invalid index '" ++ show k ++ "' for annotation array."
 
 
-data FunRsrcAnn a = FunRsrcAnn {
-  withCost :: (RsrcAnn a, RsrcAnn a),
-  withoutCost :: (RsrcAnn a, RsrcAnn a)}
+data FunRsrcAnn = FunRsrcAnn {
+  withCost :: (RsrcAnn, RsrcAnn),
+  withoutCost :: (RsrcAnn, RsrcAnn)}
   deriving(Show)
 
-type RsrcSignature a = Map Id (FunRsrcAnn a)
+type RsrcSignature = Map Id FunRsrcAnn
+
+--calculateBound :: Id -> RsrcSignature -> Map Coeff Rational -> [Coeff]
+--calculateBound 
 
 class HasCoeffs a where
   getCoeffs :: a -> [Coeff]
@@ -85,14 +81,14 @@ instance HasCoeffs CoeffsMap where
 instance HasCoeffs [CoeffsMap] where
   getCoeffs = concatMap M.elems  
 
-instance HasCoeffs a => HasCoeffs (RsrcAnn a) where
+instance HasCoeffs RsrcAnn where
   getCoeffs = getCoeffs . coeffs
 
 instance (HasCoeffs a, HasCoeffs b) => HasCoeffs (a,b) where
   getCoeffs (x,y) = getCoeffs x ++ getCoeffs y
   
-instance HasCoeffs a => HasCoeffs (FunRsrcAnn a) where
+instance HasCoeffs FunRsrcAnn where
   getCoeffs ann = (getCoeffs . withCost) ann ++ (getCoeffs . withoutCost) ann
 
-instance HasCoeffs a => HasCoeffs (RsrcSignature a) where
+instance HasCoeffs RsrcSignature where
   getCoeffs = concatMap getCoeffs . M.elems

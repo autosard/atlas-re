@@ -19,7 +19,7 @@ import CostAnalysis.Rules ( RuleArg )
 import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.RsrcAnn
-import CostAnalysis.Potential(Potential (Potential), GroundPot)       
+import CostAnalysis.Potential(Potential (Potential))       
 import CostAnalysis.Optimization
 import Typing.Type
 
@@ -51,7 +51,7 @@ combi' args z (x:xs) = [if a > 0 then x^a:y else y
 
 
 rsrcAnn :: LogPotArgs
-  -> Int -> Text -> [(Id, Type)] -> GroundAnn
+  -> Int -> Text -> [(Id, Type)] -> RsrcAnn
 rsrcAnn potArgs id label args = RsrcAnn args' $ M.fromList (rankCoeffs ++ logCoeffs)
   where rankCoeffs = [(Pure x, AnnCoeff id label "log" (Pure x)) | (x,i) <- zip vars [1..]]
         logCoeffs = map ((\idx -> (idx, AnnCoeff id label "log" idx)) . Mixed) $ combi potArgs vars
@@ -60,7 +60,7 @@ rsrcAnn potArgs id label args = RsrcAnn args' $ M.fromList (rankCoeffs ++ logCoe
 
 
 forAllCombinations :: LogPotArgs
-  -> Bool -> [Id] -> Id -> Int -> Text -> [(Id, Type)] -> (AnnArray GroundAnn, Int)
+  -> Bool -> [Id] -> Id -> Int -> Text -> [(Id, Type)] -> (AnnArray, Int)
 forAllCombinations args neg xs x id label ys = (array, nextId)
   where idxs = [S.unions [xIdx, xsIdx, cIdx]
                | xIdx <- varCombi args [x], (not . S.null) xIdx,
@@ -74,30 +74,30 @@ forAllCombinations args neg xs x id label ys = (array, nextId)
                            | (idx, id) <- zip idxs [id..]]
 
 
-elems :: AnnArray GroundAnn -> [GroundAnn]
+elems :: AnnArray -> [RsrcAnn]
 elems = M.elems
 
 eqExceptConst :: LogPotArgs
-  -> GroundAnn -> GroundAnn -> [Constraint]
+  -> RsrcAnn -> RsrcAnn -> [Constraint]
 eqExceptConst potArgs q p = let qs = annVars q in
   [Eq (q!x) (p!x) | x <- qs]
   ++ [Eq (q!idx) (p!idx)
      | idx <- combi potArgs qs, idx /= [mix|2|]]
        
 cPlusConst :: LogPotArgs
-  -> GroundAnn -> GroundAnn -> Rational -> [Constraint]
+  -> RsrcAnn -> RsrcAnn -> Rational -> [Constraint]
 cPlusConst potArgs q p c = let qs = args q in
   EqPlusConst (q![mix|2|]) (p![mix|2|]) c :
   eqExceptConst potArgs q p
 
 cMinusVar :: LogPotArgs
-  -> GroundAnn -> GroundAnn -> [Constraint]
+  -> RsrcAnn -> RsrcAnn -> [Constraint]
 cMinusVar potArgs q p = let qs = args q in 
   EqMinusVar (q![mix|2|]) (p![mix|2|]) :
   eqExceptConst potArgs q p
   
 cPlusMulti :: LogPotArgs
-  -> GroundAnn -> GroundAnn -> GroundAnn -> [Constraint]
+  -> RsrcAnn -> RsrcAnn -> RsrcAnn -> [Constraint]
 cPlusMulti potArgs q p r = let xs = annVars q
                                ys = annVars p in 
   [EqPlusMulti (q!x) (p!y) (r!y) | (x,y) <- zip xs ys]
@@ -105,7 +105,7 @@ cPlusMulti potArgs q p r = let xs = annVars q
      | (idxQ, idxP) <- zip (combi potArgs xs) (combi potArgs ys)]
 
 cEq :: LogPotArgs
-  -> GroundAnn -> GroundAnn -> [Constraint]
+  -> RsrcAnn -> RsrcAnn -> [Constraint]
 cEq potArgs q q'
   | (null . args $ q) && (length . args $ q') == 1 =
     EqSum (q![mix|2|]) [q'!exp, q'![mix|2|]] :
@@ -129,13 +129,13 @@ cEq potArgs q q'
       | (idxQ, idxQ') <- zip (combi potArgs [x]) (combi potArgs [exp])]
 
 cMatch :: LogPotArgs ->
-  GroundAnn -> GroundAnn -> Id -> [(Id, Type)] -> [Constraint]
+  RsrcAnn -> RsrcAnn -> Id -> [(Id, Type)] -> [Constraint]
 cMatch potArgs q p x ys = cMatch' potArgs q p x (map fst ys')
   where ys' = filter (\(x, t) -> matchesTypes t types) ys
   
 {- HLINT ignore cMatch' "Move guards forward" -}
 cMatch' :: LogPotArgs ->
-  GroundAnn -> GroundAnn -> Id -> [Id] -> [Constraint]
+  RsrcAnn -> RsrcAnn -> Id -> [Id] -> [Constraint]
 cMatch' potArgs q p x [] =
   let nonMatchVars = L.delete x (annVars q) in
       [Eq (q!y) (p!y) | y <- nonMatchVars]
@@ -162,7 +162,7 @@ cMatch' potArgs q r x [u, v] =
 cMatch' _ _ _ x ys = error $ "xs: " ++ show x ++ ", ys: " ++ show ys
 
 cLetBase :: LogPotArgs
-  -> GroundAnn -> GroundAnn -> GroundAnn -> GroundAnn -> [Constraint]
+  -> RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> [Constraint]
 cLetBase potArgs q p r p' = let xs = annVars p 
                                 ys = annVars r in
   [Eq (r![mix|c|]) (p'![mix|c|]) | c <- bRange potArgs]
@@ -177,9 +177,9 @@ cLetBase potArgs q p r p' = let xs = annVars p
        c <- bRange potArgs]
 
 cLet :: LogPotArgs
-  -> Bool -> GroundAnn -> GroundAnn
-  -> GroundAnn -> AnnArray GroundAnn
-  -> AnnArray GroundAnn -> GroundAnn
+  -> Bool -> RsrcAnn -> RsrcAnn -> RsrcAnn
+  -> AnnArray -> AnnArray
+  -> RsrcAnn
   -> Id -> [Constraint]
 cLet potArgs neg q p p' ps ps' r x = let xs = annVars p
                                          ys = L.delete x (annVars r) 
@@ -249,7 +249,7 @@ cLet potArgs neg q p p' ps ps' r x = let xs = annVars p
        c <- bRange potArgs]           
 
 cWeakenVar :: LogPotArgs
-  -> GroundAnn -> GroundAnn -> [Constraint]
+  -> RsrcAnn -> RsrcAnn -> [Constraint]
 cWeakenVar potArgs q r = let xs = annVars r in
   [Eq (r!x) (q!x) | x <- xs]
   ++ [Eq (r![mix|_xs',b|]) (q![mix|_xs',b|])
@@ -258,12 +258,12 @@ cWeakenVar potArgs q r = let xs = annVars r in
 
 -- TODO
 cWeaken :: LogPotArgs ->
-  [RuleArg] -> GroundAnn -> GroundAnn
-  -> GroundAnn -> GroundAnn -> [Constraint]
+  [RuleArg] -> RsrcAnn -> RsrcAnn
+  -> RsrcAnn -> RsrcAnn -> [Constraint]
 cWeaken args ruleArgs q q' p p' = []
 
 
-rankDifference :: GroundAnn -> GroundAnn -> OptiMonad Target
+rankDifference :: RsrcAnn -> RsrcAnn -> OptiMonad Target
 rankDifference q q' = do
   target <- freshCoeff
   (ds, diffs) <- bindToCoeffs (diff (q'!("e" :: Id))) (annVars q)
@@ -273,7 +273,7 @@ rankDifference q q' = do
         diff rankQ' d x = EqSub d [q!x, rankQ']
 
 
-weightedNonRankDifference :: LogPotArgs -> GroundAnn -> GroundAnn -> OptiMonad Target
+weightedNonRankDifference :: LogPotArgs -> RsrcAnn -> RsrcAnn -> OptiMonad Target
 weightedNonRankDifference potArgs q q' = do
   target <- freshCoeff
   (ds, diffs) <- bindToCoeffs (\coeff (p, p', _) -> EqSub coeff [p, p']) pairs
@@ -293,20 +293,20 @@ weightedNonRankDifference potArgs q q' = do
         w 0 2 = 0
         w a b = fromIntegral (a + (b+1) P.^ 2) P.^ 2
                        
-constantDifference :: GroundAnn -> GroundAnn -> OptiMonad Target
+constantDifference :: RsrcAnn -> RsrcAnn -> OptiMonad Target
 constantDifference q q' = do
   target <- freshCoeff
   let diff = EqSub target [q![mix|2|], q'![mix|2|]]
   return (target, [diff])                                     
 
-absoluteValue :: LogPotArgs -> GroundAnn -> OptiMonad Target
+absoluteValue :: LogPotArgs -> RsrcAnn -> OptiMonad Target
 absoluteValue potArgs q = do
   target <- freshCoeff
   let sum = EqSum target [q!idx | idx <- combi potArgs (annVars q)]
   return (target, [sum])
   
 cOptimize :: LogPotArgs ->
-  GroundAnn -> GroundAnn -> OptiMonad Target
+  RsrcAnn -> RsrcAnn -> OptiMonad Target
 cOptimize potArgs q q' = do
   target <- freshCoeff
   (subTargets, cs) <- unzip <$> sequence [
@@ -318,19 +318,15 @@ cOptimize potArgs q q' = do
   let sum = EqSum target weightedSubTargets
   return (target, sum:concat cs ++ csWeighted)
 
--- TODO accept arguments to be printed as well. 
--- printPot :: LogPotArgs
---   -> GroundAnn -> String
--- printPot args qs@(GroundAnn len _) = rankCoeffs ++ " " ++ logCoeffs 
---   where rankCoeffs = intercalate " + " [_printCoeff (qs![x]) ++ "rk(t)" | x <- [1..len]]
---         logCoeffs = intercalate " + " $ map (\idx -> _printCoeff (qs!idx) ++ printLog idx) (abIdx args len)
---         _printCoeff q = case printCoeff q of
---           "0" -> ""
---           s -> s
---         printLog :: [Int] -> String
---         printLog xs = "log(" ++ intercalate " + " (map show xs) ++ ")"
+printBasePot :: Coeff -> Rational -> String
+printBasePot (AnnCoeff _ _ _ (Pure x)) v = show v ++ " * rk(" ++ T.unpack x ++ ")"
+printBasePot (AnnCoeff _ _ _ (Mixed factors)) v = show v ++ " * "
+  where printLog = "log(" ++ intercalate " + " (map printFactor (S.toDescList factors)) ++ ")"
+        printFactor (Const c) = show c
+        printFactor (Arg x a) = if a /= 1 then show a ++ T.unpack x else T.unpack x
+printBasePot _ _ = error "invalid coeffient"
 
-logPot :: LogPotArgs -> GroundPot
+logPot :: LogPotArgs -> Potential
 logPot args = Potential
   types
   (rsrcAnn args)
@@ -346,4 +342,4 @@ logPot args = Potential
   (cWeakenVar args)
   (cWeaken args)
   (cOptimize args)
-  --(printPot args)
+  printBasePot

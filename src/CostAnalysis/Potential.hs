@@ -1,9 +1,13 @@
 {-# LANGUAGE StrictData #-}
 
 module CostAnalysis.Potential where
-import Data.Text(Text)
-import Primitive(Id)
 
+import Data.Text(Text)
+import Data.Map(Map)
+import qualified Data.Map as M
+import Data.List(intercalate)
+
+import Primitive(Id)
 import CostAnalysis.Rules ( RuleArg )
 import CostAnalysis.Coeff
 import CostAnalysis.Constraint
@@ -12,46 +16,48 @@ import CostAnalysis.RsrcAnn
 import Typing.Type
 
 
-data Potential a = Potential {
+data Potential = Potential {
   -- Supported types
   types :: [Type],
   
   -- Annotation manipulation
   
   -- | @ 'rsrcAnn' id label vars@ constructs a fresh resource annotation with tree arguments from @vars@. @id@ specifies a unique identifier for the annotation and @label@ is the human readable label, e.g \"Q\", \"Q\'\" or \"P\".
-  rsrcAnn :: Int -> Text -> [(Id, Type)] -> RsrcAnn a,
+  rsrcAnn :: Int -> Text -> [(Id, Type)] -> RsrcAnn,
   
   -- | @ 'forAllIdx' neg xs x id label ys@ for all combinations of variables in @xs@ with the var @x@, construct a fresh annotation starting with id @id@ and with vars in @ys@. @neg@ allows negative constants. Returns the last used id + 1. 
-  forAllCombinations :: Bool -> [Id] -> Id -> Int -> Text -> [(Id, Type)] -> (AnnArray (RsrcAnn a), Int),
+  forAllCombinations :: Bool -> [Id] -> Id -> Int -> Text -> [(Id, Type)] -> (AnnArray, Int),
   
   -- | @ 'elems' a@ converts an annotation array to a list.
-  elems :: AnnArray (RsrcAnn a) -> [RsrcAnn a],
+  elems :: AnnArray -> [RsrcAnn],
 
   
   -- Constraint generation
   
   -- | @ 'cPlusConst' q p c@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) + c\] where @c@ is constant.
-  cPlusConst :: RsrcAnn a -> RsrcAnn a -> Rational -> [Constraint],
-  -- | @ 'cMinusVar' q p@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) - k\] where @k@ is RsrcAnn a fresh variable.
-  cMinusVar :: RsrcAnn a -> RsrcAnn a -> [Constraint],
+  cPlusConst :: RsrcAnn -> RsrcAnn -> Rational -> [Constraint],
+  -- | @ 'cMinusVar' q p@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) - k\] where @k@ is a fresh variable.
+  cMinusVar :: RsrcAnn -> RsrcAnn -> [Constraint],
   -- | @ 'cPlusMulti' q p r@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(* \mid P) + \phi(*\mid R) \cdot K\] where @k@ is a fresh variable.
-  cPlusMulti :: RsrcAnn a -> RsrcAnn a -> RsrcAnn a -> [Constraint],
+  cPlusMulti :: RsrcAnn -> RsrcAnn -> RsrcAnn -> [Constraint],
   -- | @ 'cEq' q q'@ returns constraints that guarantee \[\phi(\Gamma \mid Q) = \phi(\Delta \mid Q') \text{ where } |\Gamma| = |Q|, |\Delta| = |Q'|\]  
-  cEq :: RsrcAnn a -> RsrcAnn a -> [Constraint],
+  cEq :: RsrcAnn -> RsrcAnn -> [Constraint],
   -- | @ 'cMatch' q p x ys@ returns constraints that guarantee \[\phi(\Gamma, x \mid Q) = \phi(\Gamma, \vec{y} \mid P)\] where @x@ is the variable that matched and @ys@ is the pattern variables.
-  cMatch :: RsrcAnn a -> RsrcAnn a -> Id -> [(Id, Type)] -> [Constraint],
+  cMatch :: RsrcAnn -> RsrcAnn -> Id -> [(Id, Type)] -> [Constraint],
   -- | @ 'cLetBase' q p r p'@
-  cLetBase :: RsrcAnn a -> RsrcAnn a -> RsrcAnn a -> RsrcAnn a -> [Constraint],
+  cLetBase :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> [Constraint],
   -- | @ 'cLet' q p p' ps ps' r x@
-  cLet :: Bool -> RsrcAnn a -> RsrcAnn a -> RsrcAnn a
-    -> AnnArray (RsrcAnn a) -> AnnArray (RsrcAnn a) -> RsrcAnn a -> Id -> [Constraint],
+  cLet :: Bool -> RsrcAnn -> RsrcAnn -> RsrcAnn
+    -> AnnArray -> AnnArray -> RsrcAnn -> Id -> [Constraint],
   -- | @ 'cWeakenVar' q r @
-  cWeakenVar :: RsrcAnn a -> RsrcAnn a -> [Constraint],
+  cWeakenVar :: RsrcAnn -> RsrcAnn -> [Constraint],
   -- | @ 'cWeaken' q q' p p'@
-  cWeaken :: [RuleArg] -> RsrcAnn a -> RsrcAnn a -> RsrcAnn a -> RsrcAnn a -> [Constraint],
+  cWeaken :: [RuleArg] -> RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> [Constraint],
   -- | @ 'cOptimize' q q' @ returns constraints that minimize \[\Phi(\Gamma\mid Q) - \Phi(\Gamma\mid Q')\]
-  cOptimize :: RsrcAnn a -> RsrcAnn a -> OptiMonad Target}
+  cOptimize :: RsrcAnn -> RsrcAnn -> OptiMonad Target,
   
+  printBasePot :: Coeff -> Rational -> String}
 
-type GroundPot = Potential CoeffsMap
-type CombPot = Potential [CoeffsMap]
+
+printPot :: Potential -> RsrcAnn -> Map Coeff Rational -> String
+printPot pot qs@(RsrcAnn len coeffs) solution = intercalate " + " $ zipWith (printBasePot pot) (M.elems coeffs) (M.elems solution)

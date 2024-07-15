@@ -4,17 +4,15 @@
 
 module CostAnalysis.Solving where
 
-import Primitive(Id)
 import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.Optimization
 import CostAnalysis.Potential
-import Ast
 import Data.Ratio(numerator, denominator)
 import Z3.Monad 
 import CostAnalysis.RsrcAnn
 import Control.Monad (mapAndUnzipM)
-import Control.Monad.State (evalState, MonadState (get))
+import Control.Monad.State (evalState)
 
 
 import Data.List (intercalate)
@@ -100,7 +98,7 @@ instance Encodeable Constraint where
     
 type Solution a = Either [Constraint] (Map Coeff Rational)
 
-genOptiTarget :: Potential a -> [FunRsrcAnn a] -> Target
+genOptiTarget :: Potential -> [FunRsrcAnn] -> Target
 genOptiTarget pot fns = evalState buildTarget (OptimizationState 0)
   where buildTarget = do
             target <- freshCoeff
@@ -110,7 +108,7 @@ genOptiTarget pot fns = evalState buildTarget (OptimizationState 0)
           let (q, q') = withCost fn
           cOptimize pot q q'
 
-solveZ3 :: HasCoeffs a => Potential a -> RsrcSignature a -> [Constraint] -> IO (Solution a)
+solveZ3 :: Potential -> RsrcSignature -> [Constraint] -> IO (Solution a)
 solveZ3 pot sig cs = do
   let (optiTarget, optiCs) = genOptiTarget pot (M.elems sig)
   evalZ3 $ solveZ3' optiTarget sig (cs ++ optiCs)
@@ -126,7 +124,7 @@ evalCoeffs m qs = do
             Just r -> return (q, r)
             Nothing -> error $ "Evaluation of coefficient " ++ show q ++ " in z3 model failed."
 
-solveZ3' :: HasCoeffs a => (MonadOptimize z3) => Coeff -> RsrcSignature a -> [Constraint] -> z3 (Solution a)
+solveZ3' :: (MonadOptimize z3) => Coeff -> RsrcSignature -> [Constraint] -> z3 (Solution a)
 solveZ3' target sig cs = do
   let annCoeffs = S.filter isAnnCoeff $ S.unions $ map (S.fromList . getCoeffs) cs
   annCoeffs' <- mapM toZ3 (S.toList annCoeffs)
