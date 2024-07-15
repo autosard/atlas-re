@@ -6,6 +6,7 @@ import Data.Text(Text)
 import Data.Map(Map)
 import qualified Data.Map as M
 import Data.List(intercalate)
+import Prelude hiding ((!))
 
 import Primitive(Id)
 import CostAnalysis.Rules ( RuleArg )
@@ -59,5 +60,22 @@ data Potential = Potential {
   printBasePot :: Coeff -> Rational -> String}
 
 
-printPot :: Potential -> RsrcAnn -> Map Coeff Rational -> String
-printPot pot qs@(RsrcAnn len coeffs) solution = intercalate " + " $ zipWith (printBasePot pot) (M.elems coeffs) (M.elems solution)
+calculateBound :: (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> Map Coeff Rational
+calculateBound (from, to) solution = M.fromList $ map subtract (getCoeffs from)
+  where [arg] = annVars to
+        subtract left@(AnnCoeff _ _ _ idx) = let
+          right = to!substitute idx arg in
+          case solution M.!? right of
+            Just rightValue -> case solution M.!? left of
+              Just leftValue -> let diff =  leftValue - rightValue in
+                if diff >= 0 then (left, diff) else error "Negative coefficient in result bound."
+              Nothing -> error $ "No such base term on the left hand side for '" ++ show right ++ "'."
+            Nothing -> case solution M.!? left of
+              Just leftValue -> (left, leftValue)
+              Nothing -> (left, 0)
+            
+
+printBound :: Potential -> (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> String
+printBound pot sig solution = intercalate " + " $ map (uncurry (printBasePot pot)) (M.toList solution')
+  where solution' = calculateBound sig solution
+  

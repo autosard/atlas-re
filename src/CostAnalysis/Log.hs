@@ -320,7 +320,7 @@ cOptimize potArgs q q' = do
 
 printBasePot :: Coeff -> Rational -> String
 printBasePot (AnnCoeff _ _ _ (Pure x)) v = show v ++ " * rk(" ++ T.unpack x ++ ")"
-printBasePot (AnnCoeff _ _ _ (Mixed factors)) v = show v ++ " * "
+printBasePot (AnnCoeff _ _ _ (Mixed factors)) v = show v ++ " * " ++ printLog
   where printLog = "log(" ++ intercalate " + " (map printFactor (S.toDescList factors)) ++ ")"
         printFactor (Const c) = show c
         printFactor (Arg x a) = if a /= 1 then show a ++ T.unpack x else T.unpack x

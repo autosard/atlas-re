@@ -43,4 +43,12 @@ instance Show CoeffIdx where
   show (Pure x) = "(" ++ T.unpack x ++ ")"
   show (Mixed xs) = "(" ++ L.intercalate "," (map show (S.toDescList xs)) ++ ")"
 
+substitute :: CoeffIdx -> Id -> CoeffIdx
+substitute (Pure x) y = Pure y
+substitute (Mixed factors) y = Mixed (S.map (subFactor y) factors)
+  where subFactor _ (Const c) = Const c 
+        subFactor y (Arg x a) = Arg y a
+
+
+
 type CoeffsMap = Map CoeffIdx Coeff

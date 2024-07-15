@@ -44,13 +44,16 @@ factorGTZero :: Factor -> Bool
 factorGTZero (Arg _ a) = a > 0
 factorGTZero (Const c) = c > 0
 
+instance Index CoeffIdx where
+  (!) ann@(RsrcAnn _ coeffs) idx = case M.lookup idx coeffs of
+        Just c -> c
+        Nothing -> error $ "Invalid index '" ++ show idx ++ "' for annotation '" ++ show ann ++ "'."    
+
 instance Index (Set Factor) where
   (!) :: RsrcAnn -> Set Factor -> Coeff
-  (!) ann@(RsrcAnn _ coeffs) factors =
-    let factors' = S.filter factorGTZero factors in
-      case M.lookup (Mixed factors') coeffs of
-        Just c -> c
-        Nothing -> error $ "Invalid index '" ++ show factors ++ "' for annotation '" ++ show ann ++ "'."
+  (!) ann factors = let factors' = S.filter factorGTZero factors in
+                      ann!Mixed factors'
+
 
 type AnnArray = Map (Set Factor) RsrcAnn
 
@@ -69,8 +72,6 @@ data FunRsrcAnn = FunRsrcAnn {
 
 type RsrcSignature = Map Id FunRsrcAnn
 
---calculateBound :: Id -> RsrcSignature -> Map Coeff Rational -> [Coeff]
---calculateBound 
 
 class HasCoeffs a where
   getCoeffs :: a -> [Coeff]

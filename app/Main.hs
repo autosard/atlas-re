@@ -45,6 +45,7 @@ import Cli(Options(..), RunOptions(..), EvalOptions(..), Command(..), cliP)
 import System.Random (getStdGen)
 import Module (loadSimple)
 import SourceError (printSrcError)
+import CostAnalysis.Potential (printBound)
 
 type App a = LoggerT (Msg Severity) IO a
 
@@ -72,8 +73,8 @@ run Options{..} RunOptions{..} = do
   solution <- liftIO $ solveZ3 pot sig cs
   case solution of
     (Left _) -> logError "error"
-    (Right coeffs) -> let coeffs' = M.restrictKeys coeffs (S.fromList (getCoeffs . withCost $ (sig M.! funName))) in
-                        liftIO $ print (show coeffs')
+    (Right coeffs) -> let target = withCost $ sig M.! funName in
+      liftIO $ putStr (printBound pot target coeffs)
 
 eval :: Options -> EvalOptions -> App ()
 eval Options{..} EvalOptions{..} = do
