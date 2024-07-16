@@ -59,7 +59,7 @@ spec = do
   describe "forAllCombinations" $ do
     it "generates a annoation array from the given variables and updates the id gen correctly" $ do
       let neg = False
-      let combLeft = ["x1", "x2"]
+      let combLeft = [("x1", treeT), ("x2", treeT)]
       let combRight = "x3"
       let annArgs = [("y1", treeT)]
       let idGen = 0
@@ -197,8 +197,8 @@ spec = do
       let p = rsrcAnn potArgs 1 "P" [(t1, treeT)]
       let p' = rsrcAnn potArgs 2 "P'" [(e, treeT)]
       let r = rsrcAnn potArgs 3 "R" [(t2, treeT), (x, treeT)]
-      let (ps, _) = forAllCombinations potArgs neg [t2] x 4 "P" [(t1, treeT)]
-      let (ps', _) = forAllCombinations potArgs neg [t2] x 6 "P'" [(e, treeT)]
+      let (ps, _) = forAllCombinations potArgs neg [(t2, treeT)] x 4 "P" [(t1, treeT)]
+      let (ps', _) = forAllCombinations potArgs neg [(t2, treeT)] x 6 "P'" [(e, treeT)]
 
       let cs = [Eq (p!t1) (q!t1),
                     Eq (p![mix||]) (q![mix||]),

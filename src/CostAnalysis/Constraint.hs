@@ -2,6 +2,8 @@
 
 module CostAnalysis.Constraint where
 
+import Data.List(intercalate)
+
 import CostAnalysis.Coeff
 import CostAnalysis.RsrcAnn 
 
@@ -35,6 +37,28 @@ data Constraint =
   -- | @'Minimize' q@ minimize coefficient @q@
   | Minimize Coeff
   deriving (Eq, Ord, Show)
+
+printSum :: [Coeff] -> String
+printSum qs = "(" ++ intercalate " + " (map printCoeff qs) ++ ")"
+
+printDiff :: [Coeff] -> String
+printDiff qs = "(" ++ intercalate " - " (map printCoeff qs) ++ ")"
+
+printConstraint :: Constraint -> String
+printConstraint (Eq q p) = printCoeff q ++ " = " ++ printCoeff p
+printConstraint (EqSum q ps) = printCoeff q ++ " = " ++ printSum ps
+printConstraint (EqPlusConst q p c) = printCoeff q ++ " = " ++ printCoeff p ++ " + " ++ show c
+printConstraint (EqMinusConst q p c) = printCoeff q ++ " = " ++ printCoeff p ++ " - " ++ show c
+printConstraint (EqMinusVar q p) = printCoeff q ++ " = " ++ printCoeff p ++ " - k"
+printConstraint (EqPlusMulti q p r) = printCoeff q ++ " = " ++ printCoeff p ++ " + k *" ++ printCoeff r
+printConstraint (Zero q) = printCoeff q ++ " = 0"
+printConstraint (NotZero q) = printCoeff q ++ " /= 0"
+printConstraint (Le q p) = printCoeff q ++ " <= " ++ printCoeff p
+printConstraint (GeSum ps q) = printSum ps ++ " >= " ++ printCoeff q
+printConstraint (Impl c1 c2) = printConstraint c1 ++ " -> " ++ printConstraint c2
+printConstraint (EqSub q ps) = printCoeff q ++ " = " ++ printDiff ps
+printConstraint (EqMultConst q p c) = printCoeff q ++ " = c * " ++ printCoeff p
+printConstraint (Minimize q) = "min(" ++ printCoeff q ++ ")"
 
 instance HasCoeffs Constraint where
   getCoeffs (Eq q p) = [q, p]

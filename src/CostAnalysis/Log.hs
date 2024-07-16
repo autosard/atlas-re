@@ -124,11 +124,10 @@ cEq potArgs q q'
       [Eq (q![mix|x1^a,x2^a,c|]) (q'![mix|exp^a,c|])
       | a <- aRange potArgs,
         c <- bRange potArgs]
-  | (length . args $ q) == 1 && (length .args $ q') == 1 =
-    let [x] = annVars q in 
-      Eq (q!x) (q'!exp) :
-      [Eq (q!idxQ) (q'!idxQ')
-      | (idxQ, idxQ') <- zip (combi potArgs [x]) (combi potArgs [exp])]
+  | (length . args $ q) == (length .args $ q') =
+      [Eq (q!x) (q'!y) | (x, y) <- zip (annVars q) (annVars q') ]
+      ++ [Eq (q!idxQ) (q'!idxQ')
+      | (idxQ, idxQ') <- zip (combi potArgs (annVars q)) (combi potArgs (annVars q'))]
 
 cMatch :: LogPotArgs ->
   RsrcAnn -> RsrcAnn -> Id -> [(Id, Type)] -> [Constraint]

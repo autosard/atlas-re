@@ -134,7 +134,7 @@ solveZ3' target sig cs = do
   mapM_ optimizeAssert positiveCs
   cs' <- mapM toZ3 cs
   target' <- toZ3 target
-  --optimizeMinimize target'
+  -- optimizeMinimize target'
   result <- optimizeCheck cs'
   case result of
     Sat -> do

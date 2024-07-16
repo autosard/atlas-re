@@ -14,6 +14,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Set(Set)
 import Data.Text(Text)
+import Data.List(intercalate)
 
 import Ast hiding (Coefficient)
 import Primitive(Id)
@@ -37,8 +38,9 @@ traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
 data RuleApp = RuleApp R.Rule Bool [Constraint] TypedExpr
 
 printRuleApp :: Set Constraint -> RuleApp -> String
-printRuleApp unsatCore (RuleApp rule cf cs e) = show rule ++ printCf ++ ": " ++ show (unsat cs) ++ "; " ++ printExprHead e
-  where unsat cs = S.fromList cs `S.intersection` unsatCore
+printRuleApp unsatCore (RuleApp rule cf cs e) = show rule ++ printCf ++ ": " ++ printCs (unsat cs) ++ " " ++ printExprHead e
+  where printCs cs = "{" ++ intercalate "," (S.toList cs) ++ "}"
+        unsat cs = S.map printConstraint (S.fromList cs `S.intersection` unsatCore)
         printCf = if cf then " (cf)" else ""
 
 
@@ -130,10 +132,14 @@ proveConst _ cf ctx e q q' = do
   return $ T.Node (RuleApp R.Const cf cs e) []
 
 proveCmp :: Prove TypedExpr Derivation
-proveCmp _ cf _ e _ _ = do
+proveCmp _ cf _ e q q' = 
   if not . isBool $ getType e then
     errorFrom (SynExpr e) "cmp rule applied to non-boolean expression."
-  else return $ T.Node (RuleApp R.Cmp cf [] e) []
+  else do
+    pot <- view potential
+    let cs = cEq pot q q'
+    tell cs
+    return $ T.Node (RuleApp R.Cmp cf cs e) []
 
 proveVar :: Prove TypedExpr Derivation
 proveVar _ cf _ e q q' = do
