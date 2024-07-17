@@ -27,7 +27,8 @@ import CostAnalysis.Tactic
 import qualified CostAnalysis.Rules as R
 import CostAnalysis.Potential hiding (Factor(..))
 import CostAnalysis.RsrcAnn
-import CostAnalysis.Constraint
+import CostAnalysis.Constraint hiding (Var)
+import qualified CostAnalysis.Constraint as Const(Var(..))
 import StaticAnalysis(freeVars)
 import Data.Maybe (fromMaybe, mapMaybe)
 import SourceError
@@ -48,7 +49,8 @@ type Derivation = Tree RuleApp
 
 data ProofState = ProofState {
   _sig :: RsrcSignature,
-  _annIdGen :: Int
+  _annIdGen :: Int,
+  _varIdGen :: Int
   }
   deriving (Show)
 
@@ -67,12 +69,12 @@ type ProveMonad a = ExceptT SourceError (RWS ProofEnv [Constraint] ProofState) a
 type ProofResult = ([(Id, Derivation)], [Constraint], RsrcSignature)
 
 runProof :: TypedModule -> Potential -> Map Id Tactic
-  -> Either SourceError ProofResult
-runProof mod pot tactics = (,cs, state' ^. sig) <$> deriv
+  -> (Int, Either SourceError ProofResult)
+runProof mod pot tactics = (state' ^. varIdGen, (,cs, state' ^. sig) <$> deriv)
   where (deriv, state', cs) = runRWS rws env state
         rws = runExceptT $ proveModule mod
         env = ProofEnv pot tactics
-        state = ProofState M.empty 0
+        state = ProofState M.empty 0 0
 
 genAnnIds :: Int -> ProveMonad [Int]
 genAnnIds n = do
@@ -91,6 +93,15 @@ genAnnId = do
   g <- use annIdGen
   annIdGen .= g+1
   return g
+
+genVarId :: ProveMonad Int
+genVarId = do
+  g <- use varIdGen
+  varIdGen .= g+1
+  return g
+
+freshVar :: ProveMonad Const.Var
+freshVar = Const.Var <$> genVarId
 
 forAllCombinations' :: Bool -> [(Id, Type)] -> Id -> Text -> [(Id, Type)] -> ProveMonad AnnArray
 forAllCombinations' neg xs x label ys = do
@@ -260,8 +271,9 @@ proveApp tactic cf ctx e@(App id _) q q' = do
   fnSig <- use sig
   let (p, p') = withCost $ fnSig M.! id
   let (r, r') = withoutCost $ fnSig M.! id
-  let cs = cPlusMulti pot q p r
-        ++ cPlusMulti pot q' p' r'
+  k <- freshVar
+  let cs = cPlusMulti pot q p r k
+        ++ cPlusMulti pot q' p' r' k
   tell cs
   return $ T.Node (RuleApp R.App cf cs e) []
 
@@ -299,8 +311,9 @@ proveShift tactic cf ctx e q q' = do
   let [subTactic] = subTactics 1 tactic
   p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (args q)
   p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure (args q')
-  let cs = cMinusVar pot p q
-        ++ cMinusVar pot p' q'
+  k <- freshVar
+  let cs = cMinusVar pot p q k
+        ++ cMinusVar pot p' q' k
   tell cs
   deriv <- proveExpr subTactic cf ctx e p p'
   return $ T.Node (RuleApp R.Shift cf cs e) [deriv]
@@ -314,7 +327,7 @@ proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
     return $ T.Node (RuleApp R.TickDefer cf [] e) [deriv]
   else do
     p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (args q')
-    let cs = cPlusConst pot p q' (fromMaybe 1 c) 
+    let cs = cPlusConst pot q' p (fromMaybe 1 c) 
     tell cs
     deriv <- proveExpr subTactic cf ctx e1 q p
     return $ T.Node (RuleApp R.TickDefer cf cs e) [deriv]

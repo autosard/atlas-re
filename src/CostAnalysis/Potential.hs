@@ -38,9 +38,9 @@ data Potential = Potential {
   -- | @ 'cPlusConst' q p c@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) + c\] where @c@ is constant.
   cPlusConst :: RsrcAnn -> RsrcAnn -> Rational -> [Constraint],
   -- | @ 'cMinusVar' q p@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) - k\] where @k@ is a fresh variable.
-  cMinusVar :: RsrcAnn -> RsrcAnn -> [Constraint],
+  cMinusVar :: RsrcAnn -> RsrcAnn -> Var -> [Constraint],
   -- | @ 'cPlusMulti' q p r@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(* \mid P) + \phi(*\mid R) \cdot K\] where @k@ is a fresh variable.
-  cPlusMulti :: RsrcAnn -> RsrcAnn -> RsrcAnn -> [Constraint],
+  cPlusMulti :: RsrcAnn -> RsrcAnn -> RsrcAnn -> Var -> [Constraint],
   -- | @ 'cEq' q q'@ returns constraints that guarantee \[\phi(\Gamma \mid Q) = \phi(\Delta \mid Q') \text{ where } |\Gamma| = |Q|, |\Delta| = |Q'|\]  
   cEq :: RsrcAnn -> RsrcAnn -> [Constraint],
   -- | @ 'cMatch' q p x ys@ returns constraints that guarantee \[\phi(\Gamma, x \mid Q) = \phi(\Gamma, \vec{y} \mid P)\] where @x@ is the variable that matched and @ys@ is the pattern variables.
@@ -63,7 +63,7 @@ data Potential = Potential {
 calculateBound :: (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> Map Coeff Rational
 calculateBound (from, to) solution = M.fromList $ map subtract (getCoeffs from)
   where [arg] = annVars to
-        subtract left@(AnnCoeff _ _ _ idx) = let
+        subtract left@(Coeff _ _ _ idx) = let
           right = to!substitute idx arg in
           case solution M.!? right of
             Just rightValue -> case solution M.!? left of

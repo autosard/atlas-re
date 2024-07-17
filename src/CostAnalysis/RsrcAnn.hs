@@ -76,6 +76,9 @@ type RsrcSignature = Map Id FunRsrcAnn
 class HasCoeffs a where
   getCoeffs :: a -> [Coeff]
 
+instance HasCoeffs a => HasCoeffs [a] where
+  getCoeffs = concatMap getCoeffs
+
 instance HasCoeffs CoeffsMap where
   getCoeffs = M.elems
 

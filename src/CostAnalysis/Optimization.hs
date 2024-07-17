@@ -3,12 +3,11 @@
 module CostAnalysis.Optimization where
 
 import CostAnalysis.Constraint
-import CostAnalysis.Coeff
 import Control.Monad.State
 import Lens.Micro.Platform
 import Data.Foldable (foldrM)
 
-type Target = (Coeff, [Constraint])
+type Target = (Var, [Constraint])
 
 newtype OptimizationState = OptimizationState {
   _idGen :: Int}
@@ -17,16 +16,16 @@ makeLenses ''OptimizationState
 
 type OptiMonad a = State OptimizationState a
 
-freshCoeff :: OptiMonad Coeff
-freshCoeff = do
+freshVar :: OptiMonad Var
+freshVar = do
   g <- use idGen
   idGen .= g+1
-  return $ GenCoeff g
+  return $ Var g
 
-bindToCoeffs :: (Coeff -> a -> Constraint) -> [a] -> OptiMonad ([Coeff], [Constraint])
-bindToCoeffs binder = foldrM go ([],[])
-  where go x (coeffs, cs) = do
-          coeff <- freshCoeff
-          let c = binder coeff x
-          return (coeff:coeffs, c:cs)
+bindToVars :: (Var -> a -> Constraint) -> [a] -> OptiMonad ([Var], [Constraint])
+bindToVars binder = foldrM go ([],[])
+  where go x (vars, cs) = do
+          var <- freshVar
+          let c = binder var x
+          return (var:vars, c:cs)
 

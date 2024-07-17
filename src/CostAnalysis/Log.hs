@@ -53,8 +53,8 @@ combi' args z (x:xs) = [if a > 0 then x^a:y else y
 rsrcAnn :: LogPotArgs
   -> Int -> Text -> [(Id, Type)] -> RsrcAnn
 rsrcAnn potArgs id label args = RsrcAnn args' $ M.fromList (rankCoeffs ++ logCoeffs)
-  where rankCoeffs = [(Pure x, AnnCoeff id label "log" (Pure x)) | (x,i) <- zip vars [1..]]
-        logCoeffs = map ((\idx -> (idx, AnnCoeff id label "log" idx)) . Mixed) $ combi potArgs vars
+  where rankCoeffs = [(Pure x, Coeff id label "log" (Pure x)) | (x,i) <- zip vars [1..]]
+        logCoeffs = map ((\idx -> (idx, Coeff id label "log" idx)) . Mixed) $ combi potArgs vars
         args' = filter (\(x, t) -> matchesTypes t types) args
         vars = map fst args'
 
@@ -82,51 +82,51 @@ elems = M.elems
 eqExceptConst :: LogPotArgs
   -> RsrcAnn -> RsrcAnn -> [Constraint]
 eqExceptConst potArgs q p = let qs = annVars q in
-  [Eq (q!x) (p!x) | x <- qs]
-  ++ [Eq (q!idx) (p!idx)
+  [eq (q!x) (p!x) | x <- qs]
+  ++ [eq (q!idx) (p!idx)
      | idx <- combi potArgs qs, idx /= [mix|2|]]
        
 cPlusConst :: LogPotArgs
   -> RsrcAnn -> RsrcAnn -> Rational -> [Constraint]
 cPlusConst potArgs q p c = let qs = args q in
-  EqPlusConst (q![mix|2|]) (p![mix|2|]) c :
+  eqPlusConst (q![mix|2|]) (p![mix|2|]) c :
   eqExceptConst potArgs q p
 
 cMinusVar :: LogPotArgs
-  -> RsrcAnn -> RsrcAnn -> [Constraint]
-cMinusVar potArgs q p = let qs = args q in 
-  EqMinusVar (q![mix|2|]) (p![mix|2|]) :
+  -> RsrcAnn -> RsrcAnn -> Var -> [Constraint]
+cMinusVar potArgs q p k = let qs = args q in 
+  eqMinusVar (q![mix|2|]) (p![mix|2|]) k :
   eqExceptConst potArgs q p
   
 cPlusMulti :: LogPotArgs
-  -> RsrcAnn -> RsrcAnn -> RsrcAnn -> [Constraint]
-cPlusMulti potArgs q p r = let xs = annVars q
-                               ys = annVars p in 
-  [EqPlusMulti (q!x) (p!y) (r!y) | (x,y) <- zip xs ys]
-  ++ [EqPlusMulti (q!idxQ) (p!idxP) (r!idxP)
+  -> RsrcAnn -> RsrcAnn -> RsrcAnn -> Var -> [Constraint]
+cPlusMulti potArgs q p r k = let xs = annVars q
+                                 ys = annVars p in 
+  [eqPlusMulti (q!x) (p!y) (r!y) k | (x,y) <- zip xs ys]
+  ++ [eqPlusMulti (q!idxQ) (p!idxP) (r!idxP) k
      | (idxQ, idxP) <- zip (combi potArgs xs) (combi potArgs ys)]
 
 cEq :: LogPotArgs
   -> RsrcAnn -> RsrcAnn -> [Constraint]
 cEq potArgs q q'
   | (null . args $ q) && (length . args $ q') == 1 =
-    EqSum (q![mix|2|]) [q'!exp, q'![mix|2|]] :
-    [EqSum (q![mix|2|]) [q'![mix|exp^a,b|]
+    eqSum (q![mix|2|]) [q'!exp, q'![mix|2|]] :
+    [eqSum (q![mix|2|]) [q'![mix|exp^a,b|]
                             | a <- aRange potArgs,
                               b <- bRange potArgs, a + b == c]
                         | c <- bRange potArgs, c > 2]
   | (length . args $ q) == 2 && (length . args $ q') == 1 =
     let [x1, x2] = annVars q in
-      Eq (q!x1) (q'!exp) :
-      Eq (q!x2) (q'!exp) :
-      Eq (q![mix|x1^1|]) (q'!exp) :
-      Eq (q![mix|x2^1|]) (q'!exp) :
-      [Eq (q![mix|x1^a,x2^a,c|]) (q'![mix|exp^a,c|])
+      eq (q!x1) (q'!exp) :
+      eq (q!x2) (q'!exp) :
+      eq (q![mix|x1^1|]) (q'!exp) :
+      eq (q![mix|x2^1|]) (q'!exp) :
+      [eq (q![mix|x1^a,x2^a,c|]) (q'![mix|exp^a,c|])
       | a <- aRange potArgs,
         c <- bRange potArgs]
   | (length . args $ q) == (length .args $ q') =
-      [Eq (q!x) (q'!y) | (x, y) <- zip (annVars q) (annVars q') ]
-      ++ [Eq (q!idxQ) (q'!idxQ')
+      [eq (q!x) (q'!y) | (x, y) <- zip (annVars q) (annVars q') ]
+      ++ [eq (q!idxQ) (q'!idxQ')
       | (idxQ, idxQ') <- zip (combi potArgs (annVars q)) (combi potArgs (annVars q'))]
 
 cMatch :: LogPotArgs ->
@@ -139,9 +139,9 @@ cMatch' :: LogPotArgs ->
   RsrcAnn -> RsrcAnn -> Id -> [Id] -> [Constraint]
 cMatch' potArgs q p x [] =
   let nonMatchVars = L.delete x (annVars q) in
-      [Eq (q!y) (p!y) | y <- nonMatchVars]
-      ++ [EqSum (p![mix|2|]) [q![mix|2|], q!x]]
-      ++ [EqSum (p!idx) [q![mix|_xs,x^a,b|]
+      [eq (q!y) (p!y) | y <- nonMatchVars]
+      ++ [eqSum (p![mix|2|]) [q![mix|2|], q!x]]
+      ++ [eqSum (p!idx) [q![mix|_xs,x^a,b|]
                         | a <- aRange potArgs,
                           b <- bRange potArgs,
                           a + b == c]
@@ -151,28 +151,28 @@ cMatch' potArgs q p x [] =
            idx /= [mix|2|]]
 cMatch' potArgs q r x [u, v] =
   let nonMatchVars = L.delete x (annVars q) in
-    Eq (r!u) (q!x) :
-    Eq (r!v) (q!x) :
-    Eq (r![mix|u^1|]) (q!x) :
-    Eq (r![mix|v^1|]) (q!x) :
-    [Eq (r![mix|_xs,u^a,v^a,b|]) (q![mix|_xs,x^a,b|])
+    eq (r!u) (q!x) :
+    eq (r!v) (q!x) :
+    eq (r![mix|u^1|]) (q!x) :
+    eq (r![mix|v^1|]) (q!x) :
+    [eq (r![mix|_xs,u^a,v^a,b|]) (q![mix|_xs,x^a,b|])
     | xs <- varCombi potArgs nonMatchVars,
       a <- aRange potArgs,
       b <- bRange potArgs]
-    ++ [Eq (q!y) (r!y) | y <- nonMatchVars]
+    ++ [eq (q!y) (r!y) | y <- nonMatchVars]
 cMatch' _ _ _ x ys = error $ "xs: " ++ show x ++ ", ys: " ++ show ys
 
 cLetBase :: LogPotArgs
   -> RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> [Constraint]
 cLetBase potArgs q p r p' = let xs = annVars p 
                                 ys = annVars r in
-  [Eq (r![mix|c|]) (p'![mix|c|]) | c <- bRange potArgs]
-  ++ [Eq (r!y) (q!y) | y <- ys]
-  ++ [Eq (p!x) (q!x) | x <- xs]
-  ++ [Eq (p![mix|_xs',c|]) (q![mix|_xs',c|])
+  [eq (r![mix|c|]) (p'![mix|c|]) | c <- bRange potArgs]
+  ++ [eq (r!y) (q!y) | y <- ys]
+  ++ [eq (p!x) (q!x) | x <- xs]
+  ++ [eq (p![mix|_xs',c|]) (q![mix|_xs',c|])
      | xs' <- varCombi potArgs xs,
        c <- bRange potArgs]
-  ++ [Eq (q![mix|_ys', c|]) (r![mix|_ys',c|])
+  ++ [eq (q![mix|_ys', c|]) (r![mix|_ys',c|])
      | ys' <- varCombi potArgs ys,
        (not . S.null) ys', 
        c <- bRange potArgs]
@@ -187,19 +187,19 @@ cLet potArgs neg q p p' ps ps' r x = let xs = annVars p
                                          _eRange = if neg then
                                            eRangeNeg potArgs
                                            else eRange potArgs in
-  Eq (r!x) (p'!exp) :
-  [Eq (p!x) (q!x) | x <- xs]
-  ++ [Eq (p![mix|_xs',c|]) (q![mix|_xs',c|])
+  eq (r!x) (p'!exp) :
+  [eq (p!x) (q!x) | x <- xs]
+  ++ [eq (p![mix|_xs',c|]) (q![mix|_xs',c|])
      | xs' <- varCombi potArgs xs,
        c <- bRange potArgs]
-  ++ [Eq (r!y) (q!y) | y <- ys]
-  ++ [Eq (r![mix|x^d,e|]) (p'![mix|exp^d,e|])
+  ++ [eq (r!y) (q!y) | y <- ys]
+  ++ [eq (r![mix|x^d,e|]) (p'![mix|exp^d,e|])
      | d <- dRange potArgs, e <- _eRange]
-  ++ [Eq (r![mix|_ys',c|]) (q![mix|_ys', c|])
+  ++ [eq (r![mix|_ys',c|]) (q![mix|_ys', c|])
      | ys' <- varCombi potArgs ys,
        (not . S.null) ys', 
        c <- bRange potArgs]
-  ++ [EqSum (q![mix|_xs',_ys',c|]) [ps!![mix|_ys',x^d,e|]![mix|_xs',c|]
+  ++ [eqSum (q![mix|_xs',_ys',c|]) [ps!![mix|_ys',x^d,e|]![mix|_xs',c|]
                                    | d <- dRange potArgs,
                                      d /= 0,
                                      e <- _eRange]
@@ -209,14 +209,14 @@ cLet potArgs neg q p p' ps ps' r x = let xs = annVars p
        ys' <- varCombi potArgs ys,
        (not .S.null) ys',
        c <- bRange potArgs]
-  ++ [Eq (r![mix|_ys',x^d,e|]) (ps'!![mix|_ys',x^d,e|]![mix|exp^d,ePos|])
+  ++ [eq (r![mix|_ys',x^d,e|]) (ps'!![mix|_ys',x^d,e|]![mix|exp^d,ePos|])
      | ys' <- varCombi potArgs ys,
        (not . S.null) ys',
        d <- dRange potArgs,
        d /= 0,
        e <- _eRange,
        let ePos = max e 0]
-  ++ [Zero (ps'!![mix|_ys',x^d,e|]![mix|exp^d',e'|])
+  ++ [zero (ps'!![mix|_ys',x^d,e|]![mix|exp^d',e'|])
      | ys' <- varCombi potArgs ys,
        (not . S.null) ys',
        d <- dRange potArgs,
@@ -226,7 +226,7 @@ cLet potArgs neg q p p' ps ps' r x = let xs = annVars p
        d' <- dRange potArgs,
        e' <- _eRange,
        (d', e') /= (d, ePos)]
-  ++ [GeSum [ps!![mix|_ys',x^d,e|]![mix|_xs',c|]
+  ++ [geSum [ps!![mix|_ys',x^d,e|]![mix|_xs',c|]
             | xs' <- varCombi potArgs xs,
               c <- bRange potArgs]
        (ps'!![mix|_ys',x^d,e|]![mix|exp^d,ePos|])
@@ -236,8 +236,8 @@ cLet potArgs neg q p p' ps ps' r x = let xs = annVars p
        d /= 0,
        e <- _eRange,
        let ePos = max e 0]
-  ++ [Impl (NotZero (ps!![mix|_ys',x^d,e|]![mix|_xs',c|]))
-      (Le (ps'!![mix|_ys',x^d,e|]![mix|exp^d,ePos|])
+  ++ [Impl (notZero (ps!![mix|_ys',x^d,e|]![mix|_xs',c|]))
+      (le (ps'!![mix|_ys',x^d,e|]![mix|exp^d,ePos|])
        (ps!![mix|_ys',x^d,e|]![mix|_xs',c|]))
      | ys' <- varCombi potArgs ys,
        (not . S.null) ys',
@@ -252,8 +252,8 @@ cLet potArgs neg q p p' ps ps' r x = let xs = annVars p
 cWeakenVar :: LogPotArgs
   -> RsrcAnn -> RsrcAnn -> [Constraint]
 cWeakenVar potArgs q r = let xs = annVars r in
-  [Eq (r!x) (q!x) | x <- xs]
-  ++ [Eq (r![mix|_xs',b|]) (q![mix|_xs',b|])
+  [eq (r!x) (q!x) | x <- xs]
+  ++ [eq (r![mix|_xs',b|]) (q![mix|_xs',b|])
      | xs' <- varCombi potArgs xs,
        b <- bRange potArgs]
 
@@ -266,19 +266,19 @@ cWeaken args ruleArgs q q' p p' = []
 
 rankDifference :: RsrcAnn -> RsrcAnn -> OptiMonad Target
 rankDifference q q' = do
-  target <- freshCoeff
-  (ds, diffs) <- bindToCoeffs (diff (q'!("e" :: Id))) (annVars q)
+  target <- freshVar
+  (ds, diffs) <- bindToVars (diff (q'!("e" :: Id))) (annVars q)
   let sum = EqSum target ds
   return (target, sum:diffs)
-  where diff :: Coeff -> Coeff -> Id -> Constraint
-        diff rankQ' d x = EqSub d [q!x, rankQ']
+  where diff :: Coeff -> Var -> Id -> Constraint
+        diff rankQ' d x = EqSub d [AnnCoeff (q!x), AnnCoeff rankQ']
 
 
 weightedNonRankDifference :: LogPotArgs -> RsrcAnn -> RsrcAnn -> OptiMonad Target
 weightedNonRankDifference potArgs q q' = do
-  target <- freshCoeff
-  (ds, diffs) <- bindToCoeffs (\coeff (p, p', _) -> EqSub coeff [p, p']) pairs
-  (ws, weightedDiffs) <- bindToCoeffs (\coeff (d, (_, _, (a,b))) -> EqMultConst coeff d (w a b)) (zip ds pairs)
+  target <- freshVar
+  (ds, diffs) <- bindToVars (\var (p, p', _) -> EqSub var [AnnCoeff p, AnnCoeff p']) pairs
+  (ws, weightedDiffs) <- bindToVars (\var (d, (_, _, (a,b))) -> EqMultConst var d (w a b)) (zip ds pairs)
   let sum = EqSum target ws
   return (target, sum:(diffs ++ weightedDiffs))
   where pairs = [(q![mix|x^a,b|], q'![mix|y^a,b|], (a,b))
@@ -296,36 +296,35 @@ weightedNonRankDifference potArgs q q' = do
                        
 constantDifference :: RsrcAnn -> RsrcAnn -> OptiMonad Target
 constantDifference q q' = do
-  target <- freshCoeff
-  let diff = EqSub target [q![mix|2|], q'![mix|2|]]
+  target <- freshVar
+  let diff = EqSub target [AnnCoeff (q![mix|2|]), AnnCoeff (q'![mix|2|])]
   return (target, [diff])                                     
 
 absoluteValue :: LogPotArgs -> RsrcAnn -> OptiMonad Target
 absoluteValue potArgs q = do
-  target <- freshCoeff
-  let sum = EqSum target [q!idx | idx <- combi potArgs (annVars q)]
+  target <- freshVar
+  let sum = EqSum target [AnnCoeff (q!idx) | idx <- combi potArgs (annVars q)]
   return (target, [sum])
   
 cOptimize :: LogPotArgs ->
   RsrcAnn -> RsrcAnn -> OptiMonad Target
 cOptimize potArgs q q' = do
-  target <- freshCoeff
+  target <- freshVar
   (subTargets, cs) <- unzip <$> sequence [
         rankDifference q q',
         weightedNonRankDifference potArgs q q',
         constantDifference q q',
         absoluteValue potArgs q]
-  (weightedSubTargets, csWeighted) <- bindToCoeffs (\coeff (target, w) -> EqMultConst coeff target w) $ zip subTargets [16127, 997, 97, 2]
+  (weightedSubTargets, csWeighted) <- bindToVars (\var (target, w) -> EqMultConst var target w) $ zip subTargets [16127, 997, 97, 2]
   let sum = EqSum target weightedSubTargets
   return (target, sum:concat cs ++ csWeighted)
 
 printBasePot :: Coeff -> Rational -> String
-printBasePot (AnnCoeff _ _ _ (Pure x)) v = show v ++ " * rk(" ++ T.unpack x ++ ")"
-printBasePot (AnnCoeff _ _ _ (Mixed factors)) v = show v ++ " * " ++ printLog
+printBasePot (Coeff _ _ _ (Pure x)) v = show v ++ " * rk(" ++ T.unpack x ++ ")"
+printBasePot (Coeff _ _ _ (Mixed factors)) v = show v ++ " * " ++ printLog
   where printLog = "log(" ++ intercalate " + " (map printFactor (S.toDescList factors)) ++ ")"
         printFactor (Const c) = show c
         printFactor (Arg x a) = if a /= 1 then show a ++ T.unpack x else T.unpack x
-printBasePot _ _ = error "invalid coeffient"
 
 logPot :: LogPotArgs -> Potential
 logPot args = Potential

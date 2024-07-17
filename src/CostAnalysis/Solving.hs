@@ -26,9 +26,9 @@ traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
 class Encodeable a where
   toZ3 :: (MonadZ3 z3) => a -> z3 AST
 
-instance Encodeable Coeff where
-  toZ3 (GenCoeff id) = mkRealVar =<< mkStringSymbol ("opt_" ++ show id)
-  toZ3 q@(AnnCoeff {}) = mkRealVar =<< mkStringSymbol (printCoeff q)
+instance Encodeable Var where
+  toZ3 (Var id) = mkRealVar =<< mkStringSymbol ("k_" ++ show id)
+  toZ3 (AnnCoeff q) = mkRealVar =<< mkStringSymbol (printCoeff q)
 
 instance Encodeable Rational where
   toZ3 r = mkReal (fromIntegral (numerator r)) (fromIntegral (denominator r))
@@ -54,22 +54,24 @@ instance Encodeable Constraint where
     c' <- toZ3 c
     sub <- mkSub [p', c']
     mkEq q' sub
-  toZ3 (EqMinusVar q p) = do
+  toZ3 (EqMinusVar q p k) = do
     q' <- toZ3 q
     p' <- toZ3 p
-    k <- mkFreshRealVar "k"
-    mkGe k =<< mkReal 0 1
-    sub <- mkSub [p', k]
-    mkEq q' sub
-  toZ3 (EqPlusMulti q p r) = do
+    k' <- toZ3 k
+    ge0 <- mkGe k' =<< mkReal 0 1
+    sub <- mkSub [p', k']
+    eq <- mkEq q' sub
+    mkAnd [eq, ge0]
+  toZ3 (EqPlusMulti q p r k) = do
     q' <- toZ3 q
     p' <- toZ3 p
     r' <- toZ3 r
-    k <- mkFreshRealVar "k"
-    mkGe k =<< mkReal 0 1
-    prod <- mkMul [r', k]
+    k' <- toZ3 k
+    ge0 <- mkGe k' =<< mkReal 0 1
+    prod <- mkMul [r', k']
     sum <- mkAdd [p', prod]
-    mkEq q' sum
+    eq <- mkEq q' sum
+    mkAnd [eq, ge0]
   toZ3 (Zero q) = do
     q' <- toZ3 q
     zero <- toZ3 (0 :: Rational)
@@ -100,19 +102,19 @@ instance Encodeable Constraint where
     
 type Solution a = Either [Constraint] (Map Coeff Rational)
 
-genOptiTarget :: Potential -> [FunRsrcAnn] -> Target
-genOptiTarget pot fns = evalState buildTarget (OptimizationState 0)
+genOptiTarget :: Potential -> [FunRsrcAnn] -> Int -> Target
+genOptiTarget pot fns varIdGen = evalState buildTarget (OptimizationState varIdGen)
   where buildTarget = do
-            target <- freshCoeff
+            target <- freshVar
             (targets, cs) <- mapAndUnzipM optimizeFn fns
             return (target, EqSum target targets:concat cs)
         optimizeFn fn = do
           let (q, q') = withCost fn
           cOptimize pot q q'
 
-solveZ3 :: Potential -> RsrcSignature -> [Constraint] -> IO (Solution a)
-solveZ3 pot sig cs = do
-  let (optiTarget, optiCs) = genOptiTarget pot (M.elems sig)
+solveZ3 :: Potential -> RsrcSignature -> [Constraint] -> Int -> IO (Solution a)
+solveZ3 pot sig cs varIdGen = do
+  let (optiTarget, optiCs) = genOptiTarget pot (M.elems sig) varIdGen
   evalZ3 $ solveZ3' optiTarget sig (cs ++ optiCs)
 
 
@@ -120,21 +122,21 @@ evalCoeffs :: MonadZ3 z3 => Model -> [Coeff] -> z3 (Map Coeff Rational)
 evalCoeffs m qs = do
   M.fromList <$> mapM evalCoeff qs
   where evalCoeff q = do
-          q' <- toZ3 q
+          q' <- toZ3 (AnnCoeff q)
           evalResult <- evalReal m q'
           case evalResult of
             Just r -> return (q, r)
             Nothing -> error $ "Evaluation of coefficient " ++ show q ++ " in z3 model failed."
 
-solveZ3' :: (MonadOptimize z3) => Coeff -> RsrcSignature -> [Constraint] -> z3 (Solution a)
+solveZ3' :: (MonadOptimize z3) => Var -> RsrcSignature -> [Constraint] -> z3 (Solution a)
 solveZ3' target sig cs = do
-  let annCoeffs = S.filter isAnnCoeff $ S.unions $ map (S.fromList . getCoeffs) cs
-  annCoeffs' <- mapM toZ3 (S.toList annCoeffs)
+  let annCoeffs = S.unions $ map (S.fromList . getCoeffs) cs
+  annCoeffs' <- mapM (toZ3 . AnnCoeff) (S.toList annCoeffs)
   positiveCs <- mapM (\coeff -> mkGe coeff =<< mkReal 0 1) annCoeffs'
   mapM_ optimizeAssert positiveCs
   cs' <- mapM toZ3 cs
   target' <- toZ3 target
-  -- optimizeMinimize target'
+  --optimizeMinimize target'
   result <- optimizeCheck cs'
   case result of
     Sat -> do
@@ -144,9 +146,6 @@ solveZ3' target sig cs = do
       unsatCore <- optimizeGetUnsatCore
       astStrings <- mapM astToString unsatCore
       error $ "unsat: " ++ intercalate "," astStrings
-    Undef -> error "Z3 returned undef."
-   where isAnnCoeff (AnnCoeff {}) = True
-         isAnnCoeff _ = False
-   
+    Undef -> error "Z3 returned undef."  
    
   
