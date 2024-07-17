@@ -38,7 +38,7 @@ import Eval(evalWithModule)
 import StaticAnalysis(fns)
 import Primitive(Id)
 import CostAnalysis.Tactic 
-import CostAnalysis.Log
+import CostAnalysis.Potential.Log
 import CostAnalysis.Deriv
 import CostAnalysis.Solving
 
@@ -63,23 +63,24 @@ run :: Options -> RunOptions -> App ()
 run Options{..} RunOptions{..} = do
   let (modName, funName) = fqn 
   (normalizedProg, contents) <- liftIO $ loadMod searchPath modName
---  liftIO $ print (show normalizedProg)
   tactics <- case tacticsPath of
     Just path -> loadTactics (T.unpack modName) (fns normalizedProg) path
     Nothing -> return M.empty
   let _aRange = [0,1]
   let _bRange = [0,2]
-  let args = LogPotArgs _aRange _bRange _aRange _bRange (-1 : _bRange)
+  let args = Args _aRange _bRange _aRange _bRange (-1 : _bRange)
   let pot = logPot args
-  (derivs, cs, sig) <- liftIO $ case runProof normalizedProg pot tactics of
+  let (varIdGen, proofResult) = runProof normalizedProg pot tactics
+  (derivs, cs, sig) <- liftIO $ case proofResult of
         Left srcErr -> die $ printSrcError srcErr contents
         Right v -> return v
-  solution <- liftIO $ solveZ3 pot sig cs
-  liftIO $ mapM (printDeriv (S.empty)) derivs
+  solution <- liftIO $ solveZ3 pot sig cs varIdGen
+--  liftIO $ putStr (printProg normalizedProg)
+  --liftIO $ mapM (printDeriv (S.fromList cs)) derivs
   case solution of
     (Left _) -> logError "error"
     (Right coeffs) -> let target = withCost $ sig M.! funName in do
-      --liftIO $ print solution
+      liftIO $ print solution 
       liftIO $ putStr (printBound pot target coeffs)
       
 

@@ -34,7 +34,7 @@ library
                       CostAnalysis.Coeff,
                       CostAnalysis.RsrcAnn,
                       CostAnalysis.Potential,
-                      CostAnalysis.Log,
+                      CostAnalysis.Potential.Log,
                       CostAnalysis.Deriv,
                       CostAnalysis.Tactic,
                       CostAnalysis.Rules,
@@ -42,15 +42,19 @@ library
                       CostAnalysis.Constraint,
                       CostAnalysis.Solving,
                       CostAnalysis.Optimization,
---                      CostAnalysis.Comb,
+                      CostAnalysis.Potential.Log.Base,
+                      CostAnalysis.Potential.Log.Constraints,
+                      CostAnalysis.Potential.Log.Optimization,
+                      CostAnalysis.Potential.Log.Weakening
                       StaticAnalysis,
                       SourceError,
                       Normalization,
                       Eval,
                       Constants
+                      
     
     -- Modules included in this library but not exported.
-    -- other-modules:
+    -- other-modules: 
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
@@ -114,7 +118,9 @@ test-suite tests
         NormalizationSpec,
         EvalSpec,
         Parsing.TacticSpec,
-        CostAnalysis.LogSpec
+        CostAnalysis.Potential.Log.Helper,
+        CostAnalysis.Potential.Log.BaseSpec,
+        CostAnalysis.Potential.Log.ConstraintsSpec
     default-language: Haskell2010
     build-tool-depends: hspec-discover:hspec-discover
  

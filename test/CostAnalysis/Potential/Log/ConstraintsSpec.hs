@@ -1,77 +1,28 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module CostAnalysis.LogSpec(spec) where
+module CostAnalysis.Potential.Log.ConstraintsSpec where
 
 import Test.Hspec
+import CostAnalysis.Potential.Log.Helper
 
-import CostAnalysis.Log
 import Prelude hiding ((!), (!!), (^))
-import Primitive(Id)
-
-import CostAnalysis.Coeff(Coeff(..), Factor(..), CoeffIdx(..), (^))
-import CostAnalysis.Constraint
-import CostAnalysis.RsrcAnn((!),(!!),RsrcAnn(..))
-import CostAnalysis.AnnIdxQuoter(mix)
+import Data.Text(Text)
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.Text(Text)
-import Debug.Trace (trace)
+
+import CostAnalysis.Potential.Log.Constraints
+import CostAnalysis.Potential.Log.Base
+import CostAnalysis.Coeff(Coeff(..), Factor(..), CoeffIdx(..), (^))
+import CostAnalysis.AnnIdxQuoter(mix)
 import Constants (treeT)
+import CostAnalysis.Constraint
+import CostAnalysis.RsrcAnn((!),(!!),RsrcAnn(..))
 
-arrIdx :: [Factor] -> S.Set Factor
-arrIdx = S.fromList
-
-coeff :: [Factor] -> (CoeffIdx, Coeff)
-coeff idx = let idx' = Mixed . S.fromList $ idx in
-  (idx', Coeff 0 "Q" "log" idx')
-
-coeff' :: Id -> (CoeffIdx, Coeff)
-coeff' id = let idx = Pure id in
-  (idx, Coeff 0 "Q" "log" idx)
-
-_aRange = [0,1]
-_bRange = [0,2]
-
-potArgs :: LogPotArgs
-potArgs = LogPotArgs _aRange _bRange _aRange _bRange (-1 : _bRange)
-
-empty :: [Factor]
-empty = []
+import Primitive(Id)
 
 spec :: Spec
 spec = do
-  describe "rsrcAnn" $ do
-    it "generates a zero length resource annotation" $ do
-      let id = 0
-      let vars = []
-      let should = RsrcAnn vars (M.fromList [coeff [], coeff [Const 2]])
-      rsrcAnn potArgs id "Q" vars `shouldBe` should
-    it "generates a resource annotation of length 2" $ do
-      let id = 0
-      let vars = [("x1", treeT), ("x2", treeT)]
-      let coeffs = M.fromList [coeff' "x1", coeff' "x2",
-                               coeff [], coeff [Const 2],
-                               coeff["x1"^1], coeff["x1"^1,Const 2],
-                               coeff["x2"^1], coeff["x2"^1, Const 2],
-                               coeff["x1"^1, "x2"^1], coeff["x1"^1, "x2"^1, Const 2]]
-      rsrcAnn potArgs id "Q" vars `shouldBe` RsrcAnn vars coeffs
-  describe "forAllCombinations" $ do
-    it "generates a annoation array from the given variables and updates the id gen correctly" $ do
-      let neg = False
-      let combLeft = [("x1", treeT), ("x2", treeT)]
-      let combRight = "x3"
-      let annArgs = [("y1", treeT)]
-      let idGen = 0
-      let array = M.fromList [
-            (arrIdx ["x1"^1, "x3"^1], rsrcAnn potArgs 2 "Q_(x1^1,x3^1)" annArgs),
-            (arrIdx ["x1"^1, "x3"^1, Const 2], rsrcAnn potArgs 3 "Q_(2,x1^1,x3^1)" annArgs),
-            (arrIdx ["x2"^1, "x3"^1], rsrcAnn potArgs 0 "Q_(x2^1,x3^1)" annArgs),
-            (arrIdx ["x2"^1, "x3"^1, Const 2], rsrcAnn potArgs 1 "Q_(2,x2^1,x3^1)" annArgs),
-            (arrIdx ["x1"^1, "x2"^1, "x3"^1], rsrcAnn potArgs 4 "Q_(x1^1,x2^1,x3^1)" annArgs),
-            (arrIdx ["x1"^1, "x2"^1, "x3"^1, Const 2], rsrcAnn potArgs 5 "Q_(2,x1^1,x2^1,x3^1)" annArgs)]
-      let finalId = 6
-      forAllCombinations potArgs neg combLeft combRight idGen "Q" annArgs `shouldBe` (array, finalId)
   describe "cPlusConst" $ do
     it "generates the correct constraints" $ do
       let args = [("x", treeT)]
@@ -258,8 +209,4 @@ spec = do
                     eq (r![mix|x2^1|]) (q![mix|x2^1|]),
                     eq (r![mix|x2^1,2|]) (q![mix|x2^1,2|])]
       cWeakenVar potArgs q r `shouldBe` should
-                   
-      
-      
-
 
