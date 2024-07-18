@@ -10,8 +10,8 @@ logPot :: Args -> Potential
 logPot args = Potential
   types
   (rsrcAnn args)
+  constCoeff
   (forAllCombinations args)
-  elems
   (cPlusConst args)
   (cMinusVar args)
   (cPlusMulti args)
@@ -20,6 +20,6 @@ logPot args = Potential
   (cLetBase args)
   (cLet args)
   (cWeakenVar args)
-  (cWeaken args)
+  (genExpertKnowledge args)
   (cOptimize args)
   printBasePot

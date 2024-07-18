@@ -19,18 +19,17 @@ import qualified Data.Text as T
 import Data.Maybe(fromMaybe, catMaybes)
 import System.Directory
 import Data.Set(Set)
-import qualified Data.Set as S
 import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
 
 import Colog (cmap, fmtMessage, logTextStdout, logWarning,
-              usingLoggerT, logInfo, logError, LoggerT, Msg, Severity)
+              usingLoggerT, logError, LoggerT, Msg, Severity)
 
 
 import System.Environment(lookupEnv)
 
 import Typing.Inference(inferExpr, inferModule)
-import Ast(TypedModule, TypedExpr, printProg)
+import Ast(TypedModule, TypedExpr)
 import Normalization(normalizeMod, normalizeExpr)
 import Parsing.Program(parseExpr, parseModule)
 import Parsing.Tactic
@@ -49,7 +48,6 @@ import Module (loadSimple)
 import SourceError (printSrcError)
 import CostAnalysis.Potential (printBound)
 import CostAnalysis.Constraint (Constraint)
-import CostAnalysis.Deriv (Derivation)
 
 type App a = LoggerT (Msg Severity) IO a
 
@@ -80,7 +78,7 @@ run Options{..} RunOptions{..} = do
   case solution of
     (Left _) -> logError "error"
     (Right coeffs) -> let target = withCost $ sig M.! funName in do
-      liftIO $ print solution 
+      --liftIO $ print solution 
       liftIO $ putStr (printBound pot target coeffs)
       
 

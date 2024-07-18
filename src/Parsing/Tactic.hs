@@ -37,18 +37,18 @@ pNonAtomic = Rule Ite <$ symbol "ite" <*> count 2 pRule
   <|> Rule TickNow <$ symbol "tick:now" <*> count 1 pRule
   <|> Rule TickDefer <$ symbol "tick:defer" <*> count 1 pRule
   <|> Rule WeakenVar <$ symbol "w:var" <*> count 1 pRule
-  <|> (do rule <- Weaken <$ symbol "w" <*> pRuleArgs
+  <|> (do rule <- Weaken <$ symbol "w" <*> pWeakenArgs
           Rule rule <$> count 1 pRule)
   <|> Rule Shift <$ symbol "shift" <*> count 1 pRule
   <?> "rule"
 
-pRuleArg :: Parser RuleArg
-pRuleArg = Mono <$ symbol "mono"
+pWeakenArg :: Parser WeakenArg
+pWeakenArg = Mono <$ symbol "mono"
   <|> L2xy <$ symbol "l2xy"
 
-pRuleArgs :: Parser [RuleArg]
-pRuleArgs = do
-  args <- optional (pCurlyParens (many pRuleArg))
+pWeakenArgs :: Parser [WeakenArg]
+pWeakenArgs = do
+  args <- optional (pCurlyParens (many pWeakenArg))
   case args of
     Just args -> return args
     Nothing -> return []

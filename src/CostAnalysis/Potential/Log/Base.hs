@@ -1,4 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
+
 module CostAnalysis.Potential.Log.Base where
 
 import Prelude hiding ((^))
@@ -13,6 +15,7 @@ import Primitive(Id)
 import CostAnalysis.Coeff
 import CostAnalysis.RsrcAnn
 import Typing.Type
+import CostAnalysis.AnnIdxQuoter(mix)
 
 data Args = Args {
   aRange :: ![Int],
@@ -44,6 +47,8 @@ rsrcAnn potArgs id label args = RsrcAnn args' $ M.fromList (rankCoeffs ++ logCoe
         args' = filter (\(x, t) -> matchesTypes t types) args
         vars = map fst args'
 
+constCoeff :: RsrcAnn -> Coeff
+constCoeff q = q![mix|2|]
 
 forAllCombinations :: Args 
   -> Bool -> [(Id, Type)] -> Id -> Int -> Text -> [(Id, Type)] -> (AnnArray, Int)
@@ -59,10 +64,6 @@ forAllCombinations args neg xs x id label ys = (array, nextId)
         label' l idx = T.concat [l, "_", T.pack $ printIdx idx]
         array = M.fromList [(idx, rsrcAnn args id (label' label idx) ys)
                            | (idx, id) <- zip idxs [id..]]
-
-
-elems :: AnnArray -> [RsrcAnn]
-elems = M.elems
 
 printBasePot :: Coeff -> Rational -> String
 printBasePot (Coeff _ _ _ (Pure x)) v = show v ++ " * rk(" ++ T.unpack x ++ ")"

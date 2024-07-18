@@ -2,8 +2,8 @@
 
 module CostAnalysis.Rules where
 
-data RuleArg = Mono | L2xy
-  deriving (Eq, Show)
+data WeakenArg = Mono | L2xy
+  deriving (Eq, Ord, Show)
 
 data Rule 
   = Const
@@ -16,7 +16,7 @@ data Rule
   | TickNow 
   | TickDefer
   | WeakenVar
-  | Weaken [RuleArg]
+  | Weaken [WeakenArg]
   | Shift 
   deriving(Eq, Show)
 

@@ -28,7 +28,10 @@ class Encodeable a where
 
 instance Encodeable Var where
   toZ3 (Var id) = mkRealVar =<< mkStringSymbol ("k_" ++ show id)
-  toZ3 (AnnCoeff q) = mkRealVar =<< mkStringSymbol (printCoeff q)
+  toZ3 (AnnCoeff q) = toZ3 q
+
+instance Encodeable Coeff where
+  toZ3 q = mkRealVar =<< mkStringSymbol (printCoeff q)
 
 instance Encodeable Rational where
   toZ3 r = mkReal (fromIntegral (numerator r)) (fromIntegral (denominator r))
@@ -98,6 +101,16 @@ instance Encodeable Constraint where
     p' <- toZ3 p
     c' <- toZ3 c
     mkEq q' =<< mkMul [p', c']
+  toZ3 (FarkasA p fas q) = do
+    p' <- toZ3 p
+    q' <- toZ3 q
+    prods <- mapM prodToZ3 fas
+    mkLe p' =<< mkAdd (q':prods)
+    where prodToZ3 :: (MonadZ3 z3) => (Var, Int) -> z3 AST
+          prodToZ3 (x,y) = do
+            x' <- toZ3 x
+            y' <- mkReal y 1
+            mkMul [x', y']
 
     
 type Solution a = Either [Constraint] (Map Coeff Rational)
@@ -136,7 +149,7 @@ solveZ3' target sig cs = do
   mapM_ optimizeAssert positiveCs
   cs' <- mapM toZ3 cs
   target' <- toZ3 target
-  --optimizeMinimize target'
+  optimizeMinimize target'
   result <- optimizeCheck cs'
   case result of
     Sat -> do

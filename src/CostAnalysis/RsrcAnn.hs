@@ -57,6 +57,9 @@ instance Index (Set Factor) where
 
 type AnnArray = Map (Set Factor) RsrcAnn
 
+elems :: AnnArray -> [RsrcAnn]
+elems = M.elems
+
 infixl 9 !!
 (!!) :: AnnArray -> Set Factor -> RsrcAnn
 (!!) arr k = let k' = S.filter factorGTZero k in

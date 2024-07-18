@@ -7,15 +7,18 @@ import Data.Map(Map)
 import qualified Data.Map as M
 import Data.List(intercalate)
 import Prelude hiding ((!))
+import qualified Data.Vector as V
+import Data.Set(Set)
 
 import Primitive(Id)
-import CostAnalysis.Rules ( RuleArg )
+import CostAnalysis.Rules ( WeakenArg )
 import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.Optimization (OptiMonad, Target)
 import CostAnalysis.RsrcAnn
 import Typing.Type
 
+type ExpertKnowledge = (V.Vector (V.Vector Int), [Int])
 
 data Potential = Potential {
   -- Supported types
@@ -25,13 +28,12 @@ data Potential = Potential {
   
   -- | @ 'rsrcAnn' id label vars@ constructs a fresh resource annotation with tree arguments from @vars@. @id@ specifies a unique identifier for the annotation and @label@ is the human readable label, e.g \"Q\", \"Q\'\" or \"P\".
   rsrcAnn :: Int -> Text -> [(Id, Type)] -> RsrcAnn,
+
+  -- | @ 'constCoeff' ann@ returns the coefficient for the constant basic potential function.
+  constCoeff :: RsrcAnn -> Coeff,
   
   -- | @ 'forAllIdx' neg xs x id label ys@ for all combinations of variables in @xs@ with the var @x@, construct a fresh annotation starting with id @id@ and with vars in @ys@. @neg@ allows negative constants. Returns the last used id + 1. 
   forAllCombinations :: Bool -> [(Id, Type)] -> Id -> Int -> Text -> [(Id, Type)] -> (AnnArray, Int),
-  
-  -- | @ 'elems' a@ converts an annotation array to a list.
-  elems :: AnnArray -> [RsrcAnn],
-
   
   -- Constraint generation
   
@@ -52,8 +54,9 @@ data Potential = Potential {
     -> AnnArray -> AnnArray -> RsrcAnn -> Id -> [Constraint],
   -- | @ 'cWeakenVar' q r @
   cWeakenVar :: RsrcAnn -> RsrcAnn -> [Constraint],
-  -- | @ 'cWeaken' q q' p p'@
-  cWeaken :: [RuleArg] -> RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> [Constraint],
+  -- -- | @ 'cWeaken' q q' p p'@
+  -- cWeaken :: [RuleArg] -> RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> [Constraint],
+  genExpertKnowledge :: Set WeakenArg -> RsrcAnn -> RsrcAnn -> ExpertKnowledge,
   -- | @ 'cOptimize' q q' @ returns constraints that minimize \[\Phi(\Gamma\mid Q) - \Phi(\Gamma\mid Q')\]
   cOptimize :: RsrcAnn -> RsrcAnn -> OptiMonad Target,
   

@@ -1,9 +1,6 @@
 {-# LANGUAGE StrictData #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
-{-# LANGUAGE LiberalTypeSynonyms #-}
-{-# LANGUAGE RankNTypes #-}
 
 module CostAnalysis.Deriv where
 
@@ -28,13 +25,12 @@ import qualified CostAnalysis.Rules as R
 import CostAnalysis.Potential hiding (Factor(..))
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Constraint hiding (Var)
-import qualified CostAnalysis.Constraint as Const(Var(..))
+import CostAnalysis.Weakening
+import CostAnalysis.ProveMonad
 import StaticAnalysis(freeVars)
 import Data.Maybe (fromMaybe, mapMaybe)
 import SourceError
 
-import Debug.Trace (trace)
-traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
 
 data RuleApp = RuleApp R.Rule Bool [Constraint] TypedExpr
 
@@ -47,24 +43,6 @@ printRuleApp unsatCore (RuleApp rule cf cs e) = show rule ++ printCf ++ ": " ++ 
 
 type Derivation = Tree RuleApp
 
-data ProofState = ProofState {
-  _sig :: RsrcSignature,
-  _annIdGen :: Int,
-  _varIdGen :: Int
-  }
-  deriving (Show)
-
-makeLenses ''ProofState
-
-data ProofEnv = ProofEnv {
-  _potential :: Potential,
-  _tactics :: Map Id Tactic
-  }
-
-makeLenses ''ProofEnv
-
-
-type ProveMonad a = ExceptT SourceError (RWS ProofEnv [Constraint] ProofState) a
 
 type ProofResult = ([(Id, Derivation)], [Constraint], RsrcSignature)
 
@@ -76,32 +54,6 @@ runProof mod pot tactics = (state' ^. varIdGen, (,cs, state' ^. sig) <$> deriv)
         env = ProofEnv pot tactics
         state = ProofState M.empty 0 0
 
-genAnnIds :: Int -> ProveMonad [Int]
-genAnnIds n = do
-  g <- use annIdGen
-  annIdGen .= g+n
-  return [g..(g+n-1)]
-
-genAnnIdPair :: ProveMonad (Int, Int)
-genAnnIdPair = do
-  g <- use annIdGen
-  annIdGen .= g+2
-  return (g, g+1)
-
-genAnnId :: ProveMonad Int
-genAnnId = do
-  g <- use annIdGen
-  annIdGen .= g+1
-  return g
-
-genVarId :: ProveMonad Int
-genVarId = do
-  g <- use varIdGen
-  varIdGen .= g+1
-  return g
-
-freshVar :: ProveMonad Const.Var
-freshVar = Const.Var <$> genVarId
 
 forAllCombinations' :: Bool -> [(Id, Type)] -> Id -> Text -> [(Id, Type)] -> ProveMonad AnnArray
 forAllCombinations' neg xs x label ys = do
@@ -244,7 +196,7 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
 
       deriv1 <- proveExpr t1 cf ctxE1 e1 p p'
       deriv2 <- proveExpr t2 cf ctxE2' e2 r q'      
-      cfDerivs <- zipWithM (proveExpr t1 True ctxE1 e1) (elems pot ps) (elems pot ps')
+      cfDerivs <- zipWithM (proveExpr t1 True ctxE1 e1) (elems ps) (elems ps')
 
       let cs = cLet pot neg q p p' ps ps' r x
       tell cs
@@ -299,11 +251,10 @@ proveWeaken tactic@(Rule (R.Weaken wArgs) _) cf ctx e q q' = do
   let [t] = subTactics 1 tactic
   p <- rsrcAnn pot <$> genAnnId <*> pure "P" <*> pure (args q)
   p' <- rsrcAnn pot <$> genAnnId <*> pure "P'" <*> pure (args q')
-  --let cs = cWeaken pot wArgs q q' p p'
-  --tell cs
-  --deriv <- proveExpr t cf ctx e p p'
-  deriv <- proveExpr t cf ctx e q q'
-  return $ T.Node (RuleApp (R.Weaken wArgs) cf [] e) [deriv]
+  cs <- weaken pot (S.fromList wArgs) q q' p p'
+  tell cs
+  deriv <- proveExpr t cf ctx e p p'
+  return $ T.Node (RuleApp (R.Weaken wArgs) cf cs e) [deriv]
 
 proveShift :: Prove TypedExpr Derivation
 proveShift tactic cf ctx e q q' = do

@@ -45,6 +45,10 @@ data Constraint =
   | EqSub Var [Var]
   -- | @'EqMultConst' q p c@ = \[q = c \cdot p\]
   | EqMultConst Var Var Rational
+  -- | @'FarkasA p fas q'@ = \[p \leq f_1 \cdot a_1 + \dots + f_n \cdot a_n + q\]
+  | FarkasA Coeff [(Var, Int)] Coeff
+  -- | @'FarkasB fbs cP cQ'@ = \[ f_1 \cdot b_1 + \dots + f_n \cdot b_n \leq 0 \]
+  | FarkasB [(Var, Int)] 
   -- | @'Minimize' q@ minimize coefficient @q@
   | Minimize Var
   deriving (Eq, Ord, Show)
@@ -116,6 +120,8 @@ instance HasCoeffs Constraint where
   getCoeffs (Impl c1 c2) = getCoeffs c1 ++ getCoeffs c2
   getCoeffs (EqSub q ps) = getCoeffs q ++ getCoeffs ps
   getCoeffs (EqMultConst q p _) = getCoeffs q ++ getCoeffs p
+  getCoeffs (FarkasA q _ p) = [q, p]
+  getCoeffs (FarkasB _) = []
   getCoeffs (Minimize q) = getCoeffs q
   
 
