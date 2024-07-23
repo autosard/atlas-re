@@ -15,6 +15,7 @@ logPot args = Potential
   (cPlusConst args)
   (cMinusVar args)
   (cPlusMulti args)
+  (cMulti args)
   (cEq args)
   (cMatch args)
   (cLetBase args)

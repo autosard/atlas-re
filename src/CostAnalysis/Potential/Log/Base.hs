@@ -16,6 +16,7 @@ import CostAnalysis.Coeff
 import CostAnalysis.RsrcAnn
 import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
+import CostAnalysis.Constraint
 
 data Args = Args {
   aRange :: ![Int],
@@ -40,19 +41,20 @@ combi' args z (x:xs) = [if a > 0 then x^a:y else y
                        | a <- aRange args, y <- combi' args z xs]
 
 rsrcAnn :: Args
-  -> Int -> Text -> [(Id, Type)] -> RsrcAnn
-rsrcAnn potArgs id label args = RsrcAnn args' $ M.fromList (rankCoeffs ++ logCoeffs)
+  -> Int -> Text -> [(Id, Type)] -> (RsrcAnn, [Constraint])
+rsrcAnn potArgs id label args = (RsrcAnn args' $ M.fromList (rankCoeffs ++ logCoeffs), cs)
   where rankCoeffs = [(Pure x, Coeff id label "log" (Pure x)) | (x,i) <- zip vars [1..]]
         logCoeffs = map ((\idx -> (idx, Coeff id label "log" idx)) . Mixed) $ combi potArgs vars
         args' = filter (\(x, t) -> matchesTypes t types) args
         vars = map fst args'
+        cs = [zero (Coeff id label "log" (Mixed [mix||]))]
 
 constCoeff :: RsrcAnn -> Coeff
 constCoeff q = q![mix|2|]
 
 forAllCombinations :: Args 
-  -> Bool -> [(Id, Type)] -> Id -> Int -> Text -> [(Id, Type)] -> (AnnArray, Int)
-forAllCombinations args neg xs x id label ys = (array, nextId)
+  -> Bool -> [(Id, Type)] -> Id -> Int -> Text -> [(Id, Type)] -> ((AnnArray, Int),[Constraint])
+forAllCombinations args neg xs x id label ys = ((array, nextId), concat css)
   where trees = map fst $ filter (\(_, t) -> isTree t) xs
         idxs = [S.unions [xIdx, xsIdx, cIdx]
                | xIdx <- varCombi args [x], (not . S.null) xIdx,
@@ -62,8 +64,10 @@ forAllCombinations args neg xs x id label ys = (array, nextId)
         arrIdx = Mixed . S.fromList
         printIdx idx = "(" ++ intercalate "," (map show (S.toAscList idx)) ++ ")"
         label' l idx = T.concat [l, "_", T.pack $ printIdx idx]
-        array = M.fromList [(idx, rsrcAnn args id (label' label idx) ys)
-                           | (idx, id) <- zip idxs [id..]]
+        (arrayElems, css) = unzip [((idx, ann), cs)
+                           | (idx, id) <- zip idxs [id..],
+                             let (ann, cs) = rsrcAnn args id (label' label idx) ys]
+        array = M.fromList arrayElems
 
 printBasePot :: Coeff -> Rational -> String
 printBasePot (Coeff _ _ _ (Pure x)) v = show v ++ " * rk(" ++ T.unpack x ++ ")"

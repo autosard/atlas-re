@@ -11,7 +11,7 @@ import CostAnalysis.Potential
 import Data.Ratio(numerator, denominator)
 import Z3.Monad 
 import CostAnalysis.RsrcAnn
-import Control.Monad (mapAndUnzipM)
+import Control.Monad (mapAndUnzipM, when)
 import Control.Monad.State (evalState)
 
 
@@ -19,6 +19,7 @@ import Data.List (intercalate)
 import Data.Map(Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Parsing.SmtLib(parse)
 
 import Debug.Trace (trace)
 traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
@@ -27,7 +28,11 @@ class Encodeable a where
   toZ3 :: (MonadZ3 z3) => a -> z3 AST
 
 instance Encodeable Var where
-  toZ3 (Var id) = mkRealVar =<< mkStringSymbol ("k_" ++ show id)
+  toZ3 (Var pos id) = do
+    let k = "k" ++ (if pos then "+" else "") ++ "_"
+    v <- mkRealVar =<< mkStringSymbol (k ++ show id)
+    when pos (assert =<< mkGe v =<< mkReal 0 1)
+    return v
   toZ3 (AnnCoeff q) = toZ3 q
 
 instance Encodeable Coeff where
@@ -61,20 +66,22 @@ instance Encodeable Constraint where
     q' <- toZ3 q
     p' <- toZ3 p
     k' <- toZ3 k
-    ge0 <- mkGe k' =<< mkReal 0 1
     sub <- mkSub [p', k']
-    eq <- mkEq q' sub
-    mkAnd [eq, ge0]
+    mkEq q' sub
   toZ3 (EqPlusMulti q p r k) = do
     q' <- toZ3 q
     p' <- toZ3 p
     r' <- toZ3 r
     k' <- toZ3 k
-    ge0 <- mkGe k' =<< mkReal 0 1
     prod <- mkMul [r', k']
     sum <- mkAdd [p', prod]
-    eq <- mkEq q' sum
-    mkAnd [eq, ge0]
+    mkEq q' sum
+  toZ3 (EqMulti q p k) = do
+    q' <- toZ3 q
+    p' <- toZ3 p
+    k' <- toZ3 k
+    prod <- mkMul [p', k']
+    mkEq q' prod
   toZ3 (Zero q) = do
     q' <- toZ3 q
     zero <- toZ3 (0 :: Rational)
@@ -141,24 +148,34 @@ evalCoeffs m qs = do
             Just r -> return (q, r)
             Nothing -> error $ "Evaluation of coefficient " ++ show q ++ " in z3 model failed."
 
-solveZ3' :: (MonadOptimize z3) => Var -> RsrcSignature -> [Constraint] -> z3 (Solution a)
+solveZ3' :: (MonadZ3 z3) => Var -> RsrcSignature -> [Constraint] -> z3 (Solution a)
 solveZ3' target sig cs = do
   let annCoeffs = S.unions $ map (S.fromList . getCoeffs) cs
   annCoeffs' <- mapM (toZ3 . AnnCoeff) (S.toList annCoeffs)
   positiveCs <- mapM (\coeff -> mkGe coeff =<< mkReal 0 1) annCoeffs'
-  mapM_ optimizeAssert positiveCs
+  mapM_ assert positiveCs
   cs' <- mapM toZ3 cs
   target' <- toZ3 target
-  optimizeMinimize target'
-  result <- optimizeCheck cs'
+  --optimizeMinimize target'
+
+--  astStrings <- mapM astToString cs'
+  t <- mkReal 2 1
+  assert =<< mkLe target' t
+  mapM_ assert cs'
+  --error =<< optimizeToString
+  result <- check
   case result of
     Sat -> do
-      model <- optimizeGetModel
+      maybeModel <- snd <$> getModel
+      let model = case maybeModel of
+                    Just model -> model
+                    Nothing -> error "bug"
+      --error =<< modelToString model
       Right <$> evalCoeffs model (getCoeffs sig)
     Unsat -> do
-      unsatCore <- optimizeGetUnsatCore
+      unsatCore <- getUnsatCore
       astStrings <- mapM astToString unsatCore
-      error $ "unsat: " ++ intercalate "," astStrings
+      return $ Left (map parse astStrings)
     Undef -> error "Z3 returned undef."  
    
   

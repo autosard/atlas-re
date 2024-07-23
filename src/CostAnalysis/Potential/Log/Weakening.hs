@@ -16,9 +16,6 @@ import CostAnalysis.Potential(ExpertKnowledge)
 import CostAnalysis.Coeff
 import CostAnalysis.AnnIdxQuoter(mix)
 
-import Debug.Trace (trace)
-traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
-
 supportedArgs = S.fromList [Mono, L2xy]
 
 merge :: [ExpertKnowledge] -> ExpertKnowledge

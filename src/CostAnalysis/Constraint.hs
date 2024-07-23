@@ -12,10 +12,10 @@ type VarState = Int
 
 type VarMonadT m a = StateT VarState m a
 
-data Var = Var Int | AnnCoeff Coeff
+data Var = Var Bool Int | AnnCoeff Coeff
   deriving (Eq, Ord, Show)
 
-printVar (Var i) = "k" ++ show i
+printVar (Var pos i) = "k" ++ (if pos then "+" else "") ++ show i
 printVar (AnnCoeff coeff) = printCoeff coeff
 
 data Constraint =
@@ -31,6 +31,8 @@ data Constraint =
   | EqMinusVar Var Var Var
   -- | 'EqPlusMulti' q p r k = \[ q = p + k r\]
   | EqPlusMulti Var Var Var Var
+  -- | 'EqPlusMulti' q p k = \[ q = k p\]
+  | EqMulti Var Var Var 
   -- | 'Zero' q = \[q = 0 \]
   | Zero Var
   -- | 'NotZero' q = \[q \neq 0 \]
@@ -68,6 +70,9 @@ eqMinusVar q p = EqMinusVar (AnnCoeff q) (AnnCoeff p)
 eqPlusMulti :: Coeff -> Coeff -> Coeff -> Var -> Constraint
 eqPlusMulti q p r = EqPlusMulti (AnnCoeff q) (AnnCoeff p) (AnnCoeff r)
 
+eqMulti :: Coeff -> Coeff -> Var -> Constraint
+eqMulti q p = EqMulti (AnnCoeff q) (AnnCoeff p)
+
 zero :: Coeff -> Constraint
 zero q = Zero (AnnCoeff q)
 
@@ -83,6 +88,9 @@ le q p = Le (AnnCoeff q) (AnnCoeff p)
 printSum :: [Var] -> String
 printSum qs = "(" ++ intercalate " + " (map printVar qs) ++ ")"
 
+printProdSum :: [(Var, Int)] -> String
+printProdSum qs = "(" ++ intercalate " + " (map (\(v, c) -> show c ++ " * " ++ printVar v) qs) ++ ")"
+
 printDiff :: [Var] -> String
 printDiff qs = "(" ++ intercalate " - " (map printVar qs) ++ ")"
 
@@ -93,6 +101,7 @@ printConstraint (EqPlusConst q p c) = printVar q ++ " = " ++ printVar p ++ " + "
 printConstraint (EqMinusConst q p c) = printVar q ++ " = " ++ printVar p ++ " - " ++ show c
 printConstraint (EqMinusVar q p k) = printVar q ++ " = " ++ printVar p ++ " - " ++ printVar k
 printConstraint (EqPlusMulti q p r k) = printVar q ++ " = " ++ printVar p ++ " + " ++ printVar k++ " *" ++ printVar r
+printConstraint (EqMulti q p k) = printVar q ++ " = " ++ printVar k ++ " *" ++ printVar p
 printConstraint (Zero q) = printVar q ++ " = 0"
 printConstraint (NotZero q) = printVar q ++ " /= 0"
 printConstraint (Le q p) = printVar q ++ " <= " ++ printVar p
@@ -101,6 +110,7 @@ printConstraint (Impl c1 c2) = printConstraint c1 ++ " -> " ++ printConstraint c
 printConstraint (EqSub q ps) = printVar q ++ " = " ++ printDiff ps
 printConstraint (EqMultConst q p c) = printVar q ++ " = c * " ++ printVar p
 printConstraint (Minimize q) = "min(" ++ printVar q ++ ")"
+printConstraint (FarkasA p fas q) = printCoeff p ++ " <= " ++ printProdSum fas ++ " + " ++ printCoeff q
 
 instance HasCoeffs Var where
   getCoeffs (AnnCoeff coeff) = [coeff]
@@ -113,6 +123,7 @@ instance HasCoeffs Constraint where
   getCoeffs (EqMinusConst q p _) = getCoeffs q ++ getCoeffs p
   getCoeffs (EqMinusVar q p _) = getCoeffs q ++ getCoeffs p
   getCoeffs (EqPlusMulti q p r k) = getCoeffs q ++ getCoeffs p ++ getCoeffs r
+  getCoeffs (EqMulti q p k) = getCoeffs q ++ getCoeffs p
   getCoeffs (Zero q) = getCoeffs q
   getCoeffs (NotZero q) = getCoeffs q
   getCoeffs (Le q p) = getCoeffs q ++ getCoeffs p

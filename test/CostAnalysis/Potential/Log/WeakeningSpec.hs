@@ -12,7 +12,7 @@ import Data.List(replicate)
 import CostAnalysis.Potential.Log.Weakening
 import Constants (treeT)
 import CostAnalysis.AnnIdxQuoter(mix)
-import CostAnalysis.Potential.Log.Base
+import CostAnalysis.Potential.Log.Base hiding (rsrcAnn)
 import CostAnalysis.Potential.Log.Helper
 
 import Debug.Trace (trace)
@@ -63,43 +63,84 @@ spec = do
       it "is less then equal" $ do                              
         monoLe [mix|y^1,2|] [mix|x^1,y^1,2|] `shouldBe` True
   describe "monotLattice" $ do
-    it "generates the whole lattice as expert knowledge" $ do
-      let args = [("x", treeT), ("y", treeT)]
-      let p = rsrcAnn potArgs 0 "P" args
-      let q = rsrcAnn potArgs 1 "Q" args
-      let rows = map V.fromList 
-                 [[0, 0, 1, 0,-1, 0, 0, 0, 0, 0],
-                  [0, 0, 1, 0, 0,-1, 0, 0, 0, 0],
-                  [0, 0, 1, 0, 0, 0,-1, 0, 0, 0],
-                  [0, 0, 1, 0, 0, 0, 0,-1, 0, 0],
-                  [0, 0, 1, 0, 0, 0, 0, 0,-1, 0],
-                  [0, 0, 1, 0, 0, 0, 0, 0, 0,-1],
-                  [0, 0, 0, 0, 1,-1, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0,-1, 1, 0, 0, 0],
-                  [0, 0, 0, 0,-1, 0, 0, 1, 0, 0],
-                  [0, 0, 0, 0, 0,-1, 0, 1, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 1,-1, 0],
-                  [0, 0, 0, 0, 0,-1, 0, 0, 1, 0],
-                  [0, 0, 0, 0, 0, 0,-1, 0, 0, 1],
-                  [0, 0, 0, 0, 0,-1, 0, 0, 0, 1],
-                  [0, 0, 0, 0, 0, 0, 0, 0,-1, 1],
-                  [0, 0, 0, 1,-1, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 1, 0,-1, 0, 0, 0, 0],
-                  [0, 0, 0, 1, 0, 0,-1, 0, 0, 0],
-                  [0, 0, 1,-1, 0, 0, 0, 0, 0, 0]]
-      let (asIs, bsIs) = monoLattice potArgs p q 
-      S.fromList (V.toList asIs ) `shouldBe` S.fromList rows
-      bsIs `shouldBe` replicate 19 0
+    context "given length 0 annotations" $ do
+      it "gerates the whole lattice as expert knowledge" $ do
+        let args = []
+        let p = rsrcAnn 0 "P" args
+        let q = rsrcAnn 1 "Q" args
+        let rows = [V.fromList [1, -1]]
+        let (asIs, bsIs) = monoLattice potArgs p q 
+        S.fromList (V.toList asIs ) `shouldBe` S.fromList rows
+        bsIs `shouldBe` [0]
+    context "given length 1 annotations" $ do
+      it "generate the whole lattice as expert knowledge" $ do
+        let args = [("x", treeT)]
+        let p = rsrcAnn 0 "P" args
+        let q = rsrcAnn 1 "Q" args
+        let rows = map V.fromList [
+              [0, 1,-1, 0, 0],
+              [0, 1, 0,-1, 0],
+              [0, 1, 0, 0, -1],
+              [0, 0, 1,-1, 0],
+              [0, 0, 0, -1, 1]]
+        let (asIs, bsIs) = monoLattice potArgs p q 
+        S.fromList (V.toList asIs ) `shouldBe` S.fromList rows
+        bsIs `shouldBe` replicate 5 0
+    context "given length 2 annotations" $ do
+      it "generates the whole lattice as expert knowledge" $ do
+        let args = [("x", treeT), ("y", treeT)]
+        let p = rsrcAnn 0 "P" args
+        let q = rsrcAnn 1 "Q" args
+        let rows = map V.fromList 
+                   [[0, 0, 1, 0,-1, 0, 0, 0, 0, 0],
+                    [0, 0, 1, 0, 0,-1, 0, 0, 0, 0],
+                    [0, 0, 1, 0, 0, 0,-1, 0, 0, 0],
+                    [0, 0, 1, 0, 0, 0, 0,-1, 0, 0],
+                    [0, 0, 1, 0, 0, 0, 0, 0,-1, 0],
+                    [0, 0, 1, 0, 0, 0, 0, 0, 0,-1],
+                    [0, 0, 0, 0, 1,-1, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0,-1, 1, 0, 0, 0],
+                    [0, 0, 0, 0,-1, 0, 0, 1, 0, 0],
+                    [0, 0, 0, 0, 0,-1, 0, 1, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 1,-1, 0],
+                    [0, 0, 0, 0, 0,-1, 0, 0, 1, 0],
+                    [0, 0, 0, 0, 0, 0,-1, 0, 0, 1],
+                    [0, 0, 0, 0, 0,-1, 0, 0, 0, 1],
+                    [0, 0, 0, 0, 0, 0, 0, 0,-1, 1],
+                    [0, 0, 0, 1,-1, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 1, 0,-1, 0, 0, 0, 0],
+                    [0, 0, 0, 1, 0, 0,-1, 0, 0, 0],
+                    [0, 0, 1,-1, 0, 0, 0, 0, 0, 0]]
+        let (asIs, bsIs) = monoLattice potArgs p q 
+        S.fromList (V.toList asIs ) `shouldBe` S.fromList rows
+        bsIs `shouldBe` replicate 19 0
   describe "logLemma" $ do
-    it "generates expoert knowledge for all variable combinations according to the lemma" $ do
-      let args = [("x", treeT), ("y", treeT), ("z", treeT)]
-      let p = rsrcAnn potArgs 0 "P" args
-      let q = rsrcAnn potArgs 1 "Q" args
-      let rows = map V.fromList [[0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 1,-2, 0, 0, 1, 0, 0],
-                  [0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,-2, 0, 0, 1],
-                  [0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, -2, 1]]
-      let (asIs, bsIs) = logLemma potArgs p q 
-      S.fromList (V.toList asIs ) `shouldBe` S.fromList rows
-      bsIs `shouldBe` replicate 3 0
-      
+    context "given length 0 annotations" $ do
+      it "returns the empty expert knowledge matrix." $ do
+        let args = []
+        let p = rsrcAnn 0 "P" args
+        let q = rsrcAnn 1 "Q" args
+        let (asIs, bsIs) = logLemma potArgs p q 
+        V.toList asIs `shouldBe` []
+        bsIs `shouldBe` []
+    context "given length 1 annotations" $ do
+      it "returns the empty expert knowledge matrix." $ do
+        let args = [("x", treeT)]
+        let p = rsrcAnn 0 "P" args
+        let q = rsrcAnn 1 "Q" args
+        let (asIs, bsIs) = logLemma potArgs p q 
+        V.toList asIs `shouldBe` []
+        bsIs `shouldBe` []        
+    context "given length 3 annotations" $ do
+      it "generates expoert knowledge for all variable combinations according to the lemma" $ do
+        let args = [("x", treeT), ("y", treeT), ("z", treeT)]
+        let p = rsrcAnn 0 "P" args
+        let q = rsrcAnn 1 "Q" args
+        let rows = map V.fromList [[0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 1,-2, 0, 0, 1, 0, 0],
+                                   [0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,-2, 0, 0, 1],
+                                   [0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, -2, 1]]
+        let (asIs, bsIs) = logLemma potArgs p q 
+        S.fromList (V.toList asIs ) `shouldBe` S.fromList rows
+        bsIs `shouldBe` replicate 3 0
+        
                                                 

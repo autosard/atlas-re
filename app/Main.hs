@@ -19,8 +19,10 @@ import qualified Data.Text as T
 import Data.Maybe(fromMaybe, catMaybes)
 import System.Directory
 import Data.Set(Set)
+import qualified Data.Set as S
 import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
+import Data.List(intercalate)
 
 import Colog (cmap, fmtMessage, logTextStdout, logWarning,
               usingLoggerT, logError, LoggerT, Msg, Severity)
@@ -47,7 +49,7 @@ import System.Random (getStdGen)
 import Module (loadSimple)
 import SourceError (printSrcError)
 import CostAnalysis.Potential (printBound)
-import CostAnalysis.Constraint (Constraint)
+import CostAnalysis.Constraint (Constraint, printConstraint)
 
 type App a = LoggerT (Msg Severity) IO a
 
@@ -72,13 +74,15 @@ run Options{..} RunOptions{..} = do
   (derivs, cs, sig) <- liftIO $ case proofResult of
         Left srcErr -> die $ printSrcError srcErr contents
         Right v -> return v
+  liftIO $ mapM (printDeriv (S.fromList cs)) derivs        
   solution <- liftIO $ solveZ3 pot sig cs varIdGen
 --  liftIO $ putStr (printProg normalizedProg)
-  --liftIO $ mapM (printDeriv (S.fromList cs)) derivs
   case solution of
-    (Left _) -> logError "error"
+    (Left core) -> let core' = S.fromList core in do
+      logError $ "solver returned unsat. See unsat-core for details."
+      liftIO $ mapM_ (printDeriv core') derivs
     (Right coeffs) -> let target = withCost $ sig M.! funName in do
-      --liftIO $ print solution 
+      liftIO $ print solution 
       liftIO $ putStr (printBound pot target coeffs)
       
 

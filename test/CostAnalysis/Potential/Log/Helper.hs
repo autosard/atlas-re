@@ -3,11 +3,14 @@
 module CostAnalysis.Potential.Log.Helper where
 
 import qualified Data.Set as S
+import Data.Text(Text)
 
 import Primitive(Id)
 import CostAnalysis.Coeff
-import CostAnalysis.Potential.Log.Base
-
+import CostAnalysis.Potential.Log.Base hiding (rsrcAnn)
+import qualified CostAnalysis.Potential.Log.Base as B(rsrcAnn)
+import Typing.Type (Type)
+import CostAnalysis.RsrcAnn
 
 arrIdx :: [Factor] -> S.Set Factor
 arrIdx = S.fromList
@@ -28,3 +31,6 @@ potArgs = Args _aRange _bRange _aRange _bRange (-1 : _bRange)
 
 empty :: [Factor]
 empty = []
+
+rsrcAnn :: Int -> Text -> [(Id, Type)] -> RsrcAnn
+rsrcAnn id label vars = fst $ B.rsrcAnn potArgs id label vars

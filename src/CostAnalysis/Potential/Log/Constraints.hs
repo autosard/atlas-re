@@ -43,6 +43,13 @@ cPlusMulti potArgs q p r k = let xs = annVars q
   ++ [eqPlusMulti (q!idxQ) (p!idxP) (r!idxP) k
      | (idxQ, idxP) <- zip (combi potArgs xs) (combi potArgs ys)]
 
+cMulti :: Args -> RsrcAnn -> RsrcAnn -> Var -> [Constraint]
+cMulti potArgs q p k = let xs = annVars q
+                           ys = annVars p in
+  [eqMulti (q!x) (p!y) k | (x,y) <- zip xs ys]
+  ++ [eqMulti (q!idxQ) (p!idxP) k
+     | (idxQ, idxP) <- zip (combi potArgs xs) (combi potArgs ys)]
+
 cEq :: Args
   -> RsrcAnn -> RsrcAnn -> [Constraint]
 cEq potArgs q q'
@@ -61,6 +68,12 @@ cEq potArgs q q'
       [eq (q![mix|x1^a,x2^a,c|]) (q'![mix|exp^a,c|])
       | a <- aRange potArgs,
         c <- bRange potArgs]
+      ++ [zero (q![mix|x1^x,x2^y,c|]) 
+      | x <- aRange potArgs,
+        y <- aRange potArgs,
+        x /= y,
+        c <- bRange potArgs,
+        c /= 0]
   | (length . args $ q) == (length .args $ q') =
       [eq (q!x) (q'!y) | (x, y) <- zip (annVars q) (annVars q') ]
       ++ [eq (q!idxQ) (q'!idxQ')
@@ -97,6 +110,13 @@ cMatch' potArgs q r x [u, v] =
       a <- aRange potArgs,
       b <- bRange potArgs]
     ++ [eq (q!y) (r!y) | y <- nonMatchVars]
+    ++ [zero (r![mix|_xs,u^x,v^y,b|])
+       | xs <- varCombi potArgs nonMatchVars,
+         x <- aRange potArgs,
+         y <- aRange potArgs,
+         x /= y,
+         b <- bRange potArgs,
+         b /= 0]
 cMatch' _ _ _ x ys = error $ "xs: " ++ show x ++ ", ys: " ++ show ys
 
 cLetBase :: Args

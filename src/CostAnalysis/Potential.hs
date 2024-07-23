@@ -5,10 +5,11 @@ module CostAnalysis.Potential where
 import Data.Text(Text)
 import Data.Map(Map)
 import qualified Data.Map as M
-import Data.List(intercalate)
+import qualified Data.List as L
 import Prelude hiding ((!))
 import qualified Data.Vector as V
 import Data.Set(Set)
+
 
 import Primitive(Id)
 import CostAnalysis.Rules ( WeakenArg )
@@ -27,13 +28,13 @@ data Potential = Potential {
   -- Annotation manipulation
   
   -- | @ 'rsrcAnn' id label vars@ constructs a fresh resource annotation with tree arguments from @vars@. @id@ specifies a unique identifier for the annotation and @label@ is the human readable label, e.g \"Q\", \"Q\'\" or \"P\".
-  rsrcAnn :: Int -> Text -> [(Id, Type)] -> RsrcAnn,
+  rsrcAnn :: Int -> Text -> [(Id, Type)] -> (RsrcAnn, [Constraint]), 
 
   -- | @ 'constCoeff' ann@ returns the coefficient for the constant basic potential function.
   constCoeff :: RsrcAnn -> Coeff,
   
   -- | @ 'forAllIdx' neg xs x id label ys@ for all combinations of variables in @xs@ with the var @x@, construct a fresh annotation starting with id @id@ and with vars in @ys@. @neg@ allows negative constants. Returns the last used id + 1. 
-  forAllCombinations :: Bool -> [(Id, Type)] -> Id -> Int -> Text -> [(Id, Type)] -> (AnnArray, Int),
+  forAllCombinations :: Bool -> [(Id, Type)] -> Id -> Int -> Text -> [(Id, Type)] -> ((AnnArray, Int), [Constraint]),
   
   -- Constraint generation
   
@@ -41,8 +42,10 @@ data Potential = Potential {
   cPlusConst :: RsrcAnn -> RsrcAnn -> Rational -> [Constraint],
   -- | @ 'cMinusVar' q p@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) - k\] where @k@ is a fresh variable.
   cMinusVar :: RsrcAnn -> RsrcAnn -> Var -> [Constraint],
-  -- | @ 'cPlusMulti' q p r@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(* \mid P) + \phi(*\mid R) \cdot K\] where @k@ is a fresh variable.
+  -- | @ 'cPlusMulti' q p r k@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(* \mid P) + \phi(*\mid R) \cdot K\].
   cPlusMulti :: RsrcAnn -> RsrcAnn -> RsrcAnn -> Var -> [Constraint],
+  -- | @ 'cMulti' q p k@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) \cdot K\].
+  cMulti :: RsrcAnn -> RsrcAnn -> Var -> [Constraint],
   -- | @ 'cEq' q q'@ returns constraints that guarantee \[\phi(\Gamma \mid Q) = \phi(\Delta \mid Q') \text{ where } |\Gamma| = |Q|, |\Delta| = |Q'|\]  
   cEq :: RsrcAnn -> RsrcAnn -> [Constraint],
   -- | @ 'cMatch' q p x ys@ returns constraints that guarantee \[\phi(\Gamma, x \mid Q) = \phi(\Gamma, \vec{y} \mid P)\] where @x@ is the variable that matched and @ys@ is the pattern variables.
@@ -79,6 +82,8 @@ calculateBound (from, to) solution = M.fromList $ map subtract (getCoeffs from)
             
 
 printBound :: Potential -> (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> String
-printBound pot sig solution = intercalate " + " $ map (uncurry (printBasePot pot)) (M.toList solution')
-  where solution' = calculateBound sig solution
+printBound pot sig solution = if L.null terms then "0" else
+  L.intercalate " + " $ map (uncurry (printBasePot pot)) terms
+  where terms = M.toList $ M.filter (0 /=) solution'
+        solution' = calculateBound sig solution
   
