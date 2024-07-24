@@ -14,89 +14,33 @@ import qualified Data.Text as T
 import Data.Text(Text)
 import qualified Data.Set as S
 import Data.Char (isAlphaNum)
-import Data.Maybe(isJust)
-import Data.Ratio((%))
-import Data.Functor(($>))
 
 import Primitive(Id)
 import CostAnalysis.Coeff
 
 type Parser = Parsec Void String
 
-pConstraint :: Parser Constraint
-pConstraint = space *> pAst <* eof
+pConstraintString :: Parser Constraint
+pConstraintString = space *> pConstraint <* eof
 
 parse :: String -> Constraint
-parse contents = case runParser pAst "" contents of
+parse contents = case runParser pConstraintString "" contents of
   Left errs -> error $ errorBundlePretty errs
   Right constraint -> constraint
 
-pAst :: Parser Constraint
-pAst = pParens (pLe <|> pEq)
+pTerm :: Parser Term
+pTerm = (CoeffTerm <$> pCoeff)
+  <|> pVar
+  <|> ConstTerm <$> pRat
+  <|> try (Sum <$> pOp "+")
+  <|> try (Diff <$> pOp "-")
+  <|> try (Prod <$> pOp "*")
+  
 
-pLe :: Parser Constraint
-pLe = do
-  symbol "<="
-  try (do
-          var <- pVar
-          sum <- pSum
-          return $ GeSum sum var)
-
-pEq :: Parser Constraint
-pEq = do
-  symbol "=" 
-  try (Eq <$> pVar <*> pVar)
-    <|> try pZero
-    <|> try (EqSum <$> pVar <*> pParens pSum)
-    <|> try (do
-                v1 <- pVar
-                (v2, c) <- pParens pAddConst
-                return $ EqPlusConst v1 v2 c)
-    <|> try (do
-                v1 <- pVar
-                (v2, c) <- pParens pSubConst
-                return $ EqMinusConst v1 v2 c)
-    <|> try (do
-                v1 <- pVar
-                (v2, v3, k) <- pParens (do
-                  symbol "+"
-                  v2 <- pVar
-                  (v3, k) <- pParens ((,) <$> (symbol "*" *> pVar) <*> pVar)
-                  return (v2, v3, k))
-                return $ EqPlusMulti v1 v2 v3 k
-            )
-    <|> try (do
-                v1 <- pVar
-                (v2, v3) <- pParens ((,) <$> (symbol "-" *> pVar) <*> pVar)
-                return $ EqMinusVar v1 v2 v3)
-    
-
-pZero :: Parser Constraint  
-pZero = do
-  v1 <- pVar
-  symbol "0.0"
-  return $ Zero v1  
-
-pMulConst :: Parser (Var, Rational)          
-pMulConst = (,) <$> (symbol "*" *> pVar) <*> pRat
-
-pAddConst :: Parser (Var, Rational)          
-pAddConst = (,) <$> (symbol "+" *> pVar) <*> pRat
-
-pSubConst :: Parser (Var, Rational)          
-pSubConst = (,) <$> (symbol "-" *> pVar) <*> pRat            
-          
-pSum :: Parser [Var]
-pSum = do
-  symbol "+"
-  many pVar
-
-pVar :: Parser Var
-pVar = (do
-  symbol "k"
-  pos <- isJust <$> optional (symbol "+")
-  symbol "_"
-  Var pos <$> pInt) <|> (AnnCoeff <$> pCoeff) <?> "var"
+pVar :: Parser Term
+pVar = do
+  symbol "k_"
+  VarTerm <$> pInt
 
 pCoeff :: Parser Coeff
 pCoeff = pBars (do
@@ -106,6 +50,39 @@ pCoeff = pBars (do
   idx <- pCoeffIdx
   (label, comment) <- pCurly pLabelComment
   return $ Coeff id label comment idx)
+
+pOp :: String -> Parser [Term]
+pOp op = pParens (do
+                     symbol op
+                     many pTerm)
+
+
+pConstraint :: Parser Constraint
+pConstraint = pParens (try (uncurry Eq <$> pBinOp "=")
+                       <|> pZero
+                       <|> uncurry Le <$> pBinOp "<="
+                       <|> uncurry Ge <$> pBinOp ">="
+                       <|> uncurry Impl <$> pBinOp2 "=>"
+                       <|> pNot)
+
+pBinOp :: String -> Parser (Term, Term)
+pBinOp op = do
+  symbol op
+  (,) <$> pTerm <*> pTerm
+
+pBinOp2 :: String -> Parser (Constraint, Constraint)
+pBinOp2 op = do
+  symbol op
+  (,) <$> pConstraint <*> pConstraint
+
+pNot :: Parser Constraint
+pNot = do
+  symbol "not"
+  Not <$> pConstraint
+
+pZero = do
+  symbol "="
+  Zero <$> pTerm <* symbol "0.0"
   
 pLabelComment :: Parser (Text, Text)
 pLabelComment = do

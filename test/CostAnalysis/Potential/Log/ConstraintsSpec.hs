@@ -41,7 +41,7 @@ spec = do
       let args = [("x", treeT)]
       let q = rsrcAnn 0 "Q" args
       let p = rsrcAnn 1 "P" args
-      let k = Var True 0
+      let k = 0
       let c = 1
       let x = ("x" :: Text)
       let should = eqMinusVar (q![Const 2]) (p![Const 2]) k:
@@ -56,7 +56,7 @@ spec = do
       let q = rsrcAnn 0 "Q" args
       let p = rsrcAnn 1 "P" args
       let r = rsrcAnn 2 "R" args
-      let k = Var True 0
+      let k = 0
       let c = 1
       let x = ("x" :: Text)
       

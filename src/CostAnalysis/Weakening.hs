@@ -18,10 +18,14 @@ weaken pot args q q' p p' = (++)
 farkas :: Potential -> Set WeakenArg -> RsrcAnn -> RsrcAnn -> ProveMonad [Constraint]
 farkas pot args p q = do
   let (as, bs) = genExpertKnowledge pot args p q
-      ps = V.fromList (getCoeffs p)
-      qs = V.fromList (getCoeffs q)
-  fs <- mapM (const freshPosVar) bs
-  let farkasA = [FarkasA (ps V.! i) (prods fs ([row V.! i | row <- V.toList as])) (qs V.! i) | i <- [0..length ps - 1]]
-  return $ if bs == replicate (length bs) 0 then farkasA else FarkasB (zip fs bs):farkasA 
-  where prods fs as = filter (\(f, a) -> a /= 0) (zip fs as)
+      ps = V.map CoeffTerm $ V.fromList (getCoeffs p)
+      qs = V.map CoeffTerm $ V.fromList (getCoeffs q)
+  fs <- mapM (const (VarTerm <$> freshVar)) bs
+  let fsPos = [Ge f (ConstTerm 0) | f <- fs]
+  let farkasA = [Le (ps V.! i) (Sum (qs V.! i:fas fs as i)) | i <- [0..length ps - 1]]
+  let farkasB = [Le (Sum $ prods fs bs) (ConstTerm 0)]
+  return $ fsPos ++ farkasA ++ farkasB 
+  where prods fs as = filter (\(Prod2 f (ConstTerm a)) -> a /= 0) (zipWith Prod2 fs (map (ConstTerm . fromIntegral) as))
+        fas fs as i = prods fs ([row V.! i | row <- V.toList as])
+        
     

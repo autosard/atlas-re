@@ -20,7 +20,7 @@ freshVar :: OptiMonad Var
 freshVar = do
   g <- use idGen
   idGen .= g+1
-  return $ Var True g  
+  return g  
 
 bindToVars :: (Var -> a -> Constraint) -> [a] -> OptiMonad ([Var], [Constraint])
 bindToVars binder = foldrM go ([],[])

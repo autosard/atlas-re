@@ -24,7 +24,8 @@ import CostAnalysis.Tactic
 import qualified CostAnalysis.Rules as R
 import CostAnalysis.Potential hiding (Factor(..), rsrcAnn)
 import CostAnalysis.RsrcAnn
-import CostAnalysis.Constraint hiding (Var)
+import CostAnalysis.Constraint ( printConstraint, Constraint(Ge),
+                                 Term(ConstTerm, VarTerm) )
 import CostAnalysis.Weakening
 import CostAnalysis.ProveMonad
 import StaticAnalysis(freeVars)
@@ -222,8 +223,9 @@ proveApp tactic False ctx e@(App id _) q q' = do
   fnSig <- use sig
   let (p, p') = withCost $ fnSig M.! id
   let (r, r') = withoutCost $ fnSig M.! id
-  k <- freshPosVar
-  let cs = cPlusMulti pot q p r k
+  k <- freshVar
+  let cs = Ge (VarTerm k) (ConstTerm 1)
+        : cPlusMulti pot q p r k
         ++ cPlusMulti pot q' p' r' k
   tell cs
   return $ T.Node (RuleApp R.App False cs e) []
@@ -231,8 +233,9 @@ proveApp tactic True ctx e@(App id _) q q' = do
   pot <- view potential
   fnSig <- use sig
   let (p, p') = withoutCost $ fnSig M.! id
-  k <- freshPosVar
-  let cs = cMulti pot q p k
+  k <- freshVar
+  let cs = Ge (VarTerm k) (ConstTerm 1)
+        : cMulti pot q p k
         ++ cMulti pot q' p' k
   tell cs
   return $ T.Node (RuleApp R.App True cs e) []  
@@ -270,8 +273,9 @@ proveShift tactic cf ctx e q q' = do
   let [subTactic] = subTactics 1 tactic
   p <- rsrcAnn "P" (args q)
   p' <- rsrcAnn  "P'" (args q')
-  k <- freshPosVar
-  let cs = cMinusVar pot p q k
+  k <- freshVar
+  let cs = Ge (VarTerm k) (ConstTerm 0)
+        : cMinusVar pot p q k
         ++ cMinusVar pot p' q' k
   tell cs
   deriv <- proveExpr subTactic cf ctx e p p'
@@ -286,7 +290,7 @@ proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
     return $ T.Node (RuleApp R.TickDefer cf [] e) [deriv]
   else do
     p <- rsrcAnn "P" (args q')
-    let cs = cPlusConst pot q' p (fromMaybe 1 c) 
+    let cs = cPlusConst pot p q' (fromMaybe 1 c) 
     tell cs
     deriv <- proveExpr subTactic cf ctx e1 q p
     return $ T.Node (RuleApp R.TickDefer cf cs e) [deriv]

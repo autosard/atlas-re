@@ -54,10 +54,7 @@ genVarId = do
   return g
 
 freshVar :: ProveMonad Var
-freshVar = Var False <$> genVarId
-
-freshPosVar :: ProveMonad Var
-freshPosVar = Var True <$> genVarId
+freshVar = genVarId
 
 rsrcAnn :: Text -> [(Id, Type)] -> ProveMonad RsrcAnn
 rsrcAnn label vars = do
