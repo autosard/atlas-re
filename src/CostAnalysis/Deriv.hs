@@ -1,6 +1,8 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE LambdaCase #-}
+
 
 module CostAnalysis.Deriv where
 
@@ -11,6 +13,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Set(Set)
 import Data.Text(Text)
+import Data.Text(unpack)
 import Data.List(intercalate)
 
 import Ast hiding (Coefficient)
@@ -28,25 +31,31 @@ import CostAnalysis.Constraint ( printConstraint, Constraint(Ge),
                                  Term(ConstTerm, VarTerm) )
 import CostAnalysis.Weakening
 import CostAnalysis.ProveMonad
-import StaticAnalysis(freeVars)
+import StaticAnalysis(freeVars, calledFunctions')
 import Data.Maybe (fromMaybe, mapMaybe)
 import SourceError
 
 
 
-data RuleApp = RuleApp R.Rule Bool [Constraint] TypedExpr
+data RuleApp
+  = ExprRuleApp R.Rule Bool RsrcAnn RsrcAnn [Constraint] TypedExpr
+  | FunRuleApp TypedFunDef
+  | ProgRuleApp TypedModule
 
 printRuleApp :: Set Constraint -> RuleApp -> String
-printRuleApp unsatCore (RuleApp rule cf cs e) = show rule ++ printCf ++ ": " ++ printCs (unsat cs) ++ " " ++ printExprHead e
-  where printCs cs = "{" ++ intercalate "," (S.toList cs) ++ "}"
+printRuleApp unsatCore (ExprRuleApp rule cf q q' cs e) = show rule ++ printCf ++ printAnns ++": " ++ printCs (unsat cs) ++ " " ++ printExprHead e
+  where printAnns = " [" ++ printQ q ++ " |- " ++ printQ q' ++ "]"
+        printCs cs = "{" ++ intercalate "," (S.toList cs) ++ "}"
         unsat cs = S.map printConstraint (S.fromList cs `S.intersection` unsatCore)
+        printQ q = "q" ++ show (annId q)
         printCf = if cf then " (cf)" else ""
+printRuleApp _ (FunRuleApp (Fn name _ _)) = "Fun: " ++ unpack name
+printRuleApp _ (ProgRuleApp _) = "Prog" 
 
 
 type Derivation = Tree RuleApp
 
-
-type ProofResult = ([(Id, Derivation)], [Constraint], RsrcSignature)
+type ProofResult = (Derivation, [Constraint], RsrcSignature)
 
 runProof :: TypedModule -> Potential -> Map Id Tactic
   -> (Int, Either SourceError ProofResult)
@@ -54,7 +63,7 @@ runProof mod pot tactics = (state' ^. varIdGen, (,cs, state' ^. sig) <$> deriv)
   where (deriv, state', cs) = runRWS rws env state
         rws = runExceptT $ proveModule mod
         env = ProofEnv pot tactics
-        state = ProofState M.empty 0 0
+        state = ProofState M.empty 0 0 Nothing
 
 
 forAllCombinations' :: Bool -> [(Id, Type)] -> Id -> Text -> [(Id, Type)] -> ProveMonad AnnArray
@@ -92,7 +101,7 @@ proveConst _ cf ctx e q q' = do
   pot <- view potential
   let cs = cEq pot q q'
   tell cs
-  return $ T.Node (RuleApp R.Const cf cs e) []
+  return $ T.Node (ExprRuleApp R.Const cf q q' cs e) []
 
 proveCmp :: Prove TypedExpr Derivation
 proveCmp _ cf _ e q q' = 
@@ -102,14 +111,14 @@ proveCmp _ cf _ e q q' =
     pot <- view potential
     let cs = cEq pot q q'
     tell cs
-    return $ T.Node (RuleApp R.Cmp cf cs e) []
+    return $ T.Node (ExprRuleApp R.Cmp cf q q' cs e) []
 
 proveVar :: Prove TypedExpr Derivation
 proveVar _ cf _ e q q' = do
   pot <- view potential
   let cs = cEq pot q q'
   tell cs
-  return $ T.Node (RuleApp R.Var cf cs e) []
+  return $ T.Node (ExprRuleApp R.Var cf q q' cs e) []
 
 provePair :: Prove TypedExpr Derivation
 provePair _ cf ctx e@(Tuple (Var x1) (Var x2)) q q' = do
@@ -117,7 +126,7 @@ provePair _ cf ctx e@(Tuple (Var x1) (Var x2)) q q' = do
     pot <- view potential
     let cs = cEq pot q q'
     tell cs
-    return $ T.Node (RuleApp R.Const cf cs e) []
+    return $ T.Node (ExprRuleApp R.Const cf q q' cs e) []
   else errorFrom (SynExpr e) "pair rule applied to more then one tree type."
 
 proveIte :: Prove TypedExpr Derivation
@@ -126,7 +135,7 @@ proveIte tactic cf ctx e@(Ite (Var x) e1 e2) q q' = do
   let ctx' = M.delete x ctx
   deriv1 <- proveExpr t1 cf ctx' e1 q q'
   deriv2 <- proveExpr t2 cf ctx' e2 q q'
-  return $ T.Node (RuleApp R.Ite cf [] e) [deriv1, deriv2]
+  return $ T.Node (ExprRuleApp R.Ite cf q q' [] e) [deriv1, deriv2]
 
 
 proveMatchArm :: Id -> Prove TypedMatchArm ([Constraint], Derivation)
@@ -165,7 +174,7 @@ proveMatch tactic cf ctx e@(Match (Var x) arms) q q' = do
   results <- zipWithM proveArmWithTactic tactics arms
   let (cs, derivs) = foldr accum ([], []) results
   tell cs
-  return $ T.Node (RuleApp R.Match cf cs e) derivs
+  return $ T.Node (ExprRuleApp R.Match cf q q' cs e) derivs
   where accum (cs, deriv) (css, derivs) = (cs ++ css, deriv:derivs)
         proveArmWithTactic tactic arm = proveMatchArm x tactic cf ctx arm q q'
 
@@ -177,6 +186,11 @@ splitLetCtx ctx e1 e2 = do
   let ctxE2 = ctx M.\\ ctxE1
   return (ctxE1, ctxE2)
 
+isRecursive :: TypedExpr -> ProveMonad Bool
+isRecursive e = do
+  use currentFn >>= \case
+    Just (FunDef _ fn _ _) -> return $ S.member fn (calledFunctions' e)
+   
 proveLet :: Prove TypedExpr Derivation
 proveLet tactic cf ctx e@(Let x e1 e2) q q'
   | isTree $ getType e1 = do
@@ -200,7 +214,7 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
 
       let cs = cLet pot neg q p p' ps ps' r x
       tell cs
-      return $ T.Node (RuleApp R.Let cf cs e) ([deriv1, deriv2] ++ cfDerivs)
+      return $ T.Node (ExprRuleApp R.Let cf q q' cs e) ([deriv1, deriv2] ++ cfDerivs)
   | otherwise = do
       pot <- view potential
       let [t1, t2] = subTactics 2 tactic
@@ -215,7 +229,7 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
 
       let cs = cLetBase pot q p r p'
       tell cs
-      return $ T.Node (RuleApp R.Let cf cs e) [deriv1, deriv2]
+      return $ T.Node (ExprRuleApp R.Let cf q q' cs e) [deriv1, deriv2]
 
 proveApp :: Prove TypedExpr Derivation
 proveApp tactic False ctx e@(App id _) q q' = do
@@ -228,7 +242,7 @@ proveApp tactic False ctx e@(App id _) q q' = do
         : cPlusMulti pot q p r k
         ++ cPlusMulti pot q' p' r' k
   tell cs
-  return $ T.Node (RuleApp R.App False cs e) []
+  return $ T.Node (ExprRuleApp R.App False q q' cs e) []
 proveApp tactic True ctx e@(App id _) q q' = do
   pot <- view potential
   fnSig <- use sig
@@ -238,7 +252,7 @@ proveApp tactic True ctx e@(App id _) q q' = do
         : cMulti pot q p k
         ++ cMulti pot q' p' k
   tell cs
-  return $ T.Node (RuleApp R.App True cs e) []  
+  return $ T.Node (ExprRuleApp R.App True q q' cs e) []  
 
 proveWeakenVar :: Prove TypedExpr Derivation
 proveWeakenVar tactic cf ctx e q q' = do
@@ -254,7 +268,7 @@ proveWeakenVar tactic cf ctx e q q' = do
   deriv <- proveExpr t cf ctx' e r q'
   let cs = cWeakenVar pot q r
   tell cs
-  return $ T.Node (RuleApp R.WeakenVar cf cs e) [deriv]
+  return $ T.Node (ExprRuleApp R.WeakenVar cf q q' cs e) [deriv]
   
 proveWeaken :: Prove TypedExpr Derivation
 proveWeaken tactic@(Rule (R.Weaken wArgs) _) cf ctx e q q' = do
@@ -265,7 +279,7 @@ proveWeaken tactic@(Rule (R.Weaken wArgs) _) cf ctx e q q' = do
   cs <- weaken pot (S.fromList wArgs) q q' p p'
   tell cs
   deriv <- proveExpr t cf ctx e p p'
-  return $ T.Node (RuleApp (R.Weaken wArgs) cf cs e) [deriv]
+  return $ T.Node (ExprRuleApp (R.Weaken wArgs) cf q q' cs e) [deriv]
 
 proveShift :: Prove TypedExpr Derivation
 proveShift tactic cf ctx e q q' = do
@@ -279,7 +293,7 @@ proveShift tactic cf ctx e q q' = do
         ++ cMinusVar pot p' q' k
   tell cs
   deriv <- proveExpr subTactic cf ctx e p p'
-  return $ T.Node (RuleApp R.Shift cf cs e) [deriv]
+  return $ T.Node (ExprRuleApp R.Shift cf q q' cs e) [deriv]
 
 proveTickDefer :: Prove TypedExpr Derivation
 proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
@@ -287,13 +301,13 @@ proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
   let [subTactic] = subTactics 1 tactic
   if cf then do
     deriv <- proveExpr subTactic cf ctx e1 q q'
-    return $ T.Node (RuleApp R.TickDefer cf [] e) [deriv]
+    return $ T.Node (ExprRuleApp R.TickDefer cf q q' [] e) [deriv]
   else do
     p <- rsrcAnn "P" (args q')
     let cs = cPlusConst pot p q' (fromMaybe 1 c) 
     tell cs
     deriv <- proveExpr subTactic cf ctx e1 q p
-    return $ T.Node (RuleApp R.TickDefer cf cs e) [deriv]
+    return $ T.Node (ExprRuleApp R.TickDefer cf q q' cs e) [deriv]
 
 
 proveExpr :: Prove TypedExpr Derivation
@@ -326,22 +340,29 @@ ctxFromProdType (TAp Prod ts) args = M.fromList $ zip args ts
 ctxFromProdType t _ = error $ "Cannot construct a type context from the non product type '" ++ show t ++ "'."
 
 proveFun :: Prove TypedFunDef Derivation
-proveFun _ _ _ (FunDef ann id args e) q q' = do
+proveFun _ cf _ (FunDef ann id args e) q q' = do
   let tFrom = fst . splitFnType . toType . tfType $ ann
   let ctx = ctxFromProdType tFrom args
   tactic <- fromMaybe Auto . M.lookup id <$> view tactics
-  proveExpr tactic False ctx e q q'
+  proveExpr tactic cf ctx e q q'
 
-proveModule :: TypedModule -> ProveMonad [(Id, Derivation)]
+proveFunWithAnn :: TypedFunDef -> FunRsrcAnn -> ProveMonad Derivation
+proveFunWithAnn fun ann = do
+  currentFn .= Just fun
+  -- prove both with and without costs for well-typedness
+  let (p, p') = withoutCost ann
+  derivCf <- proveFun Auto True M.empty fun p p'
+  
+  let (q, q') = withCost ann  
+  deriv <- proveFun Auto False M.empty fun q q'
+  
+  return $ T.Node (FunRuleApp fun) [derivCf, deriv]
+
+proveModule :: TypedModule -> ProveMonad Derivation
 proveModule mod = do
   s <- use sig
   -- TODO merge with existing signatures / or type check afterwards
   funAnns <- mapM (\f@(Fn name _ _) -> (name,) <$> genFunRsrcAnn f) mod
   sig .= s `M.union` M.fromList funAnns
-  mapM proveFunWithAnn $ zip mod funAnns
-  where proveFunWithAnn (fun@(Fn id _ _), (_, ann)) = let (q, q') = withCost ann in
-          (id,) <$> proveFun Auto False M.empty fun q q'
-  
-  
-  
-
+  derivs <- mapM (uncurry proveFunWithAnn) $ zipWith (\x y -> (x, snd y)) mod funAnns
+  return $ T.Node (ProgRuleApp mod) derivs

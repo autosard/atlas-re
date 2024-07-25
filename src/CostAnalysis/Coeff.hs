@@ -20,8 +20,8 @@ data Coeff =
   deriving (Eq, Ord, Show)
 
 printCoeff :: Coeff -> String
-printCoeff (Coeff id label comment idx) = "q" ++ show id ++ "_" ++ show idx
-  ++ "{\"" ++ T.unpack label ++ "\",\"" ++ T.unpack comment ++ "\"}"
+printCoeff (Coeff id label comment idx) = "q" ++ show id ++ show idx
+  -- ++ "{\"" ++ T.unpack label ++ "\",\"" ++ T.unpack comment ++ "\"}"
 
 data Factor = Const Int | Arg Id Int
   deriving (Eq, Ord)

@@ -95,7 +95,7 @@ pLabelComment = do
 pCoeffIdx :: Parser CoeffIdx
 pCoeffIdx = pParens (
   try (do
-      args <- sepBy1 pFactor (symbol ",")  
+      args <- sepBy pFactor (symbol ",")  
       return $ Mixed (S.fromList args))
     <|> (Pure <$> pIdentifier))
            

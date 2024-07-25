@@ -67,22 +67,30 @@ geSum ps q = Ge (Sum (map CoeffTerm ps)) (CoeffTerm q)
 notZero :: Coeff -> Constraint
 notZero q = Not $ Zero (CoeffTerm q)
 
+varGeZero :: Var -> Constraint
+varGeZero x = Ge (VarTerm x) (ConstTerm 0)
+
 le :: Coeff -> Coeff -> Constraint
 le q p = Le (CoeffTerm q) (CoeffTerm p)
 
 printTerm :: Term -> String
 printTerm (VarTerm k) = printVar k
 printTerm (CoeffTerm q) = printCoeff q
-printTerm (Sum terms) = "(" ++ intercalate " + " (map printTerm terms) ++ ")"
-printTerm (Diff terms) = "(" ++ intercalate " - " (map printTerm terms) ++ ")"
-printTerm (Prod terms) = "(" ++ intercalate " * " (map printTerm terms) ++ ")"
+printTerm (Sum terms) = printOpTerm "+" terms
+printTerm (Diff terms) = printOpTerm "-" terms
+printTerm (Prod terms) = printOpTerm "*" terms
 printTerm (ConstTerm c) = show c
+
+printOpTerm :: String -> [Term] -> String
+printOpTerm op [] = "0"
+printOpTerm op [t] = printTerm t
+printOpTerm op terms = "(" ++ intercalate (" " ++ op ++ " ") (map printTerm terms) ++ ")"
 
 printConstraint :: Constraint -> String
 printConstraint (Eq t1 t2) = printTerm t1 ++ " = " ++ printTerm t2
 printConstraint (Zero t) = printTerm t ++ " = 0" 
 printConstraint (Le t1 t2) = printTerm t1 ++ " <= " ++ printTerm t2
-printConstraint (Ge t1 t2) = printTerm t1 ++ " => " ++ printTerm t2
+printConstraint (Ge t1 t2) = printTerm t1 ++ " >= " ++ printTerm t2
 printConstraint (Impl c1 c2) = "(" ++ printConstraint c1 ++ ") => (" ++ printConstraint c2 ++ ")"
 printConstraint (Not c) = "not (" ++ printConstraint c ++ ")"
 

@@ -72,7 +72,10 @@ spec = do
       let q = rsrcAnn 0 "Q" []
       let q' = rsrcAnn 1 "Q'" [("e", treeT)]
       let e = ("e" :: Id)
-      let should = [eqSum (q![Const 2]) [q'!e, q'![Const 2]]]
+      let should = [
+            eqSum (q![Const 2]) [q'!e, q'![Const 2]],
+            zero (q'![mix|e^1|]),
+            zero (q'![mix|e^1,2|])]
       cEq potArgs q q' `shouldBe` should
     it "generates the correct constraints for the node case" $ do
       let [x1, x2] = ["x1", "x2"]

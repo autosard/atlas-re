@@ -27,5 +27,5 @@ bindToVars binder = foldrM go ([],[])
   where go x (vars, cs) = do
           var <- freshVar
           let c = binder var x
-          return (var:vars, c:cs)
+          return (var:vars, varGeZero var:c:cs)
 

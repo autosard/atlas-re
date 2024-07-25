@@ -22,6 +22,7 @@ import qualified Data.Set as S
 import Parsing.SmtLib(parse)
 
 import Debug.Trace (trace)
+import Data.Foldable (foldrM)
 traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
 
 class Encodeable a where
@@ -63,88 +64,6 @@ instance Encodeable Constraint where
   toZ3 (Impl c1 c2) = bind2 mkImplies (toZ3 c1) (toZ3 c2)
   toZ3 (Not c) = mkNot =<< toZ3 c
 
--- instance Encodeable Constraint where
---   toZ3 (Eq q p) = do
---     q' <- toZ3 q
---     p' <- toZ3 p
---     mkEq q' p'
---   toZ3 (EqSum q ps) = do
---     sum <- mkAdd =<< mapM toZ3 ps
---     q' <- toZ3 q
---     mkEq q' sum
---   toZ3 (EqPlusConst q p c) = do
---     q' <- toZ3 q
---     p' <- toZ3 p
---     c' <- toZ3 c
---     sum <- mkAdd [p', c']
---     mkEq q' sum
---   toZ3 (EqMinusConst q p c) = do
---     q' <- toZ3 q
---     p' <- toZ3 p
---     c' <- toZ3 c
---     sub <- mkSub [p', c']
---     mkEq q' sub
---   toZ3 (EqMinusVar q p k) = do
---     q' <- toZ3 q
---     p' <- toZ3 p
---     k' <- toZ3 k
---     sub <- mkSub [p', k']
---     mkEq q' sub
---   toZ3 (EqPlusMulti q p r k) = do
---     q' <- toZ3 q
---     p' <- toZ3 p
---     r' <- toZ3 r
---     k' <- toZ3 k
---     prod <- mkMul [r', k']
---     sum <- mkAdd [p', prod]
---     mkEq q' sum
---   toZ3 (EqMulti q p k) = do
---     q' <- toZ3 q
---     p' <- toZ3 p
---     k' <- toZ3 k
---     prod <- mkMul [p', k']
---     mkEq q' prod
---   toZ3 (Zero q) = do
---     q' <- toZ3 q
---     zero <- toZ3 (0 :: Rational)
---     mkEq q' zero
---   toZ3 (NotZero q) = mkNot =<< toZ3 (Zero q)
---   toZ3 (Le q p) = do
---     q' <- toZ3 q
---     p' <- toZ3 p
---     mkLe q' p'
---   toZ3 (GeSum qs p) = do
---     p' <- toZ3 p
---     sum <- mkAdd =<< mapM toZ3 qs
---     mkGe sum p'
---   toZ3 (Ge k c) = do
---     k' <- toZ3 k
---     c' <- toZ3 c
---     mkGe k' c'
---   toZ3 (Impl c1 c2) = do
---     c1' <- toZ3 c1
---     c2' <- toZ3 c2
---     mkImplies c1' c2'
---   toZ3 (EqSub q ps) = do
---     q' <- toZ3 q
---     sub <- mkSub =<< mapM toZ3 ps
---     mkEq q' sub
---   toZ3 (EqMultConst q p c) = do
---     q' <- toZ3 q
---     p' <- toZ3 p
---     c' <- toZ3 c
---     mkEq q' =<< mkMul [p', c']
---   toZ3 (FarkasA p fas q) = do
---     p' <- toZ3 p
---     q' <- toZ3 q
---     prods <- mapM prodToZ3 fas
---     mkLe p' =<< mkAdd (q':prods)
---     where prodToZ3 :: (MonadZ3 z3) => (Var, Int) -> z3 AST
---           prodToZ3 (x,y) = do
---             x' <- toZ3 x
---             y' <- mkReal y 1
---             mkMul [x', y']
-    
 type Solution a = Either [Constraint] (Map Coeff Rational)
 
 genOptiTarget :: Potential -> [FunRsrcAnn] -> Int -> Target
@@ -173,34 +92,47 @@ evalCoeffs m qs = do
             Just r -> return (q, r)
             Nothing -> error $ "Evaluation of coefficient " ++ show q ++ " in z3 model failed."
 
+assertConstraints :: MonadZ3 z3 => [Constraint] -> z3 (Map String Constraint)
+assertConstraints = foldrM go M.empty
+  where go :: MonadZ3 z3 => Constraint -> Map String Constraint -> z3 (Map String Constraint)
+        go c@(Ge (VarTerm k) (ConstTerm 0)) tracker = do
+          assert =<< toZ3 c
+          return tracker
+        go c tracker = do
+          p <- mkFreshBoolVar "c"
+          pS <- astToString p
+          c' <- toZ3 c
+          solverAssertAndTrack c' p
+          return $ M.insert pS c tracker
+
+
 solveZ3' :: (MonadZ3 z3) => Var -> RsrcSignature -> [Constraint] -> z3 (Solution a)
 solveZ3' target sig cs = do
   let annCoeffs = S.unions $ map (S.fromList . getCoeffs) cs
   annCoeffs' <- mapM (toZ3 . CoeffTerm) (S.toList annCoeffs)
   positiveCs <- mapM (\coeff -> mkGe coeff =<< mkReal 0 1) annCoeffs'
   mapM_ assert positiveCs
-  cs' <- mapM toZ3 cs
   target' <- toZ3 (VarTerm target)
   --optimizeMinimize target'
-
---  astStrings <- mapM astToString cs'
-  t <- mkReal 2 1
-  assert =<< mkLe target' t
-  --mapM_ assert cs'
+  tracker <- assertConstraints cs
+  
+  --t <- mkReal 12054 1
+  --assert =<< mkLe target' t
+  
   --error =<< solverToString
-  result <- checkAssumptions cs'
+  result <- check
   case result of
     Sat -> do
       maybeModel <- snd <$> getModel
       let model = case maybeModel of
                     Just model -> model
                     Nothing -> error "bug"
-      --error =<< modelToString model
-      Right <$> evalCoeffs model (getCoeffs sig)
+      solution <- modelToString model
+      Right <$> evalCoeffs (trace solution model) (getCoeffs sig)
     Unsat -> do
       unsatCore <- getUnsatCore
       astStrings <- mapM astToString unsatCore
-      return $ Left (map parse astStrings)
+      return $ Left (map (tracker M.!) astStrings)
     Undef -> error "Z3 returned undef."  
    
   

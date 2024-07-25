@@ -71,23 +71,23 @@ run Options{..} RunOptions{..} = do
   let args = Args _aRange _bRange _aRange _bRange (-1 : _bRange)
   let pot = logPot args
   let (varIdGen, proofResult) = runProof normalizedProg pot tactics
-  (derivs, cs, sig) <- liftIO $ case proofResult of
+  (deriv, cs, sig) <- liftIO $ case proofResult of
         Left srcErr -> die $ printSrcError srcErr contents
         Right v -> return v
-  liftIO $ mapM (printDeriv (S.fromList cs)) derivs        
+  liftIO $ printDeriv (S.fromList cs) deriv        
   solution <- liftIO $ solveZ3 pot sig cs varIdGen
 --  liftIO $ putStr (printProg normalizedProg)
   case solution of
     (Left core) -> let core' = S.fromList core in do
       logError $ "solver returned unsat. See unsat-core for details."
-      liftIO $ mapM_ (printDeriv core') derivs
+      liftIO $ printDeriv core' deriv
     (Right coeffs) -> let target = withCost $ sig M.! funName in do
-      liftIO $ print solution 
+      --liftIO $ print solution 
       liftIO $ putStr (printBound pot target coeffs)
       
 
-printDeriv :: Set Constraint -> (Id, Derivation) -> IO ()
-printDeriv unsatCore (id, deriv) = putStr $ T.unpack id ++ ":\n\n" ++ drawTree deriv'
+printDeriv :: Set Constraint -> Derivation -> IO ()
+printDeriv unsatCore deriv = putStr (drawTree deriv')
   where deriv' = fmap (printRuleApp unsatCore) deriv
 
 eval :: Options -> EvalOptions -> App ()

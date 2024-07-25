@@ -17,6 +17,6 @@ data Rule
   | TickDefer
   | WeakenVar
   | Weaken [WeakenArg]
-  | Shift 
+  | Shift
   deriving(Eq, Show)
 

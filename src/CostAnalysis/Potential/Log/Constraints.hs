@@ -53,12 +53,19 @@ cMulti potArgs q p k = let xs = annVars q
 cEq :: Args
   -> RsrcAnn -> RsrcAnn -> [Constraint]
 cEq potArgs q q'
+  -- leaf 
   | (null . args $ q) && (length . args $ q') == 1 =
     eqSum (q![mix|2|]) [q'!exp, q'![mix|2|]] :
     [eqSum (q![mix|2|]) [q'![mix|exp^a,b|]
                             | a <- aRange potArgs,
                               b <- bRange potArgs, a + b == c]
                         | c <- bRange potArgs, c > 2]
+    ++ [zero (q'![mix|exp^a,b|])
+           | c <- bRange potArgs, c >= 2,
+             a <- aRange potArgs,
+             b <- bRange potArgs,
+             a + b /= c, a + b > 0]
+  -- node
   | (length . args $ q) == 2 && (length . args $ q') == 1 =
     let [x1, x2] = annVars q in
       eq (q!x1) (q'!exp) :
@@ -74,6 +81,7 @@ cEq potArgs q q'
         x /= y,
         c <- bRange potArgs,
         c /= 0]
+  -- generic
   | (length . args $ q) == (length .args $ q') =
       [eq (q!x) (q'!y) | (x, y) <- zip (annVars q) (annVars q') ]
       ++ [eq (q!idxQ) (q'!idxQ')

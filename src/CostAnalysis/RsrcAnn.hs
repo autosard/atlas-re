@@ -24,6 +24,10 @@ data RsrcAnn = RsrcAnn {
   coeffs :: CoeffsMap}
   deriving (Eq, Show)
 
+annId :: RsrcAnn -> Int
+annId (RsrcAnn _ coeffs) = id
+  where (_, Coeff id _ _ _) = head . M.toList $ coeffs
+
 annVars :: RsrcAnn -> [Id]
 annVars = map fst . args
 

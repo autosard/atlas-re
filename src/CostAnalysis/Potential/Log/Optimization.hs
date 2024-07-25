@@ -15,7 +15,7 @@ rankDifference q q' = do
   target <- freshVar
   (ds, diffs) <- bindToVars (diff (q'!("e" :: Id))) (annVars q)
   let sum = Eq (VarTerm target) (Sum $ map VarTerm ds)
-  return (target, sum:diffs)
+  return (target, varGeZero target:sum:diffs)
   where diff :: Coeff -> Var -> Id -> Constraint
         diff rankQ' d x = Eq (VarTerm d) $ Diff [CoeffTerm (q!x), CoeffTerm rankQ']
 
@@ -26,7 +26,7 @@ weightedNonRankDifference potArgs q q' = do
   (ds, diffs) <- bindToVars (\var (p, p', _) -> Eq (VarTerm var) $ Diff [CoeffTerm p, CoeffTerm p']) pairs
   (ws, weightedDiffs) <- bindToVars (\var (d, (_, _, (a,b))) -> Eq (VarTerm var) $ Prod [VarTerm d, ConstTerm (w a b)]) (zip ds pairs)
   let sum = Eq (VarTerm target) $ Sum (map VarTerm ws)
-  return (target, sum:(diffs ++ weightedDiffs))
+  return (target, varGeZero target:sum:(diffs ++ weightedDiffs))
   where pairs = [(q![mix|x^a,b|], q'![mix|y^a,b|], (a,b))
                 | a <- aRange potArgs,
                   b <- bRange potArgs,
@@ -44,13 +44,13 @@ constantDifference :: RsrcAnn -> RsrcAnn -> OptiMonad Target
 constantDifference q q' = do
   target <- freshVar
   let diff = Eq (VarTerm target) $ Diff [CoeffTerm (q![mix|2|]), CoeffTerm (q'![mix|2|])]
-  return (target, [diff])                                     
+  return (target, varGeZero target:[diff])                                     
 
 absoluteValue :: Args -> RsrcAnn -> OptiMonad Target
 absoluteValue potArgs q = do
   target <- freshVar
   let sum = Eq (VarTerm target) $ Sum [CoeffTerm (q!idx) | idx <- combi potArgs (annVars q)]
-  return (target, [sum])
+  return (target, varGeZero target:[sum])
   
 cOptimize :: Args ->
   RsrcAnn -> RsrcAnn -> OptiMonad Target
@@ -63,4 +63,4 @@ cOptimize potArgs q q' = do
         absoluteValue potArgs q]
   (weightedSubTargets, csWeighted) <- bindToVars (\var (target, w) -> Eq (VarTerm var) $ Prod [VarTerm target, ConstTerm w]) $ zip subTargets [16127, 997, 97, 2]
   let sum = Eq (VarTerm target) $ Sum (map VarTerm weightedSubTargets)
-  return (target, sum:concat cs ++ csWeighted)
+  return (target, varGeZero target:sum:concat cs ++ csWeighted)

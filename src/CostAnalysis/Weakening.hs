@@ -23,7 +23,7 @@ farkas pot args p q = do
   fs <- mapM (const (VarTerm <$> freshVar)) bs
   let fsPos = [Ge f (ConstTerm 0) | f <- fs]
   let farkasA = [Le (ps V.! i) (Sum (qs V.! i:fas fs as i)) | i <- [0..length ps - 1]]
-  let farkasB = [Le (Sum $ prods fs bs) (ConstTerm 0)]
+  let farkasB = [Le (Sum $ prods fs bs) (ConstTerm 0) | (not . all (== 0)) bs]
   return $ fsPos ++ farkasA ++ farkasB 
   where prods fs as = filter (\(Prod2 f (ConstTerm a)) -> a /= 0) (zipWith Prod2 fs (map (ConstTerm . fromIntegral) as))
         fas fs as i = prods fs ([row V.! i | row <- V.toList as])

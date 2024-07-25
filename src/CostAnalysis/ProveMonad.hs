@@ -16,11 +16,13 @@ import CostAnalysis.Tactic
 import SourceError
 import CostAnalysis.Constraint
 import Typing.Type
+import Ast (TypedFunDef)
 
 data ProofState = ProofState {
   _sig :: RsrcSignature,
   _annIdGen :: Int,
-  _varIdGen :: Int
+  _varIdGen :: Int,
+  _currentFn :: Maybe TypedFunDef
   }
   deriving (Show)
 
