@@ -43,6 +43,9 @@ pattern Prod2 t1 t2 <- Prod [t1, t2]
 eq :: Coeff -> Coeff -> Constraint
 eq q p = Eq (CoeffTerm q) (CoeffTerm p)
 
+sub :: [Coeff] -> Term
+sub qs = Diff (map CoeffTerm qs)
+
 eqSum :: Coeff -> [Coeff] -> Constraint
 eqSum q ps = Eq (CoeffTerm q) $ Sum (map CoeffTerm ps)
 

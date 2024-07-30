@@ -1,9 +1,13 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module CostAnalysis.Solving where
 
+import Primitive(Id)
+import CostAnalysis.AnnIdxQuoter
 import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.Optimization
@@ -11,15 +15,15 @@ import CostAnalysis.Potential
 import Data.Ratio(numerator, denominator)
 import Z3.Monad 
 import CostAnalysis.RsrcAnn
-import Control.Monad (mapAndUnzipM, when)
+import Control.Monad (mapAndUnzipM, when, (<=<))
 import Control.Monad.State (evalState)
-
 
 import Data.List (intercalate)
 import Data.Map(Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Parsing.SmtLib(parse)
+import Data.Ratio((%))
 
 import Debug.Trace (trace)
 import Data.Foldable (foldrM)
@@ -76,10 +80,7 @@ genOptiTarget pot fns varIdGen = evalState buildTarget (OptimizationState varIdG
           let (q, q') = withCost fn
           cOptimize pot q q'
 
-solveZ3 :: Potential -> RsrcSignature -> [Constraint] -> Int -> IO (Solution a)
-solveZ3 pot sig cs varIdGen = do
-  let (optiTarget, optiCs) = genOptiTarget pot (M.elems sig) varIdGen
-  evalZ3 $ solveZ3' optiTarget sig (cs ++ optiCs)
+  
 
 
 evalCoeffs :: MonadZ3 z3 => Model -> [Coeff] -> z3 (Map Coeff Rational)
@@ -102,37 +103,79 @@ assertConstraints = foldrM go M.empty
           p <- mkFreshBoolVar "c"
           pS <- astToString p
           c' <- toZ3 c
+--          assert p
           solverAssertAndTrack c' p
           return $ M.insert pS c tracker
 
-
-solveZ3' :: (MonadZ3 z3) => Var -> RsrcSignature -> [Constraint] -> z3 (Solution a)
-solveZ3' target sig cs = do
+assertCoeffsPos :: (MonadZ3 z3) => [Constraint] -> z3 ()
+assertCoeffsPos cs = do
   let annCoeffs = S.unions $ map (S.fromList . getCoeffs) cs
   annCoeffs' <- mapM (toZ3 . CoeffTerm) (S.toList annCoeffs)
   positiveCs <- mapM (\coeff -> mkGe coeff =<< mkReal 0 1) annCoeffs'
   mapM_ assert positiveCs
-  target' <- toZ3 (VarTerm target)
-  --optimizeMinimize target'
-  tracker <- assertConstraints cs
+
+checkSolution :: RsrcSignature -> [Constraint]
+checkSolution sig = let t = "t" :: Id
+                        e = "e" :: Id in
+  [Eq (CoeffTerm (Coeff 0 "Q" "log" (Pure t))) (ConstTerm (1 % 2)),
+  Eq (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|t^1|]))) (ConstTerm (3 % 2)),
+  Eq (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|t^1,2|]))) (ConstTerm (0 % 1)),
+  Eq (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|2|]))) (ConstTerm (1 % 1)),
+  Eq (CoeffTerm (Coeff 1 "Q'" "log" (Pure e))) (ConstTerm (1 % 2)),
+  Eq (CoeffTerm (Coeff 1 "Q'" "log" (Mixed [mix|e^1|]))) (ConstTerm (0 % 1)),
+  Eq (CoeffTerm (Coeff 1 "Q'" "log" (Mixed [mix|e^1,2|]))) (ConstTerm (0 % 1)),
+  Eq (CoeffTerm (Coeff 1 "Q'" "log" (Mixed [mix|2|]))) (ConstTerm (1 % 1))]
+  -- [Le (CoeffTerm (Coeff 0 "Q" "log" (Pure t))) (ConstTerm (1 % 1)),
+  -- Le (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|t^1|]))) (ConstTerm (3 % 2)),
+  -- Le (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|t^1,2|]))) (ConstTerm (0 % 1)),
+  -- Le (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|2|]))) (ConstTerm (0 % 1)),
+  -- Le (CoeffTerm (Coeff 1 "Q'" "log" (Pure e))) (ConstTerm (1 % 1)),
+  -- Le (CoeffTerm (Coeff 1 "Q'" "log" (Mixed [mix|e^1|]))) (ConstTerm (0 % 1)),
+  -- Le (CoeffTerm (Coeff 1 "Q'" "log" (Mixed [mix|e^1,2|]))) (ConstTerm (0 % 1)),
+  -- Le (CoeffTerm (Coeff 1 "Q'" "log" (Mixed [mix|2|]))) (ConstTerm (0 % 1))]
+
+setRankEqual :: RsrcSignature -> [Constraint]
+setRankEqual sig = let t = "t" :: Id
+                       e = "e" :: Id in
+  [Eq (CoeffTerm (Coeff 0 "Q" "log" (Pure t))) (CoeffTerm (Coeff 1 "Q'" "log" (Pure e))) ]
+
+dumpSMT :: Potential -> RsrcSignature -> [Constraint] -> Int -> IO ()
+dumpSMT pot sig cs varIdGen = do
+  writeFile "constraints.smt" =<< evalZ3 go
+  where go = do
+          let (optiTarget, optiCs) = genOptiTarget pot (M.elems sig) varIdGen
+          assertCoeffsPos cs
+          mapM_ (assert <=< toZ3) (cs ++ optiCs)
+          solverToString
+          
+
+solveZ3 :: Potential -> RsrcSignature -> [Constraint] -> Int -> IO (Solution a)
+solveZ3 pot sig typingCs varIdGen = evalZ3 go
+  where go = do
+          let (optiTarget, optiCs) = genOptiTarget pot (M.elems sig) varIdGen
+          assertCoeffsPos typingCs
+          let solutionCheck = checkSolution sig
+          let rankEqual = setRankEqual sig
+          tracker <- assertConstraints (typingCs ++ optiCs ++ rankEqual) -- ++ solutionCheck) -- ++ solutionCheck)
+          target' <- toZ3 (VarTerm optiTarget)
+          optimizeMinimize target'
+--          t <- mkReal 2 1
+--          assert =<< mkLe target' t
+
+          result <- check
+          case result of
+            Sat -> do
+              maybeModel <- snd <$> getModel
+              let model = case maybeModel of
+                            Just model -> model
+                            Nothing -> error "bug"
+              solution <- modelToString model
+              --Right <$> evalCoeffs (trace solution model) (getCoeffs sig)
+              Right <$> evalCoeffs model (getCoeffs sig)
+            Unsat -> do
+              unsatCore <- getUnsatCore
+              astStrings <- mapM astToString unsatCore
+              return $ Left (map (tracker M.!) astStrings)
+            Undef -> error "Z3 returned undef."
   
-  --t <- mkReal 12054 1
-  --assert =<< mkLe target' t
-  
-  --error =<< solverToString
-  result <- check
-  case result of
-    Sat -> do
-      maybeModel <- snd <$> getModel
-      let model = case maybeModel of
-                    Just model -> model
-                    Nothing -> error "bug"
-      solution <- modelToString model
-      Right <$> evalCoeffs (trace solution model) (getCoeffs sig)
-    Unsat -> do
-      unsatCore <- getUnsatCore
-      astStrings <- mapM astToString unsatCore
-      return $ Left (map (tracker M.!) astStrings)
-    Undef -> error "Z3 returned undef."  
-   
-  
+

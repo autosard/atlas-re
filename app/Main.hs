@@ -50,6 +50,7 @@ import Module (loadSimple)
 import SourceError (printSrcError)
 import CostAnalysis.Potential (printBound)
 import CostAnalysis.Constraint (Constraint, printConstraint)
+import Control.Monad (when)
 
 type App a = LoggerT (Msg Severity) IO a
 
@@ -75,8 +76,12 @@ run Options{..} RunOptions{..} = do
         Left srcErr -> die $ printSrcError srcErr contents
         Right v -> return v
   liftIO $ printDeriv (S.fromList cs) deriv        
+
+  let dump = False
+  when dump (do
+                liftIO $ dumpSMT pot sig cs varIdGen
+                error "dumped")
   solution <- liftIO $ solveZ3 pot sig cs varIdGen
---  liftIO $ putStr (printProg normalizedProg)
   case solution of
     (Left core) -> let core' = S.fromList core in do
       logError $ "solver returned unsat. See unsat-core for details."

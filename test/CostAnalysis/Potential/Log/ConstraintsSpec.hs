@@ -113,7 +113,11 @@ spec = do
                     eqSum (p![Const 2]) [q![Const 2], q!x2],
                     eqSum (p!empty) [q!empty],
                     eqSum (p!["x1"^1]) [q!["x1"^1]],
-                    eqSum (p!["x1"^1,Const 2]) [q!["x1"^1, Const 2]]]
+                    eqSum (p!["x1"^1,Const 2]) [q!["x1"^1, Const 2]],
+                    zero (q![mix|x2^1|]),
+                    zero (q![mix|x1^1,x2^1|]),
+                    zero (q![mix|x2^1,2|]),
+                    zero (q![mix|x1^1,x2^1,2|])]
       cMatch potArgs q p x2 [] `shouldBe` should
     it "generates the correct constraints for the node case" $ do
       let (t, u, v) = ("t", "u", "v") 
@@ -161,14 +165,12 @@ spec = do
       let ((ps', _), _) = forAllCombinations potArgs neg [(t2, treeT)] x 6 "P'" [(e, treeT)]
 
       let cs = [eq (p!t1) (q!t1),
-                    eq (p![mix||]) (q![mix||]),
-                    eq (p![mix|2|]) (q![mix|2|]),
                     eq (p![mix|t1^1|]) (q![mix|t1^1|]),
                     eq (p![mix|t1^1,2|]) (q![mix|t1^1,2|]),
                     eq (r!t2) (q!t2),
                     eq (r!x) (p'!e),
-                    eq (r![mix||]) (p'![mix||]),
-                    eq (r![mix|2|]) (p'![mix|2|]),
+                    Eq (CoeffTerm (r![mix|2|])) (Sum [sub [p'![mix|2|], p![mix|2|]], CoeffTerm (q![mix|2|])]),
+                    le (p![mix|2|]) (q![mix|2|]),
                     eq (r![mix|x^1|]) (p'![mix|e^1|]),
                     eq (r![mix|x^1,2|]) (p'![mix|e^1,2|]),
                     eq (r![mix|t2^1|]) (q![mix|t2^1|]),

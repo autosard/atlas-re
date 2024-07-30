@@ -38,7 +38,9 @@ weightedNonRankDifference potArgs q q' = do
                      _multiArg -> error $ "Index weight is only defined for annotations of length 1." ++ show (annVars p)
         w :: Int -> Int -> Rational
         w 0 2 = 0
-        w a b = fromIntegral (a + (b+1) ^ 2) ^ 2
+        w 1 0 = 1
+--        w a b = fromIntegral (a + (b+1) ^ 2) ^ 2
+        w a b = fromIntegral (1 + a + (2 * (b + 1)) ) ^ 2
                        
 constantDifference :: RsrcAnn -> RsrcAnn -> OptiMonad Target
 constantDifference q q' = do
@@ -46,8 +48,14 @@ constantDifference q q' = do
   let diff = Eq (VarTerm target) $ Diff [CoeffTerm (q![mix|2|]), CoeffTerm (q'![mix|2|])]
   return (target, varGeZero target:[diff])                                     
 
-absoluteValue :: Args -> RsrcAnn -> OptiMonad Target
-absoluteValue potArgs q = do
+absRank :: Args -> RsrcAnn -> OptiMonad Target
+absRank potArgs q = do
+  target <- freshVar
+  let sum = Eq (VarTerm target) $ Sum [CoeffTerm (q!x) | x <- annVars q]
+  return (target, varGeZero target:[sum])
+
+absNonRank :: Args -> RsrcAnn -> OptiMonad Target
+absNonRank potArgs q = do
   target <- freshVar
   let sum = Eq (VarTerm target) $ Sum [CoeffTerm (q!idx) | idx <- combi potArgs (annVars q)]
   return (target, varGeZero target:[sum])
@@ -57,10 +65,11 @@ cOptimize :: Args ->
 cOptimize potArgs q q' = do
   target <- freshVar
   (subTargets, cs) <- unzip <$> sequence [
-        rankDifference q q',
+        -- rankDifference q q',
+        absRank potArgs q,
         weightedNonRankDifference potArgs q q',
-        constantDifference q q',
-        absoluteValue potArgs q]
-  (weightedSubTargets, csWeighted) <- bindToVars (\var (target, w) -> Eq (VarTerm var) $ Prod [VarTerm target, ConstTerm w]) $ zip subTargets [16127, 997, 97, 2]
+        constantDifference q q']
+        -- absNonRank potArgs q]
+  (weightedSubTargets, csWeighted) <- bindToVars (\var (target, w) -> Eq (VarTerm var) $ Prod [VarTerm target, ConstTerm w]) $ zip subTargets [179969, 16127, 997, 97, 2]
   let sum = Eq (VarTerm target) $ Sum (map VarTerm weightedSubTargets)
   return (target, varGeZero target:sum:concat cs ++ csWeighted)

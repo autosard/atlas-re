@@ -56,7 +56,7 @@ cEq potArgs q q'
   -- leaf 
   | (null . args $ q) && (length . args $ q') == 1 =
     eqSum (q![mix|2|]) [q'!exp, q'![mix|2|]] :
-    [eqSum (q![mix|2|]) [q'![mix|exp^a,b|]
+    [eqSum (q![mix|c|]) [q'![mix|exp^a,b|]
                             | a <- aRange potArgs,
                               b <- bRange potArgs, a + b == c]
                         | c <- bRange potArgs, c > 2]
@@ -65,6 +65,7 @@ cEq potArgs q q'
              a <- aRange potArgs,
              b <- bRange potArgs,
              a + b /= c, a + b > 0]
+--             (a,b) /= (1,2)]
   -- node
   | (length . args $ q) == 2 && (length . args $ q') == 1 =
     let [x1, x2] = annVars q in
@@ -96,6 +97,7 @@ cMatch potArgs q p x ys = cMatch' potArgs q p x (map fst ys')
 cMatch' :: Args ->
   RsrcAnn -> RsrcAnn -> Id -> [Id] -> [Constraint]
 cMatch' potArgs q p x [] =
+  -- leaf
   let nonMatchVars = L.delete x (annVars q) in
       [eq (q!y) (p!y) | y <- nonMatchVars]
       ++ [eqSum (p![mix|2|]) [q![mix|2|], q!x]]
@@ -107,7 +109,11 @@ cMatch' potArgs q p x [] =
            c <- bRange potArgs,
            let idx = [mix|_xs,c|],
            idx /= [mix|2|]]
+      ++ [zero (q![mix|_xs, x^1, c|])
+                 | c <- bRange potArgs,
+                 xs <- varCombi potArgs nonMatchVars]
 cMatch' potArgs q r x [u, v] =
+  -- node
   let nonMatchVars = L.delete x (annVars q) in
     eq (r!u) (q!x) :
     eq (r!v) (q!x) :
@@ -156,10 +162,14 @@ cLet potArgs neg q p p' ps ps' r x = let xs = annVars p
   [eq (p!x) (q!x) | x <- xs]
   ++ [eq (p![mix|_xs',c|]) (q![mix|_xs',c|])
      | xs' <- varCombi potArgs xs,
+       (not . S.null) xs', 
        c <- bRange potArgs]
+  -- move const
+  ++ [Eq (CoeffTerm (r![mix|2|])) (Sum [sub [p'![mix|2|], p![mix|2|]], CoeffTerm (q![mix|2|])])]
+  ++ [le (p![mix|2|]) (q![mix|2|])]
   ++ [eq (r!y) (q!y) | y <- ys]
   ++ [eq (r![mix|x^d,e|]) (p'![mix|exp^d,e|])
-     | d <- dRange potArgs, e <- _eRange]
+     | d <- dRange potArgs, d /= 0, e <- _eRange]
   ++ [eq (r![mix|_ys',c|]) (q![mix|_ys', c|])
      | ys' <- varCombi potArgs ys,
        (not . S.null) ys', 
