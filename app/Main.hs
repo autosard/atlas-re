@@ -68,7 +68,7 @@ run Options{..} RunOptions{..} = do
     Just path -> loadTactics (T.unpack modName) (fns normalizedProg) path
     Nothing -> return M.empty
   let _aRange = [0,1]
-  let _bRange = [0,2]
+  let _bRange = [0,1,2]
   let args = Args _aRange _bRange _aRange _bRange (-1 : _bRange)
   let pot = logPot args
   let (varIdGen, proofResult) = runProof normalizedProg pot tactics

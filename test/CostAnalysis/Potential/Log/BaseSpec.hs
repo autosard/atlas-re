@@ -22,14 +22,18 @@ spec = do
     it "generates a zero length resource annotation" $ do
       let id = 0
       let vars = []
-      let should = (RsrcAnn vars (M.fromList [coeff [], coeff [Const 2]]),
+      let should = (RsrcAnn vars (M.fromList [coeff [], coeff [Const 1], coeff [Const 2]]),
                      [zero (snd (coeff []))])
       rsrcAnn potArgs id "Q" vars `shouldBe` should
     it "generates a resource annotation of length 2" $ do
       let id = 0
       let vars = [("x1", treeT), ("x2", treeT)]
       let coeffs = M.fromList [coeff' "x1", coeff' "x2",
-                               coeff [], coeff [Const 2],
+                               coeff [], coeff [Const 1],
+                               coeff["x1"^1], coeff["x1"^1,Const 1],
+                               coeff["x2"^1], coeff["x2"^1, Const 1],
+                               coeff["x1"^1, "x2"^1], coeff["x1"^1, "x2"^1, Const 1],
+                               coeff [Const 2],
                                coeff["x1"^1], coeff["x1"^1,Const 2],
                                coeff["x2"^1], coeff["x2"^1, Const 2],
                                coeff["x1"^1, "x2"^1], coeff["x1"^1, "x2"^1, Const 2]]

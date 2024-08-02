@@ -15,7 +15,7 @@ import qualified Data.Set as S
 import Data.Text(Text)
 import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
-import Data.List(intercalate)
+
 
 import Primitive(Id)
 import CostAnalysis.Coeff

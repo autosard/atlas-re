@@ -5,7 +5,6 @@ module CostAnalysis.Potential.Log.Base where
 
 import Prelude hiding ((^))
 import Data.List(intercalate)
-import qualified Data.Map as M
 import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Text(Text)
@@ -13,61 +12,47 @@ import qualified Data.Text as T
 
 import Primitive(Id)
 import CostAnalysis.Coeff
+
 import CostAnalysis.RsrcAnn
 import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Constraint
+import CostAnalysis.Potential (AnnRanges(..))
 
 data Args = Args {
   aRange :: ![Int],
-  bRange :: ![Int],
-  dRange :: ![Int],
-  eRange :: ![Int],
-  eRangeNeg :: ![Int]}
+  bRange :: ![Int]}
 
 types = [TreeType]
 
-combi :: Args -> [Id] -> [Set Factor]
-combi args xs = map S.fromList $
-  combi' args [[Const c | c > 0] | c <- bRange args] xs
+ranges :: Args -> AnnRanges
+ranges potArgs = AnnRanges (aRange potArgs) (bRange potArgs) (-1:bRange potArgs)
 
-varCombi :: Args -> [Id] -> [Set Factor]
-varCombi args xs = map S.fromList $ combi' args [[]] xs
+combi :: ([Int], [Int]) -> [Id] -> [CoeffIdx]
+combi (rangeA, rangeB) xs = map (Mixed . S.fromList)$
+  combi' rangeA [[Const c | c > 0] | c <- rangeB] xs
 
+varCombi :: [Int] -> [Id] -> [CoeffIdx]
+varCombi rangeA xs = map (Mixed . S.fromList) $ combi' rangeA [[]] xs
 
-combi' :: Args -> [[Factor]] -> [Id] -> [[Factor]]
-combi' args z [] = z
-combi' args z (x:xs) = [if a > 0 then x^a:y else y
-                       | a <- aRange args, y <- combi' args z xs]
+combi' :: [Int] -> [[Factor]] -> [Id] -> [[Factor]]
+combi' _ z [] = z
+combi' rangeA z (x:xs) = [if a > 0 then x^a:y else y
+                       | a <- rangeA, y <- combi' rangeA z xs]
 
-rsrcAnn :: Args
-  -> Int -> Text -> [(Id, Type)] -> (RsrcAnn, [Constraint])
-rsrcAnn potArgs id label args = (RsrcAnn args' $ M.fromList (rankCoeffs ++ logCoeffs), cs)
-  where rankCoeffs = [(Pure x, Coeff id label "log" (Pure x)) | (x,i) <- zip vars [1..]]
-        logCoeffs = map ((\idx -> (idx, Coeff id label "log" idx)) . Mixed) $ combi potArgs vars
+rsrcAnn :: Int -> Text -> Text -> [(Id, Type)] -> ([Int], [Int]) -> Bool -> RsrcAnn
+rsrcAnn id label comment args ranges pure =
+  RsrcAnn id args' label comment $ S.fromList (rankCoeffs ++ logCoeffs)
+  where rankCoeffs = [Pure x | pure, (x,i) <- zip vars [1..]]
+        logCoeffs = [idx
+                    | idx <- combi ranges vars,
+                      idxSum idx > 0,
+                      idx /= [mix|1|]]
         args' = filter (\(x, t) -> matchesTypes t types) args
         vars = map fst args'
-        cs = [zero (Coeff id label "log" (Mixed [mix||]))]
 
-constCoeff :: RsrcAnn -> Coeff
+constCoeff :: RsrcAnn -> Term
 constCoeff q = q![mix|2|]
-
-forAllCombinations :: Args 
-  -> Bool -> [(Id, Type)] -> Id -> Int -> Text -> [(Id, Type)] -> ((AnnArray, Int),[Constraint])
-forAllCombinations args neg xs x id label ys = ((array, nextId), concat css)
-  where trees = map fst $ filter (\(_, t) -> isTree t) xs
-        idxs = [S.unions [xIdx, xsIdx, cIdx]
-               | xIdx <- varCombi args [x], (not . S.null) xIdx,
-                 xsIdx <- varCombi args trees, (not . S.null) xsIdx,
-                 cIdx <- combi args []]
-        nextId = id + length idxs
-        arrIdx = Mixed . S.fromList
-        printIdx idx = "(" ++ intercalate "," (map show (S.toAscList idx)) ++ ")"
-        label' l idx = T.concat [l, "_", T.pack $ printIdx idx]
-        (arrayElems, css) = unzip [((idx, ann), cs)
-                           | (idx, id) <- zip idxs [id..],
-                             let (ann, cs) = rsrcAnn args id (label' label idx) ys]
-        array = M.fromList arrayElems
 
 printBasePot :: Coeff -> Rational -> String
 printBasePot (Coeff _ _ _ (Pure x)) v = show v ++ " * rk(" ++ T.unpack x ++ ")"

@@ -3,11 +3,13 @@
 
 module CostAnalysis.Constraint where
 
+import Prelude hiding (sum)
 import Data.List(intercalate)
+import qualified Data.Set as S
 
 import CostAnalysis.Coeff
-import CostAnalysis.RsrcAnn 
 import Control.Monad.State
+
 
 type VarState = Int
 
@@ -27,9 +29,11 @@ data Term
   | ConstTerm Rational
   deriving (Eq, Ord, Show)
 
+termIsZero (ConstTerm 0) = True
+termIsZero _ = False
+
 data Constraint
   = Eq Term Term
-  | Zero Term
   | Le Term Term
   | Ge Term Term
   | Impl Constraint Constraint
@@ -40,35 +44,38 @@ pattern Prod2 :: Term -> Term -> Term
 pattern Prod2 t1 t2 <- Prod [t1, t2]
   where Prod2 t1 t2 = Prod [t1, t2]
 
-eq :: Coeff -> Coeff -> Constraint
-eq q p = Eq (CoeffTerm q) (CoeffTerm p)
+eq :: Term -> Term -> [Constraint]
+eq (ConstTerm 0) (ConstTerm 0) = []
+eq t1 t2 = [Eq t1 t2]
+
+sum :: [Term] -> Term
+sum ts | all termIsZero ts = ConstTerm 0
+       | otherwise = Sum (filter (not. termIsZero) ts)
+
+prod :: [Term] -> Term
+prod ts | any termIsZero ts = ConstTerm 0
+       | otherwise = Prod ts
 
 sub :: [Coeff] -> Term
 sub qs = Diff (map CoeffTerm qs)
 
-eqSum :: Coeff -> [Coeff] -> Constraint
-eqSum q ps = Eq (CoeffTerm q) $ Sum (map CoeffTerm ps)
+eqSum :: Term -> [Term] -> [Constraint]
+eqSum t ts = eq t $ sum ts
 
-eqPlusConst :: Coeff -> Coeff -> Rational -> Constraint
-eqPlusConst q p k = Eq (CoeffTerm q) $ Sum [CoeffTerm p, ConstTerm k]
+eqPlusMulti :: Coeff -> Coeff -> Coeff -> Var -> [Constraint]
+eqPlusMulti q p r k = eq (CoeffTerm q) $ Sum [CoeffTerm p, Prod [VarTerm k, CoeffTerm r]]
 
-eqMinusVar :: Coeff -> Coeff -> Var -> Constraint
-eqMinusVar q p k = Eq (CoeffTerm q) $ Diff [CoeffTerm p, VarTerm k]
+eqMulti :: Coeff -> Coeff -> Var -> [Constraint]
+eqMulti q p k = eq (CoeffTerm q) $ Prod [VarTerm k, CoeffTerm p]
 
-eqPlusMulti :: Coeff -> Coeff -> Coeff -> Var -> Constraint
-eqPlusMulti q p r k = Eq (CoeffTerm q) $ Sum [CoeffTerm p, Prod [VarTerm k, CoeffTerm r]]
+zero :: Term -> [Constraint]
+zero t = eq t (ConstTerm 0)
 
-eqMulti :: Coeff -> Coeff -> Var -> Constraint
-eqMulti q p k = Eq (CoeffTerm q) $ Prod [VarTerm k, CoeffTerm p]
+geSum :: [Term] -> Term -> Constraint
+geSum ts = Ge (Sum ts)
 
-zero :: Coeff -> Constraint
-zero q = Zero (CoeffTerm q)
-
-geSum :: [Coeff] -> Coeff -> Constraint
-geSum ps q = Ge (Sum (map CoeffTerm ps)) (CoeffTerm q)
-
-notZero :: Coeff -> Constraint
-notZero q = Not $ Zero (CoeffTerm q)
+notZero :: Term -> [Constraint]
+notZero t = Not <$> zero t
 
 varGeZero :: Var -> Constraint
 varGeZero x = Ge (VarTerm x) (ConstTerm 0)
@@ -91,7 +98,6 @@ printOpTerm op terms = "(" ++ intercalate (" " ++ op ++ " ") (map printTerm term
 
 printConstraint :: Constraint -> String
 printConstraint (Eq t1 t2) = printTerm t1 ++ " = " ++ printTerm t2
-printConstraint (Zero t) = printTerm t ++ " = 0" 
 printConstraint (Le t1 t2) = printTerm t1 ++ " <= " ++ printTerm t2
 printConstraint (Ge t1 t2) = printTerm t1 ++ " >= " ++ printTerm t2
 printConstraint (Impl c1 c2) = "(" ++ printConstraint c1 ++ ") => (" ++ printConstraint c2 ++ ")"
@@ -106,7 +112,6 @@ instance HasCoeffs Term where
 
 instance HasCoeffs Constraint where
   getCoeffs (Eq t1 t2) = getCoeffs t1 ++ getCoeffs t2
-  getCoeffs (Zero t) = getCoeffs t
   getCoeffs (Le t1 t2) = getCoeffs t1 ++ getCoeffs t2
   getCoeffs (Ge t1 t2) = getCoeffs t1 ++ getCoeffs t2
   getCoeffs (Impl c1 c2) = getCoeffs c1 ++ getCoeffs c2

@@ -24,7 +24,7 @@ coeff' id = let idx = Pure id in
   (idx, Coeff 0 "Q" "log" idx)
 
 _aRange = [0,1]
-_bRange = [0,2]
+_bRange = [0,1,2]
 
 potArgs :: Args
 potArgs = Args _aRange _bRange _aRange _bRange (-1 : _bRange)

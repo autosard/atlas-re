@@ -41,10 +41,11 @@ compile :: String -> Q Exp
 compile s =
   case runParser pIdx "" s of
     Left  err    -> fail $ errorBundlePretty err
-    Right (Idx []) -> [|S.empty :: Set Coeff.Factor|]
+    Right (Idx []) -> [|Coeff.Mixed (S.empty :: Set Coeff.Factor)|]
     Right (Idx factors) -> do
       let exps = map factorToQ factors
-      foldl1 (\x y -> appE (appE (varE 'S.union) x) y) exps
+      appE (varE 'Coeff.mixed_) $
+            foldl1 (\x y -> appE (appE (varE 'S.union) x) y) exps
 
 getName :: Exp -> Name
 getName (VarE name) = name

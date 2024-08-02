@@ -156,7 +156,7 @@ solveZ3 pot sig typingCs varIdGen = evalZ3 go
           assertCoeffsPos typingCs
           let solutionCheck = checkSolution sig
           let rankEqual = setRankEqual sig
-          tracker <- assertConstraints (typingCs ++ optiCs ++ rankEqual) -- ++ solutionCheck) -- ++ solutionCheck)
+          tracker <- assertConstraints (typingCs ++ optiCs ++ rankEqual ++ solutionCheck) -- ++ solutionCheck)
           target' <- toZ3 (VarTerm optiTarget)
           optimizeMinimize target'
 --          t <- mkReal 2 1
