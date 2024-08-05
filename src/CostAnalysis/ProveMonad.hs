@@ -18,8 +18,8 @@ import qualified Data.Set as S
 import qualified Data.Tree as T
 
 import Primitive(Id)
-import CostAnalysis.RsrcAnn hiding (emptyAnn)
-import CostAnalysis.Potential hiding (rsrcAnn)
+import CostAnalysis.RsrcAnn
+import CostAnalysis.Potential hiding (rsrcAnn, emptyAnn)
 import CostAnalysis.Rules
 import qualified CostAnalysis.Potential as P
 import qualified CostAnalysis.RsrcAnn as R
@@ -92,7 +92,7 @@ withPotAndId f label comment args = do
   return $ f pot id label comment args
 
 emptyAnn :: Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn
-emptyAnn = withPotAndId (const R.emptyAnn)
+emptyAnn = withPotAndId P.emptyAnn
 
 fromAnn :: Text -> Text -> RsrcAnn -> ProveMonad RsrcAnn
 fromAnn label comment ann = do

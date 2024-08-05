@@ -21,9 +21,8 @@ import Data.List.Extra (groupSort)
 exp :: Id
 exp = "e"
 
-cConst :: Args
-  -> RsrcAnn -> RsrcAnn -> [Constraint]
-cConst potArgs q q'
+cConst :: RsrcAnn -> RsrcAnn -> [Constraint]
+cConst q q'
   -- leaf 
   | (null . _args $ q) && (length . _args $ q') == 1 =
     eqSum (q!?[mix|2|]) [q'!?exp, q'!?[mix|2|]] 
@@ -63,6 +62,7 @@ cConst potArgs q q'
                   let a = facForVar idx exp,
                   let c = constFactor idx,
                   [mix|x1^a,x2^a,c|] `S.notMember` (q^.coeffs)]
+  | otherwise = error $ show q ++ show q'
       
 
 cMatch :: RsrcAnn -> RsrcAnn -> Id -> [(Id, Type)] -> (RsrcAnn, [Constraint])

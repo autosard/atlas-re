@@ -35,9 +35,6 @@ data RsrcAnn = RsrcAnn {
 
 makeLenses ''RsrcAnn
 
-emptyAnn :: Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn
-emptyAnn id label comment args = RsrcAnn id args label comment S.empty
-
 fromAnn :: Int -> Text -> Text -> RsrcAnn -> RsrcAnn
 fromAnn id label comment ann = RsrcAnn id (ann^.args) label comment (ann^.coeffs)
 

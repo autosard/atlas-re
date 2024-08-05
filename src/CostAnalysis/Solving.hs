@@ -6,24 +6,22 @@
 
 module CostAnalysis.Solving where
 
+import Prelude hiding (sum)
 import Primitive(Id)
 import CostAnalysis.AnnIdxQuoter
 import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.Optimization
 import CostAnalysis.Potential
-import Data.Ratio(numerator, denominator)
+import Data.Ratio(numerator, denominator, (%))
 import Z3.Monad 
 import CostAnalysis.RsrcAnn
-import Control.Monad (mapAndUnzipM, when, (<=<))
+import Control.Monad (mapAndUnzipM, (<=<))
 import Control.Monad.State (evalState)
 
-import Data.List (intercalate)
 import Data.Map(Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Parsing.SmtLib(parse)
-import Data.Ratio((%))
 
 import Debug.Trace (trace)
 import Data.Foldable (foldrM)
@@ -62,7 +60,6 @@ bind2 f g h = do
 
 instance Encodeable Constraint where
   toZ3 (Eq t1 t2) = bind2 mkEq (toZ3 t1) (toZ3 t2)
-  toZ3 (Zero t) = bind2 mkEq (toZ3 t) (toZ3 (0 :: Rational))
   toZ3 (Le t1 t2) = bind2 mkLe (toZ3 t1) (toZ3 t2)
   toZ3 (Ge t1 t2) = bind2 mkGe (toZ3 t1) (toZ3 t2)
   toZ3 (Impl c1 c2) = bind2 mkImplies (toZ3 c1) (toZ3 c2)
@@ -75,7 +72,7 @@ genOptiTarget pot fns varIdGen = evalState buildTarget (OptimizationState varIdG
   where buildTarget = do
             target <- freshVar
             (targets, cs) <- mapAndUnzipM optimizeFn fns
-            return (target, Eq (VarTerm target) (Sum (map VarTerm targets)):concat cs)
+            return (target, eq target (sum targets) ++ concat cs)
         optimizeFn fn = do
           let (q, q') = withCost fn
           cOptimize pot q q'
@@ -114,17 +111,17 @@ assertCoeffsPos cs = do
   positiveCs <- mapM (\coeff -> mkGe coeff =<< mkReal 0 1) annCoeffs'
   mapM_ assert positiveCs
 
-checkSolution :: RsrcSignature -> [Constraint]
-checkSolution sig = let t = "t" :: Id
-                        e = "e" :: Id in
-  [Eq (CoeffTerm (Coeff 0 "Q" "log" (Pure t))) (ConstTerm (1 % 2)),
-  Eq (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|t^1|]))) (ConstTerm (3 % 2)),
-  Eq (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|t^1,2|]))) (ConstTerm (0 % 1)),
-  Eq (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|2|]))) (ConstTerm (1 % 1)),
-  Eq (CoeffTerm (Coeff 1 "Q'" "log" (Pure e))) (ConstTerm (1 % 2)),
-  Eq (CoeffTerm (Coeff 1 "Q'" "log" (Mixed [mix|e^1|]))) (ConstTerm (0 % 1)),
-  Eq (CoeffTerm (Coeff 1 "Q'" "log" (Mixed [mix|e^1,2|]))) (ConstTerm (0 % 1)),
-  Eq (CoeffTerm (Coeff 1 "Q'" "log" (Mixed [mix|2|]))) (ConstTerm (1 % 1))]
+-- checkSolution :: RsrcSignature -> [Constraint]
+-- checkSolution sig = let t = "t" :: Id
+--                         e = "e" :: Id in
+--   [Eq (CoeffTerm (Coeff 0 "Q" "log" (Pure t))) (ConstTerm (1 % 2)),
+--   Eq (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|t^1|]))) (ConstTerm (3 % 2)),
+--   Eq (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|t^1,2|]))) (ConstTerm (0 % 1)),
+--   Eq (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|2|]))) (ConstTerm (1 % 1)),
+--   Eq (CoeffTerm (Coeff 1 "Q'" "log" (Pure e))) (ConstTerm (1 % 2)),
+--   Eq (CoeffTerm (Coeff 1 "Q'" "log" (Mixed [mix|e^1|]))) (ConstTerm (0 % 1)),
+--   Eq (CoeffTerm (Coeff 1 "Q'" "log" (Mixed [mix|e^1,2|]))) (ConstTerm (0 % 1)),
+--   Eq (CoeffTerm (Coeff 1 "Q'" "log" (Mixed [mix|2|]))) (ConstTerm (1 % 1))]
   -- [Le (CoeffTerm (Coeff 0 "Q" "log" (Pure t))) (ConstTerm (1 % 1)),
   -- Le (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|t^1|]))) (ConstTerm (3 % 2)),
   -- Le (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|t^1,2|]))) (ConstTerm (0 % 1)),
@@ -154,10 +151,10 @@ solveZ3 pot sig typingCs varIdGen = evalZ3 go
   where go = do
           let (optiTarget, optiCs) = genOptiTarget pot (M.elems sig) varIdGen
           assertCoeffsPos typingCs
-          let solutionCheck = checkSolution sig
+          --let solutionCheck = checkSolution sig
           let rankEqual = setRankEqual sig
-          tracker <- assertConstraints (typingCs ++ optiCs ++ rankEqual ++ solutionCheck) -- ++ solutionCheck)
-          target' <- toZ3 (VarTerm optiTarget)
+          tracker <- assertConstraints (typingCs ++ optiCs ++ rankEqual) -- ++ solutionCheck)
+          target' <- toZ3 optiTarget
           optimizeMinimize target'
 --          t <- mkReal 2 1
 --          assert =<< mkLe target' t

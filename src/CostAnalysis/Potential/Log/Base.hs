@@ -5,7 +5,6 @@ module CostAnalysis.Potential.Log.Base where
 
 import Prelude hiding ((^))
 import Data.List(intercalate)
-import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Text(Text)
 import qualified Data.Text as T
@@ -51,8 +50,8 @@ rsrcAnn id label comment args ranges pure =
         args' = filter (\(x, t) -> matchesTypes t types) args
         vars = map fst args'
 
-constCoeff :: RsrcAnn -> Term
-constCoeff q = q![mix|2|]
+constCoeff :: CoeffIdx
+constCoeff = [mix|2|]
 
 printBasePot :: Coeff -> Rational -> String
 printBasePot (Coeff _ _ _ (Pure x)) v = show v ++ " * rk(" ++ T.unpack x ++ ")"

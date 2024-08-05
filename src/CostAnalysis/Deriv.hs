@@ -20,11 +20,11 @@ import Typing.Type
 import Typing.Scheme (toType)
 import CostAnalysis.Tactic
 import qualified CostAnalysis.Rules as R
-import CostAnalysis.Potential hiding (Factor(..), defaultAnn, defaultNegAnn)
-import CostAnalysis.RsrcAnn hiding (fromAnn, emptyAnn)
+import CostAnalysis.Potential hiding (Factor(..), emptyAnn, defaultAnn, defaultNegAnn)
+import CostAnalysis.RsrcAnn hiding (fromAnn)
 import CostAnalysis.Constraint ( ge,
                                  Constraint,
-                                 Term(ConstTerm, VarTerm) )
+                                 Term(ConstTerm) )
 import CostAnalysis.Weakening
 import CostAnalysis.ProveMonad
 import StaticAnalysis(freeVars, calledFunctions')

@@ -59,7 +59,6 @@ pOp op = pParens (do
 
 pConstraint :: Parser Constraint
 pConstraint = pParens (try (uncurry Eq <$> pBinOp "=")
-                       <|> pZero
                        <|> uncurry Le <$> pBinOp "<="
                        <|> uncurry Ge <$> pBinOp ">="
                        <|> uncurry Impl <$> pBinOp2 "=>"
@@ -80,9 +79,6 @@ pNot = do
   symbol "not"
   Not <$> pConstraint
 
-pZero = do
-  symbol "="
-  Zero <$> pTerm <* symbol "0.0"
   
 pLabelComment :: Parser (Text, Text)
 pLabelComment = do

@@ -9,18 +9,17 @@ import CostAnalysis.Potential(Potential(Potential))
 logPot :: Args -> Potential
 logPot args = Potential
   types
-  (rsrcAnn args)
+  (ranges args)
+  rsrcAnn
   constCoeff
-  (forAllCombinations args)
-  (cPlusConst args)
-  (cMinusVar args)
-  (cPlusMulti args)
-  (cMulti args)
-  (cEq args)
-  (cMatch args)
-  (cLetBase args)
-  (cLet args)
-  (cWeakenVar args)
+  cConst
+  cMatch 
+  cLetBindingBase
+  cLetBodyBase
+  cLetBinding
+  cLetBody
+  cLetCf
+  cWeakenVar
   (genExpertKnowledge args)
   (cOptimize args)
   printBasePot

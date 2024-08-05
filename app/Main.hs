@@ -22,7 +22,6 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
-import Data.List(intercalate)
 
 import Colog (cmap, fmtMessage, logTextStdout, logWarning,
               usingLoggerT, logError, LoggerT, Msg, Severity)
@@ -42,6 +41,8 @@ import CostAnalysis.Tactic
 import CostAnalysis.Potential.Log
 import CostAnalysis.Deriv
 import CostAnalysis.Solving
+import CostAnalysis.ProveMonad
+import CostAnalysis.Rules
 
 import Cli(Options(..), RunOptions(..), EvalOptions(..), Command(..), cliP)
 
@@ -49,7 +50,7 @@ import System.Random (getStdGen)
 import Module (loadSimple)
 import SourceError (printSrcError)
 import CostAnalysis.Potential (printBound)
-import CostAnalysis.Constraint (Constraint, printConstraint)
+import CostAnalysis.Constraint (Constraint)
 import Control.Monad (when)
 
 type App a = LoggerT (Msg Severity) IO a
@@ -69,7 +70,7 @@ run Options{..} RunOptions{..} = do
     Nothing -> return M.empty
   let _aRange = [0,1]
   let _bRange = [0,1,2]
-  let args = Args _aRange _bRange _aRange _bRange (-1 : _bRange)
+  let args = Args _aRange _bRange 
   let pot = logPot args
   let (varIdGen, proofResult) = runProof normalizedProg pot tactics
   (deriv, cs, sig) <- liftIO $ case proofResult of

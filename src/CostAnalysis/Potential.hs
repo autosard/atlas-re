@@ -20,7 +20,7 @@ import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.Optimization (OptiMonad, Target)
 import CostAnalysis.RsrcAnn
-import Typing.Type ( Type )
+import Typing.Type ( Type, matchesTypes )
 
 
 type ExpertKnowledge = (V.Vector (V.Vector Int), [Int])
@@ -43,7 +43,6 @@ data Potential = Potential {
   -- | @ 'constCoeff'@ returns the coefficient index for the constant basic potential function.
   constCoeff :: CoeffIdx,
   
-  
   -- Constraint generation
   
   -- | @ 'cConst' q q'@ returns constraints that guarantee \[\phi(\Gamma \mid Q) = \phi(\Delta \mid Q') \text{ where } |\Gamma| = |Q|, |\Delta| = |Q'|\]  
@@ -54,21 +53,17 @@ data Potential = Potential {
   -- | @ 'cLetBinding' q p_ = (p, cs)@
   cLetBindingBase :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint]),
 
-   -- | @ 'cLetBinding' q p_ = (p, cs)@
-  cLetBinding :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint]),
-  
   -- | @ 'cLetBodyBase' q r_ p' = (r, cs)@
   cLetBodyBase :: RsrcAnn -> RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint]),
+
+   -- | @ 'cLetBinding' q p_ = (p, cs)@
+  cLetBinding :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint]),
 
   -- | @ 'cLetBody' q r_ p p' ps' x bdes = (r, cs)@
   cLetBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> AnnArray -> Id -> [Set Factor] -> (RsrcAnn, [Constraint]),
 
   -- | @ 'cLetCf' q ps_ ps'_ x bdes = (ps, ps', cs)@
   cLetCf :: RsrcAnn -> AnnArray -> AnnArray -> Id -> ([Id], [Id]) ->[Set Factor] -> (AnnArray, AnnArray, [Constraint]),
-  
-  -- | @ 'cLet' q p p' ps ps' r x@
-  cLet :: Bool -> RsrcAnn -> RsrcAnn -> RsrcAnn
-    -> AnnArray -> AnnArray -> RsrcAnn -> Id -> [Constraint],
     
   -- | @ 'cWeakenVar' q r @
   cWeakenVar :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint]),
@@ -87,6 +82,11 @@ defaultNegAnn pot id label comment args = rsrcAnn pot id label comment args abRa
 defaultAnn :: Potential -> Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn
 defaultAnn pot id label comment args = rsrcAnn pot id label comment args abRanges True
   where abRanges = (rangeA (ranges pot), rangeB (ranges pot))
+
+emptyAnn :: Potential -> Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn
+emptyAnn pot id label comment args = RsrcAnn id args' label comment S.empty
+  where args' = filter (\(x, t) -> matchesTypes t (types pot)) args
+
 
 eqExceptConst :: Potential -> RsrcAnn -> RsrcAnn -> [Constraint]
 eqExceptConst pot q p = [Eq (q!?idx) (p!?idx)
