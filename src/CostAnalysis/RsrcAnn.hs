@@ -15,7 +15,7 @@ import qualified Data.Set as S
 import Data.Text(Text)
 import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
-import Data.List(intercalate)
+
 
 import Primitive(Id)
 import CostAnalysis.Coeff
@@ -34,6 +34,12 @@ data RsrcAnn = RsrcAnn {
   deriving (Eq, Show)
 
 makeLenses ''RsrcAnn
+
+emptyAnn :: Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn
+emptyAnn id label comment args = RsrcAnn id args label comment S.empty
+
+fromAnn :: Int -> Text -> Text -> RsrcAnn -> RsrcAnn
+fromAnn id label comment ann = RsrcAnn id (ann^.args) label comment (ann^.coeffs)
 
 isPure :: CoeffIdx -> Bool
 isPure (Pure _) = True
@@ -147,8 +153,8 @@ def i = do
   ann <- get
   return $ ann!idx
 
-defineEntry :: Set Factor -> CoeffIdx -> CoeffDef AnnArray Term
-defineEntry arrIdx coeffIdx = do
+defEntry :: Set Factor -> CoeffIdx -> CoeffDef AnnArray Term
+defEntry arrIdx coeffIdx = do
   ix arrIdx . coeffs %= (coeffIdx `S.insert`)
   arr <- get
   return $ (arr M.! arrIdx)!coeffIdx

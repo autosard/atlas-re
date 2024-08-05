@@ -57,7 +57,7 @@ facForVar :: CoeffIdx -> Id -> Int
 facForVar (Mixed idx) x = getArg $ L.find (matchesVar x) (S.toList idx)
   where getArg (Just (Arg _ a)) = a
         getArg Nothing = 0
-facForVar _ _ = error "cannot extract const for pure index."
+facForVar _ _ = error "cannot extract factor for pure index."
 
 varsExcept :: CoeffIdx -> [Id] -> Set Factor
 varsExcept (Mixed idx) xs = S.filter (\f -> not (any (`matchesVar` f) xs || isConst f)) idx

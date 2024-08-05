@@ -6,15 +6,10 @@
 
 module CostAnalysis.Deriv where
 
-import Data.Tree(Tree)
 import qualified Data.Tree as T
 import Data.Map(Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.Set(Set)
-import Data.Text(Text)
-import Data.Text(unpack)
-import Data.List(intercalate)
 
 import Ast hiding (Coefficient)
 import Primitive(Id)
@@ -25,9 +20,10 @@ import Typing.Type
 import Typing.Scheme (toType)
 import CostAnalysis.Tactic
 import qualified CostAnalysis.Rules as R
-import CostAnalysis.Potential hiding (Factor(..), emptyAnn, defaultAnn, defaultNegAnn)
-import CostAnalysis.RsrcAnn
-import CostAnalysis.Constraint ( Constraint(Ge),
+import CostAnalysis.Potential hiding (Factor(..), defaultAnn, defaultNegAnn)
+import CostAnalysis.RsrcAnn hiding (fromAnn, emptyAnn)
+import CostAnalysis.Constraint ( ge,
+                                 Constraint,
                                  Term(ConstTerm, VarTerm) )
 import CostAnalysis.Weakening
 import CostAnalysis.ProveMonad
@@ -156,14 +152,15 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       pot <- view potential
       let [t1, t2] = subTactics 2 tactic
       (ctxE1, ctxE2) <- splitLetCtx ctx e1 e2
+      let (gamma, delta) = (M.toAscList ctxE1, M.toAscList ctxE2)
       let ctxE2' = M.insert x (getType e1) ctxE2 
       -- TODO if let binds a recursive call then use negative numbers for e
       -- neg <- isRecursive e1
       let neg = False
 
-      p_ <- emptyAnn "P" "let:base e1" (M.toAscList ctxE1)
+      p_ <- emptyAnn "P" "let:base e1" gamma
       p' <- defaultAnn  "P'"  "let:base e1" [("e", getType e1)]
-      r_ <- emptyAnn "R" "let:base e2" (M.toAscList ctxE2)
+      r_ <- emptyAnn "R" "let:base e2" delta
       
       let rangeD = rangeA . ranges $ pot
       let rangeE = if neg then rangeBNeg . ranges $ pot else rangeB . ranges $ pot
@@ -175,10 +172,10 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       let (p, pCs) = cLetBinding pot q p_ 
       deriv1 <- proveExpr t1 cf ctxE1 e1 p p'
 
-      let (ps, ps', cfCs) = cLetCf pot q ps_ ps'_
+      let (ps, ps', cfCs) = cLetCf pot q ps_ ps'_ x (map fst gamma, map fst delta) bdes
       cfDerivs <- zipWithM (proveExpr t1 True ctxE1 e1) (elems ps) (elems ps')
       
-      let (r, rCs) = cLetBody pot q r_ p' ps'
+      let (r, rCs) = cLetBody pot q r_ p p' ps' x bdes
       deriv2 <- proveExpr t2 cf ctxE2' e2 r q'
 
       conclude R.Let cf q q' (pCs ++ rCs) e ([deriv1, deriv2] ++ cfDerivs)
@@ -192,7 +189,7 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       p' <- defaultAnn  "P'"  "let:base e1" []
       r_ <- emptyAnn "R" "let:base e2" (M.toAscList ctxE2)
       
-      let (p, pCs) = cLetBinding pot q p_ 
+      let (p, pCs) = cLetBindingBase pot q p_ 
       deriv1 <- proveExpr t1 cf ctxE1 e1 p p'
       let (r, rCs) = cLetBodyBase pot q r_ p'
       deriv2 <- proveExpr t2 cf ctxE2 e2 r q'
@@ -206,21 +203,19 @@ proveApp tactic False ctx e@(App id _) q q' = do
   let (p, p') = withCost $ fnSig M.! id
   let (r, r') = withoutCost $ fnSig M.! id
   k <- freshVar
-  let cs = Ge (VarTerm k) (ConstTerm 1)
-        : cPlusMulti pot q p r k
-        ++ cPlusMulti pot q' p' r' k
-  tell cs
-  return $ T.Node (ExprRuleApp R.App False q q' cs e) []
+  let cs = ge k (ConstTerm 1)
+        ++ annLikeEq q (annAdd p (annScalarMul r k))
+        ++ annLikeEq q (annAdd p (annScalarMul r k))
+  conclude R.App False q q' cs e []
 proveApp tactic True ctx e@(App id _) q q' = do
   pot <- view potential
   fnSig <- use sig
   let (p, p') = withoutCost $ fnSig M.! id
   k <- freshVar
-  let cs = Ge (VarTerm k) (ConstTerm 1)
-        : cMulti pot q p k
-        ++ cMulti pot q' p' k
-  tell cs
-  return $ T.Node (ExprRuleApp R.App True q q' cs e) []  
+  let cs = ge k (ConstTerm 1)
+        ++ annLikeEq q (annScalarMul p k)
+        ++ annLikeEq q' (annScalarMul p' k)
+  conclude R.App True q q' cs e []  
 
 proveWeakenVar :: Prove TypedExpr Derivation
 proveWeakenVar tactic cf ctx e q q' = do
@@ -232,36 +227,35 @@ proveWeakenVar tactic cf ctx e q q' = do
         return $ S.elemAt 0 redundantVars
   let ctx' = M.delete var ctx 
   let [t] = subTactics 1 tactic
-  r <- rsrcAnn "R" (M.toAscList ctx')
+  
+  r_ <- emptyAnn "R" "" (M.toAscList ctx')
+  let (r,cs) = cWeakenVar pot q r_
+  
   deriv <- proveExpr t cf ctx' e r q'
-  let cs = cWeakenVar pot q r
-  tell cs
-  return $ T.Node (ExprRuleApp R.WeakenVar cf q q' cs e) [deriv]
+  conclude R.WeakenVar cf q q' cs e [deriv]
   
 proveWeaken :: Prove TypedExpr Derivation
 proveWeaken tactic@(Rule (R.Weaken wArgs) _) cf ctx e q q' = do
   pot <- view potential
   let [t] = subTactics 1 tactic
-  p <- rsrcAnn "P" (args q)
-  p' <- rsrcAnn "P'" (args q')
+  p <- fromAnn "P" "" q
+  p' <- fromAnn "P'" "" q'
   cs <- weaken pot (S.fromList wArgs) q q' p p'
-  tell cs
   deriv <- proveExpr t cf ctx e p p'
-  return $ T.Node (ExprRuleApp (R.Weaken wArgs) cf q q' cs e) [deriv]
+  conclude (R.Weaken wArgs) cf q q' cs e [deriv]
 
 proveShift :: Prove TypedExpr Derivation
 proveShift tactic cf ctx e q q' = do
   pot <- view potential
   let [subTactic] = subTactics 1 tactic
-  p <- rsrcAnn "P" (args q)
-  p' <- rsrcAnn  "P'" (args q')
+  p <- fromAnn "P" "" q
+  p' <- fromAnn  "P'" "" q'
   k <- freshVar
-  let cs = Ge (VarTerm k) (ConstTerm 0)
-        : cMinusVar pot p q k
+  let cs = ge k (ConstTerm 0)
+        ++ cMinusVar pot p q k
         ++ cMinusVar pot p' q' k
-  tell cs
   deriv <- proveExpr subTactic cf ctx e p p'
-  return $ T.Node (ExprRuleApp R.Shift cf q q' cs e) [deriv]
+  conclude R.Shift cf q q' cs e [deriv]
 
 proveTickDefer :: Prove TypedExpr Derivation
 proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
@@ -269,13 +263,13 @@ proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
   let [subTactic] = subTactics 1 tactic
   if cf then do
     deriv <- proveExpr subTactic cf ctx e1 q q'
-    return $ T.Node (ExprRuleApp R.TickDefer cf q q' [] e) [deriv]
+    conclude R.TickDefer cf q q' [] e [deriv]
   else do
-    p <- rsrcAnn "P" (args q')
+    p <- fromAnn "P" "" q'
     let cs = cPlusConst pot p q' (fromMaybe 1 c) 
-    tell cs
     deriv <- proveExpr subTactic cf ctx e1 q p
-    return $ T.Node (ExprRuleApp R.TickDefer cf q q' cs e) [deriv]
+
+    conclude R.TickDefer cf q q' cs e [deriv]
 
 
 proveExpr :: Prove TypedExpr Derivation
@@ -324,7 +318,7 @@ proveFunWithAnn fun ann = do
   let (q, q') = withCost ann  
   deriv <- proveFun Auto False M.empty fun q q'
   
-  return $ T.Node (FunRuleApp fun) [derivCf, deriv]
+  return $ T.Node (R.FunRuleApp fun) [derivCf, deriv]
 
 proveModule :: TypedModule -> ProveMonad Derivation
 proveModule mod = do
@@ -333,4 +327,4 @@ proveModule mod = do
   funAnns <- mapM (\f@(Fn name _ _) -> (name,) <$> genFunRsrcAnn f) mod
   sig .= s `M.union` M.fromList funAnns
   derivs <- mapM (uncurry proveFunWithAnn) $ zipWith (\x y -> (x, snd y)) mod funAnns
-  return $ T.Node (ProgRuleApp mod) derivs
+  return $ T.Node (R.ProgRuleApp mod) derivs

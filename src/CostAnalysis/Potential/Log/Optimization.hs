@@ -2,31 +2,31 @@
 {-# LANGUAGE OverloadedStrings #-}
 module CostAnalysis.Potential.Log.Optimization(cOptimize) where
 
+import Prelude hiding (sum)
 import Primitive(Id)
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential.Log.Base
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Constraint
-import CostAnalysis.Coeff hiding ((^))
 import CostAnalysis.Optimization
 
 rankDifference :: RsrcAnn -> RsrcAnn -> OptiMonad Target
 rankDifference q q' = do
   target <- freshVar
   (ds, diffs) <- bindToVars (diff (q'!("e" :: Id))) (annVars q)
-  let sum = Eq (VarTerm target) (Sum $ map VarTerm ds)
-  return (target, varGeZero target:sum:diffs)
-  where diff :: Coeff -> Var -> Id -> Constraint
-        diff rankQ' d x = Eq (VarTerm d) $ Diff [CoeffTerm (q!x), CoeffTerm rankQ']
+  let cs = eq target (sum ds) ++ geZero target ++ diffs
+  return (target, cs)
+  where diff :: Term -> Term -> Id -> [Constraint]
+        diff rankQ' d x = eq d $ sub [q!x, rankQ']
 
 
 weightedNonRankDifference :: Args -> RsrcAnn -> RsrcAnn -> OptiMonad Target
 weightedNonRankDifference potArgs q q' = do
   target <- freshVar
-  (ds, diffs) <- bindToVars (\var (p, p', _) -> Eq (VarTerm var) $ Diff [CoeffTerm p, CoeffTerm p']) pairs
-  (ws, weightedDiffs) <- bindToVars (\var (d, (_, _, (a,b))) -> Eq (VarTerm var) $ Prod [VarTerm d, ConstTerm (w a b)]) (zip ds pairs)
-  let sum = Eq (VarTerm target) $ Sum (map VarTerm ws)
-  return (target, varGeZero target:sum:(diffs ++ weightedDiffs))
+  (ds, diffs) <- bindToVars (\var (p, p', _) -> eq var $ sub [p, p']) pairs
+  (ws, weightedDiffs) <- bindToVars (\var (d, (_, _, (a,b))) -> eq var $ prod [d, ConstTerm (w a b)]) (zip ds pairs)
+  let cs = eq target (sum ws) ++ geZero target ++ diffs ++ weightedDiffs
+  return (target, cs)
   where pairs = [(q![mix|x^a,b|], q'![mix|y^a,b|], (a,b))
                 | a <- aRange potArgs,
                   b <- bRange potArgs,
@@ -45,8 +45,8 @@ weightedNonRankDifference potArgs q q' = do
 constantDifference :: RsrcAnn -> RsrcAnn -> OptiMonad Target
 constantDifference q q' = do
   target <- freshVar
-  let diff = Eq (VarTerm target) $ Diff [CoeffTerm (q![mix|2|]), CoeffTerm (q'![mix|2|])]
-  return (target, varGeZero target:[diff])                                     
+  let cs = geZero target ++ eq target (sub [q![mix|2|], q'![mix|2|]])
+  return (target, cs)                                     
 
 absRank :: Args -> RsrcAnn -> OptiMonad Target
 absRank potArgs q = do

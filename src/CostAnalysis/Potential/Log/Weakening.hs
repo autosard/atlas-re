@@ -6,8 +6,8 @@ import qualified Data.Vector as V
 import Data.Set(Set)
 import Data.Maybe(catMaybes)
 import qualified Data.Set as S
-import qualified Data.Map as M
 import qualified Data.List as L
+import Lens.Micro.Platform
 
 import CostAnalysis.Potential.Log.Base
 import CostAnalysis.RsrcAnn
@@ -22,7 +22,7 @@ merge :: [ExpertKnowledge] -> ExpertKnowledge
 merge ks = let (vs1, vs2) = unzip ks in (V.concat vs1, concat vs2)
 
 genExpertKnowledge :: Args -> Set WeakenArg -> RsrcAnn -> RsrcAnn -> ExpertKnowledge
-genExpertKnowledge potArgs wArgs p q | args q /= args p = error "Cannot generate export knowledge for annotations with differing arguments."
+genExpertKnowledge potArgs wArgs p q | (q^.args) /= (p^.args) = error "Cannot generate export knowledge for annotations with differing arguments."
                             | otherwise
   = merge $ map select wArgs' 
   where wArgs' = S.toList $ S.intersection wArgs supportedArgs
@@ -32,19 +32,19 @@ genExpertKnowledge potArgs wArgs p q | args q /= args p = error "Cannot generate
 monoLattice :: Args -> RsrcAnn -> RsrcAnn -> ExpertKnowledge
 monoLattice potArgs p q = merge . catMaybes $
   [ compare idxP idxQ
-  | idxP <- idxs p ,
-    idxQ <- idxs q,
+  | idxP <- S.toList $ p^.coeffs,
+    idxQ <- S.toList $ q^.coeffs,
     idxP /= idxQ]
-  where iConst = M.findIndex (Mixed [mix|2|]) (coeffs p)
-        idxs ann = combi potArgs (map fst (args ann))
-        compare :: Set Factor -> Set Factor -> Maybe ExpertKnowledge
-        compare f1 f2 = if monoLe f1 f2 then
-          let i = M.findIndex (Mixed f1) (coeffs p)
-              j = M.findIndex (Mixed f2) (coeffs p) in
+  where iConst = S.findIndex [mix|2|] (p^.coeffs)
+        compare :: CoeffIdx -> CoeffIdx -> Maybe ExpertKnowledge
+        compare (Mixed f1) (Mixed f2) = if monoLe f1 f2 then
+          let i = S.findIndex (Mixed f1) (p^.coeffs)
+              j = S.findIndex (Mixed f2) (p^.coeffs) in
             Just (V.singleton $ V.fromList [if k == i then 1 else
                                  if k == j then -1 else 0
-                              | k <- [0..length (coeffs p)-1]], [0])
+                              | k <- [0..length (p^.coeffs)-1]], [0])
             else Nothing
+        compare _ _ = Nothing
   
 monoLe :: Set Factor -> Set Factor -> Bool
 monoLe s1 s2 = go (S.toAscList s1) (S.toAscList s2)
@@ -60,12 +60,12 @@ monoLe s1 s2 = go (S.toAscList s1) (S.toAscList s2)
 logLemma :: Args -> RsrcAnn -> RsrcAnn -> ExpertKnowledge
 logLemma potArgs p q = merge $ [(V.singleton (row x y), [0])
                                | (x,y) <- varPairs]
-  where iConst = M.findIndex (Mixed [mix|2|]) (coeffs p)
-        row x y = let iX = M.findIndex (Mixed [mix|x^1|]) (coeffs p)
-                      iY = M.findIndex (Mixed [mix|y^1|]) (coeffs p)
-                      iXY = M.findIndex (Mixed [mix|x^1,y^1|]) (coeffs p) in
+  where iConst = S.findIndex [mix|2|] (p^.coeffs)
+        row x y = let iX = S.findIndex [mix|x^1|] (p^.coeffs)
+                      iY = S.findIndex [mix|y^1|] (p^.coeffs)
+                      iXY = S.findIndex [mix|x^1,y^1|] (p^.coeffs) in
                     V.fromList [if k == iConst then 2 else
                        if k == iX || k == iY then 1 else
                          if k == iXY then -2 else 0
-                    | k <- [0..length (coeffs p) -1]]
-        varPairs = [(x,y) | (x:ys) <- L.tails (map fst (args  p)), y <- ys]
+                    | k <- [0..length (p^.coeffs) -1]]
+        varPairs = [(x,y) | (x:ys) <- L.tails (map fst (p^.args)), y <- ys]

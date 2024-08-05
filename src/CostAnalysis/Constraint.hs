@@ -5,11 +5,9 @@ module CostAnalysis.Constraint where
 
 import Prelude hiding (sum)
 import Data.List(intercalate)
-import qualified Data.Set as S
 
 import CostAnalysis.Coeff
 import Control.Monad.State
-
 
 type VarState = Int
 
@@ -40,9 +38,9 @@ data Constraint
   | Not Constraint
   deriving (Eq, Ord, Show)
 
-pattern Prod2 :: Term -> Term -> Term 
-pattern Prod2 t1 t2 <- Prod [t1, t2]
-  where Prod2 t1 t2 = Prod [t1, t2]
+-- pattern Prod2 :: Term -> Term -> Term 
+-- pattern Prod2 t1 t2 <- Prod [t1, t2]
+--   where Prod2 t1 t2 = Prod [t1, t2]
 
 eq :: Term -> Term -> [Constraint]
 eq (ConstTerm 0) (ConstTerm 0) = []
@@ -56,8 +54,12 @@ prod :: [Term] -> Term
 prod ts | any termIsZero ts = ConstTerm 0
        | otherwise = Prod ts
 
-sub :: [Coeff] -> Term
-sub qs = Diff (map CoeffTerm qs)
+prod2 :: Term -> Term -> Term
+prod2 t1 t2 = prod [t1, t2]
+
+sub :: [Term] -> Term
+sub ts | all termIsZero ts = ConstTerm 0
+       | otherwise = Diff ts
 
 eqSum :: Term -> [Term] -> [Constraint]
 eqSum t ts = eq t $ sum ts
@@ -77,11 +79,26 @@ geSum ts = Ge (Sum ts)
 notZero :: Term -> [Constraint]
 notZero t = Not <$> zero t
 
-varGeZero :: Var -> Constraint
-varGeZero x = Ge (VarTerm x) (ConstTerm 0)
+geZero :: Term -> [Constraint]
+geZero (ConstTerm 0) = []
+geZero t = ge t (ConstTerm 0)
 
-le :: Coeff -> Coeff -> Constraint
-le q p = Le (CoeffTerm q) (CoeffTerm p)
+le :: Term -> Term -> [Constraint]
+le t1 t2 | t1 == t2 = []
+le t1 t2 = [Le t1 t2]
+
+ge :: Term -> Term -> [Constraint]
+ge t1 t2 | t1 == t2 = []
+ge t1 t2 = [Ge t1 t2]
+
+
+-- empty list corresponds to a true constraint
+impl :: [Constraint] -> [Constraint] -> [Constraint]
+impl [] [] = []
+impl [] [c2] = [c2]
+impl [c1] [] = []
+impl [c1] [c2] = [Impl c1 c2]
+impl _ _ = error "cannot construct implication. "
 
 printTerm :: Term -> String
 printTerm (VarTerm k) = printVar k

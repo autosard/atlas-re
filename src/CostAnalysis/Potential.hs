@@ -52,31 +52,33 @@ data Potential = Potential {
   cMatch :: RsrcAnn -> RsrcAnn -> Id -> [(Id, Type)] -> (RsrcAnn, [Constraint]),
 
   -- | @ 'cLetBinding' q p_ = (p, cs)@
+  cLetBindingBase :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint]),
+
+   -- | @ 'cLetBinding' q p_ = (p, cs)@
   cLetBinding :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint]),
   
   -- | @ 'cLetBodyBase' q r_ p' = (r, cs)@
   cLetBodyBase :: RsrcAnn -> RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint]),
 
-  -- | @ 'cLetBody' q r_ p' ps' = (r, cs)@
-  cLetBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> AnnArray -> (RsrcAnn, [Constraint]),
-  
-  cLetCf :: RsrcAnn -> AnnArray -> AnnArray -> (AnnArray, AnnArray, [Constraint]),
+  -- | @ 'cLetBody' q r_ p p' ps' x bdes = (r, cs)@
+  cLetBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> AnnArray -> Id -> [Set Factor] -> (RsrcAnn, [Constraint]),
+
+  -- | @ 'cLetCf' q ps_ ps'_ x bdes = (ps, ps', cs)@
+  cLetCf :: RsrcAnn -> AnnArray -> AnnArray -> Id -> ([Id], [Id]) ->[Set Factor] -> (AnnArray, AnnArray, [Constraint]),
   
   -- | @ 'cLet' q p p' ps ps' r x@
   cLet :: Bool -> RsrcAnn -> RsrcAnn -> RsrcAnn
     -> AnnArray -> AnnArray -> RsrcAnn -> Id -> [Constraint],
+    
   -- | @ 'cWeakenVar' q r @
-  cWeakenVar :: RsrcAnn -> RsrcAnn -> [Constraint],
-  -- -- | @ 'cWeaken' q q' p p'@
-  -- cWeaken :: [RuleArg] -> RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> [Constraint],
+  cWeakenVar :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint]),
+  
   genExpertKnowledge :: Set WeakenArg -> RsrcAnn -> RsrcAnn -> ExpertKnowledge,
+  
   -- | @ 'cOptimize' q q' @ returns constraints that minimize \[\Phi(\Gamma\mid Q) - \Phi(\Gamma\mid Q')\]
   cOptimize :: RsrcAnn -> RsrcAnn -> OptiMonad Target,
   
   printBasePot :: Coeff -> Rational -> String}
-
-emptyAnn :: Potential -> Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn
-emptyAnn pot id label comment args = rsrcAnn pot id label comment args ([], []) False
 
 defaultNegAnn :: Potential -> Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn
 defaultNegAnn pot id label comment args = rsrcAnn pot id label comment args abRanges True
@@ -99,11 +101,12 @@ cPlusConst pot q p c = let qs = q^.args in
   where constIdx = constCoeff pot
 
 -- | @ 'cMinusVar' q p@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) - k\] where @k@ is a fresh variable.
-cMinusVar :: Potential -> RsrcAnn -> RsrcAnn -> Var -> [Constraint]
+cMinusVar :: Potential -> RsrcAnn -> RsrcAnn -> Term -> [Constraint]
 cMinusVar pot q p k = let qs = q^.args in 
-  Eq (q!constIdx) (Sum [p!constIdx, VarTerm k]) :
+  Eq (q!constIdx) (Sum [p!constIdx, k]) :
   eqExceptConst pot q p
   where constIdx = constCoeff pot
+
 
   -- | @ 'forAllCombinations' q xs (rangeA, rangeB) x@ generates an index for all combinations of variables in @xs@ and the variable @x@, based on the indices in @q@.
 forAllCombinations :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [Set Factor] 
@@ -125,7 +128,7 @@ calculateBound :: (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> Map Coeff Rational
 calculateBound (from, to) solution = M.fromList $ map subtract (getCoeffs from)
   where [arg] = annVars to
         subtract left@(Coeff _ _ _ idx) = let
-          right = to!substitute idx arg in
+          (CoeffTerm right) = to!substitute idx arg in
           case solution M.!? right of
             Just rightValue -> case solution M.!? left of
               Just leftValue -> let diff =  leftValue - rightValue in (left, diff)

@@ -18,10 +18,11 @@ import qualified Data.Set as S
 import qualified Data.Tree as T
 
 import Primitive(Id)
-import CostAnalysis.RsrcAnn
-import CostAnalysis.Potential hiding (rsrcAnn, emptyAnn)
+import CostAnalysis.RsrcAnn hiding (emptyAnn)
+import CostAnalysis.Potential hiding (rsrcAnn)
 import CostAnalysis.Rules
 import qualified CostAnalysis.Potential as P
+import qualified CostAnalysis.RsrcAnn as R
 import CostAnalysis.Tactic
 import SourceError
 import CostAnalysis.Constraint
@@ -80,16 +81,8 @@ genVarId = do
   varIdGen .= g+1
   return g
 
-freshVar :: ProveMonad Var
-freshVar = genVarId
-
--- rsrcAnn :: Text -> [(Id, Type)] -> ProveMonad RsrcAnn
--- rsrcAnn label vars = do
---   pot <- view potential
---   id <- genAnnId
---   P.rsrcAnn pot id label vars
-
---   return ann
+freshVar :: ProveMonad Term
+freshVar = VarTerm <$> genVarId
 
 withPotAndId :: (Potential -> Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn)
   -> (Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn)
@@ -99,7 +92,13 @@ withPotAndId f label comment args = do
   return $ f pot id label comment args
 
 emptyAnn :: Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn
-emptyAnn = withPotAndId P.emptyAnn
+emptyAnn = withPotAndId (const R.emptyAnn)
+
+fromAnn :: Text -> Text -> RsrcAnn -> ProveMonad RsrcAnn
+fromAnn label comment ann = do
+  pot <- view potential
+  id <- genAnnId
+  return $ R.fromAnn id label comment ann
   
 defaultAnn :: Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn
 defaultAnn = withPotAndId P.defaultAnn
