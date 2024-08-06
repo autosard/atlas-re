@@ -160,7 +160,7 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
 
       p_ <- emptyAnn "P" "let:base e1" gamma
       p' <- defaultAnn  "P'"  "let:base e1" [("e", getType e1)]
-      r_ <- emptyAnn "R" "let:base e2" delta
+      r_ <- emptyAnn "R" "let:base e2" (M.toAscList ctxE2')
       
       let rangeD = rangeA . ranges $ pot
       let rangeE = if neg then rangeBNeg . ranges $ pot else rangeB . ranges $ pot
@@ -252,8 +252,8 @@ proveShift tactic cf ctx e q q' = do
   p' <- fromAnn  "P'" "" q'
   k <- freshVar
   let cs = ge k (ConstTerm 0)
-        ++ cMinusVar pot p q k
-        ++ cMinusVar pot p' q' k
+        ++ eqMinus pot p q k
+        ++ eqMinus pot p' q' k
   deriv <- proveExpr subTactic cf ctx e p p'
   conclude R.Shift cf q q' cs e [deriv]
 
@@ -266,7 +266,7 @@ proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
     conclude R.TickDefer cf q q' [] e [deriv]
   else do
     p <- fromAnn "P" "" q'
-    let cs = cPlusConst pot p q' (fromMaybe 1 c) 
+    let cs = eqPlus pot p q' (ConstTerm (fromMaybe 1 c))
     deriv <- proveExpr subTactic cf ctx e1 q p
 
     conclude R.TickDefer cf q q' cs e [deriv]

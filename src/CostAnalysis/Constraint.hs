@@ -43,7 +43,7 @@ data Constraint
 --   where Prod2 t1 t2 = Prod [t1, t2]
 
 eq :: Term -> Term -> [Constraint]
-eq (ConstTerm 0) (ConstTerm 0) = []
+eq (ConstTerm x) (ConstTerm y) | x == y = []
 eq t1 t2 = [Eq t1 t2]
 
 sum :: [Term] -> Term

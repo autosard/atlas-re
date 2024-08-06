@@ -13,7 +13,6 @@ import qualified Data.Map as M
 import Data.Text(Text)
 import qualified Data.Text as Te
 import Data.Tree(Tree)
-import Data.Set(Set)
 import qualified Data.Set as S
 import qualified Data.Tree as T
 
@@ -106,11 +105,11 @@ defaultAnn = withPotAndId P.defaultAnn
 defaultNegAnn :: Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn
 defaultNegAnn = withPotAndId P.defaultNegAnn
 
-annArrayFromIdxs :: [Set Factor] -> Text -> [(Id, Type)] -> ProveMonad AnnArray
+annArrayFromIdxs :: [CoeffIdx] -> Text -> [(Id, Type)] -> ProveMonad AnnArray
 annArrayFromIdxs idxs label args = do
   anns <- mapM annFromIdx idxs
   return $ M.fromList anns
   where annFromIdx idx = (idx,) <$> emptyAnn (label' idx) "" args
         printIdx idx = "(" ++ intercalate "," (map show (S.toAscList idx)) ++ ")"
-        label' idx = Te.concat [label, "_", Te.pack $ printIdx idx]
+        label' idx = Te.concat [label, "_", Te.pack $ show idx]
   

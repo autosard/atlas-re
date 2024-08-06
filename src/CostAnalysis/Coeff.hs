@@ -34,12 +34,20 @@ infixl 9 ^
 (^) :: Id -> Int -> Factor
 (^) = Arg
 
+factorNotZero :: Factor -> Bool
+factorNotZero (Arg _ a) = a /= 0
+factorNotZero (Const c) = c /= 0
+
 
 data CoeffIdx = Pure Id | Mixed (Set Factor)
   deriving (Eq, Ord)
 
--- for use in quasi quoter, to avoid "Illegal variable name"
-mixed_ = Mixed
+mixed :: Set Factor -> CoeffIdx
+mixed facs = Mixed (S.filter factorNotZero facs)
+
+idxToSet :: CoeffIdx -> Set Factor
+idxToSet (Mixed idx) = idx
+idxToSet _ = error "pure index"
 
 isConst (Const x) = True
 isConst _ = False
@@ -59,15 +67,34 @@ facForVar (Mixed idx) x = getArg $ L.find (matchesVar x) (S.toList idx)
         getArg Nothing = 0
 facForVar _ _ = error "cannot extract factor for pure index."
 
+-- with const
+except :: CoeffIdx -> [Id] -> Set Factor
+except (Mixed idx) xs = S.filter (\f -> not (any (`matchesVar` f) xs)) idx
+
+-- without const
 varsExcept :: CoeffIdx -> [Id] -> Set Factor
 varsExcept (Mixed idx) xs = S.filter (\f -> not (any (`matchesVar` f) xs || isConst f)) idx
 varsExcept _ _ = error "pure index"
 
-onlyVars :: CoeffIdx -> Set Id -> Bool
-onlyVars (Mixed idx) xs = null . S.filter isJust . S.map go $ idx
-  where go (Arg id _) = if S.member id xs then Nothing else Just id
-        go (Const _) = Nothing
-onlyVars _ _ = error "pure index"
+-- with const
+restrict :: CoeffIdx -> [Id] -> Set Factor
+restrict (Mixed idx) xs = S.filter go idx
+  where go (Arg id _) = S.member id (S.fromList xs)
+        go (Const _) = True
+restrict _ _ = error "pure index"
+
+-- without const
+varsRestrict :: CoeffIdx -> [Id] -> Set Factor
+varsRestrict (Mixed idx) xs = S.filter go idx
+  where go (Arg id _) = S.member id (S.fromList xs)
+        go (Const _) = False
+varsRestrict _ _ = error "pure index"
+
+onlyVars :: CoeffIdx -> [Id] -> Bool
+onlyVars idx xs = null $ except idx xs
+
+onlyVarsOrConst :: CoeffIdx -> [Id] -> Bool
+onlyVarsOrConst idx xs = null $ varsExcept idx xs 
 
 justConst (Mixed idx) = all isConst idx
 justConst _ = error "pure index"

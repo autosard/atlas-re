@@ -45,6 +45,9 @@ isPure _ = False
 mixes :: RsrcAnn -> [CoeffIdx]
 mixes ann = S.toList . S.filter (not . isPure) $ ann^.coeffs
 
+varsRestrictMixes :: RsrcAnn -> [Id] -> [CoeffIdx]
+varsRestrictMixes ann xs = S.toList $ S.map (mixed . (`varsRestrict` xs)) . S.filter (not . isPure) $ ann^.coeffs
+
 pures :: RsrcAnn -> [CoeffIdx]
 pures ann = S.toList . S.filter isPure $ ann^.coeffs
 
@@ -88,14 +91,10 @@ instance Index CoeffIdx where
   toIdx = id
     
 instance Index [Factor] where
-  toIdx = Mixed . S.fromList
-
-factorGTZero :: Factor -> Bool
-factorGTZero (Arg _ a) = a > 0
-factorGTZero (Const c) = c > 0
+  toIdx = mixed . S.fromList
 
 instance Index (Set Factor) where
-  toIdx factors = let factors' = S.filter factorGTZero factors in Mixed factors'
+  toIdx factors = mixed factors
 
 type PointWiseOp = Map CoeffIdx Term
 
@@ -120,18 +119,16 @@ annEq :: RsrcAnn -> RsrcAnn -> [Constraint]
 annEq q p | (length . _args $ q) /= (length . _args $ p) = error "Annotations with different lengths can not be equal."
           | otherwise = annLikeEq q p
 
-type AnnArray = Map (Set Factor) RsrcAnn
+type AnnArray = Map CoeffIdx RsrcAnn
 
 elems :: AnnArray -> [RsrcAnn]
 elems = M.elems
 
 infixl 9 !!
-(!!) :: AnnArray -> Set Factor -> RsrcAnn
-(!!) arr k = let k' = S.filter factorGTZero k in
-    case M.lookup k' arr of
-      Just c -> c
-      Nothing -> error $ "Invalid index '" ++ show k ++ "' for annotation array."
-
+(!!) :: AnnArray -> CoeffIdx -> RsrcAnn
+(!!) arr k = case M.lookup k arr of
+  Just c -> c
+  Nothing -> error $ "Invalid index '" ++ show k ++ "' for annotation array."
 
 data FunRsrcAnn = FunRsrcAnn {
   withCost :: (RsrcAnn, RsrcAnn),
@@ -150,7 +147,7 @@ def i = do
   ann <- get
   return $ ann!idx
 
-defEntry :: Set Factor -> CoeffIdx -> CoeffDef AnnArray Term
+defEntry :: CoeffIdx -> CoeffIdx -> CoeffDef AnnArray Term
 defEntry arrIdx coeffIdx = do
   ix arrIdx . coeffs %= (coeffIdx `S.insert`)
   arr <- get

@@ -1,20 +1,22 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module CostAnalysis.Potential.Log.BaseSpec(spec) where
 
 import Test.Hspec
-import CostAnalysis.Potential.Log.Helper hiding (rsrcAnn)
-import qualified CostAnalysis.Potential.Log.Helper as H(rsrcAnn)
+import CostAnalysis.Potential.Log.Helper 
 
 import Prelude hiding ((!), (!!), (^))
 import qualified Data.Map as M
+import qualified Data.Set as S
 
 import CostAnalysis.Potential.Log.Base 
 import CostAnalysis.Potential.Log
-import CostAnalysis.Coeff(Coeff(..), Factor(..), CoeffIdx(..), (^))
+import CostAnalysis.Coeff(Coeff(..), Factor(..), CoeffIdx(..), (^), idxToSet)
 import CostAnalysis.RsrcAnn((!),(!!),RsrcAnn(..))
-import Constants (treeT)
-import CostAnalysis.Constraint
+import Constants (treeT, boolT)
+import CostAnalysis.Constraint ( zero )
+import CostAnalysis.AnnIdxQuoter(mix)
 
 spec :: Spec
 spec = do
@@ -22,38 +24,21 @@ spec = do
     it "generates a zero length resource annotation" $ do
       let id = 0
       let vars = []
-      let should = (RsrcAnn vars (M.fromList [coeff [], coeff [Const 1], coeff [Const 2]]),
-                     [zero (snd (coeff []))])
-      rsrcAnn potArgs id "Q" vars `shouldBe` should
+      let should = RsrcAnn id vars "Q" "empty" (S.fromList [[mix|2|]])
+
+      rsrcAnn id "Q" "empty" vars defaultRanges `shouldBe` should
     it "generates a resource annotation of length 2" $ do
       let id = 0
-      let vars = [("x1", treeT), ("x2", treeT)]
-      let coeffs = M.fromList [coeff' "x1", coeff' "x2",
-                               coeff [], coeff [Const 1],
-                               coeff["x1"^1], coeff["x1"^1,Const 1],
-                               coeff["x2"^1], coeff["x2"^1, Const 1],
-                               coeff["x1"^1, "x2"^1], coeff["x1"^1, "x2"^1, Const 1],
-                               coeff [Const 2],
-                               coeff["x1"^1], coeff["x1"^1,Const 2],
-                               coeff["x2"^1], coeff["x2"^1, Const 2],
-                               coeff["x1"^1, "x2"^1], coeff["x1"^1, "x2"^1, Const 2]]
-      let should = (RsrcAnn vars coeffs, [zero (snd (coeff []))])
-      rsrcAnn potArgs id "Q" vars `shouldBe` should
-  describe "forAllCombinations" $ do
-    it "generates a annoation array from the given variables and updates the id gen correctly" $ do
-      let neg = False
-      let combLeft = [("x1", treeT), ("x2", treeT)]
-      let combRight = "x3"
-      let annArgs = [("y1", treeT)]
-      let idGen = 0
-      let array = M.fromList [
-            (arrIdx ["x1"^1, "x3"^1], H.rsrcAnn 2 "Q_(x1^1,x3^1)" annArgs),
-            (arrIdx ["x1"^1, "x3"^1, Const 2], H.rsrcAnn 3 "Q_(2,x1^1,x3^1)" annArgs),
-            (arrIdx ["x2"^1, "x3"^1], H.rsrcAnn 0 "Q_(x2^1,x3^1)" annArgs),
-            (arrIdx ["x2"^1, "x3"^1, Const 2], H.rsrcAnn 1 "Q_(2,x2^1,x3^1)" annArgs),
-            (arrIdx ["x1"^1, "x2"^1, "x3"^1], H.rsrcAnn 4 "Q_(x1^1,x2^1,x3^1)" annArgs),
-            (arrIdx ["x1"^1, "x2"^1, "x3"^1, Const 2], H.rsrcAnn 5 "Q_(2,x1^1,x2^1,x3^1)" annArgs)]
-      let finalId = 6
-      let (is, _) = forAllCombinations potArgs neg combLeft combRight idGen "Q" annArgs
-      is `shouldBe` (array, finalId)
-
+      let (x1, x2, x3) = ("x1", "x2", "x3")
+      let vars = [(x1, treeT), (x2, treeT)]
+      let varsNonTree = (x3, boolT):vars
+      let coeffs = S.fromList [Pure x1, Pure x2,
+                               [mix|x1^1|], [mix|x1^1,1|],
+                               [mix|x2^1|], [mix|x2^1,1|],
+                               [mix|x1^1,x2^1|], [mix|x1^1,x2^1,1|],
+                               [mix|2|],
+                               [mix|x1^1|], [mix|x1^1, 2|],
+                               [mix|x2^1|], [mix|x2^1,2|],
+                               [mix|x1^1,x2^1|], [mix|x1^1,x2^1,2|]]
+      let should = RsrcAnn id vars "Q" "2" coeffs
+      rsrcAnn id "Q" "2" varsNonTree defaultRanges `shouldBe` should

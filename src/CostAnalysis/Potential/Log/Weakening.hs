@@ -35,8 +35,7 @@ monoLattice potArgs p q = merge . catMaybes $
   | idxP <- S.toList $ p^.coeffs,
     idxQ <- S.toList $ q^.coeffs,
     idxP /= idxQ]
-  where iConst = S.findIndex [mix|2|] (p^.coeffs)
-        compare :: CoeffIdx -> CoeffIdx -> Maybe ExpertKnowledge
+  where compare :: CoeffIdx -> CoeffIdx -> Maybe ExpertKnowledge
         compare (Mixed f1) (Mixed f2) = if monoLe f1 f2 then
           let i = S.findIndex (Mixed f1) (p^.coeffs)
               j = S.findIndex (Mixed f2) (p^.coeffs) in

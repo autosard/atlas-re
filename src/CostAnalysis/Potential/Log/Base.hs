@@ -39,10 +39,10 @@ combi' _ z [] = z
 combi' rangeA z (x:xs) = [if a > 0 then x^a:y else y
                        | a <- rangeA, y <- combi' rangeA z xs]
 
-rsrcAnn :: Int -> Text -> Text -> [(Id, Type)] -> ([Int], [Int]) -> Bool -> RsrcAnn
-rsrcAnn id label comment args ranges pure =
+rsrcAnn :: Int -> Text -> Text -> [(Id, Type)] -> ([Int], [Int]) -> RsrcAnn
+rsrcAnn id label comment args ranges =
   RsrcAnn id args' label comment $ S.fromList (rankCoeffs ++ logCoeffs)
-  where rankCoeffs = [Pure x | pure, (x,i) <- zip vars [1..]]
+  where rankCoeffs = [Pure x | (x,i) <- zip vars [1..]]
         logCoeffs = [idx
                     | idx <- combi ranges vars,
                       idxSum idx > 0,

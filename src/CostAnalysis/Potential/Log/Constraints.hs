@@ -81,10 +81,10 @@ cMatch' q p x [] = extendAnn p $
             | idx <- mixes q,
               let a = facForVar idx x,
               let b = constFactor idx,
-              a > 0, b > 0,
+              a >= 0, b >= 0,
               let c = a + b,
-              c /= 2,
-              let xs = varsExcept idx [x]]
+              let xs = varsExcept idx [x],
+              not (null xs && c == 1)]
 -- node
 cMatch' q r x [u, v] = extendAnn r $
   [(`eq` (q!x)) <$> def u,
@@ -104,7 +104,7 @@ cLetBindingBase q p = extendAnn p $
   [(`eq` (q!x)) <$> def x  | x <- xs]
   ++ [(`eq` (q!idx)) <$> def idx
      | idx <- mixes q,
-       onlyVars idx (S.fromList xs)]
+       onlyVarsOrConst idx xs]
   where xs = annVars p
 
 cLetBodyBase :: RsrcAnn -> RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
@@ -112,11 +112,11 @@ cLetBodyBase q r p' = extendAnn r $
   [(`eq` (q!y)) <$> def y | y <- ys]
   ++ [(`eq` (q!idx)) <$> def idx
      | idx <- mixes q,
-       onlyVars idx (S.fromList ys),
-       (not . justConst) idx]
+       onlyVarsOrConst idx ys,
+       not . justConst $ idx]
   ++ [(`eq` (p'!idx)) <$> def idx
      | idx <- mixes p',
-       onlyVars idx S.empty]
+       justConst idx]
   where ys = annVars r
 
 cLetBinding :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
@@ -124,14 +124,14 @@ cLetBinding q p = extendAnn p $
   [(`eq` (q!x)) <$> def x  | x <- xs]
   ++ [(`eq` (q!idx)) <$> def idx
      | idx <- mixes q,
-       onlyVars idx (S.fromList xs),
+       onlyVarsOrConst idx xs,
        (not . justConst) idx]
   -- move const
   ++ [(`le` (q![mix|2|])) <$> def [mix|2|]]
   where xs = annVars p
 
 
-cLetBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> AnnArray -> Id -> [Set Factor] -> (RsrcAnn, [Constraint])
+cLetBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> AnnArray -> Id -> [CoeffIdx] -> (RsrcAnn, [Constraint])
 cLetBody q r p p' ps' x bdes = extendAnn r $
   [(`eq` (q!y)) <$> def y | y <- ys]
   ++ [(`eq` (p'!("e" :: Id))) <$> def x]
@@ -139,51 +139,50 @@ cLetBody q r p p' ps' x bdes = extendAnn r $
   ++ [(`eq` sum [sub [p'![mix|2|], p![mix|2|]], q![mix|2|]]) <$> def [mix|2|]]
   ++ [(`eq` (p'!pIdx)) <$> def [mix|x^d,e|]
      | pIdx <- mixes p',
-       let d = facForVar pIdx x,
-       let e = constFactor pIdx]
+       let d = facForVar pIdx exp,
+       let e = constFactor pIdx,
+       (d, e) /= (0,2)]
   ++ [(`eq` (q!idx)) <$> def idx
      | idx <- mixes q,
-       onlyVars idx (S.fromList ys),
+       onlyVarsOrConst idx ys,
        (not . justConst) idx]
-  ++ [(`eq` (ps'!!bde![mix|x^d,e|])) <$> def idx
+  ++ [(`eq` (ps'!!bde![mix|exp^d,e|])) <$> def bde
      | bde <- bdes,
-       let idx = Mixed bde,
-       let d = facForVar idx x,
-       let e = max 0 $ constFactor idx]
+       let d = facForVar bde x,
+       let e = max 0 $ constFactor bde]
   where ys = L.delete x (annVars r)
 
-cLetCf :: RsrcAnn -> AnnArray -> AnnArray -> Id -> ([Id], [Id]) -> [Set Factor] -> (AnnArray, AnnArray, [Constraint])
+cLetCf :: RsrcAnn -> AnnArray -> AnnArray -> Id -> ([Id], [Id]) -> [CoeffIdx] -> (AnnArray, AnnArray, [Constraint])
 cLetCf q ps ps' x (gamma, delta) bdes = (psDefined, ps'Defined, psCs ++ ps'Cs ++ cs)
   where (psDefined, psCs) = extendAnns ps $
           [ eq (q!idx) . sum <$>
             sequence [defEntry bde pIdx
                      | bde <- bdes,
-                       let bs = varsExcept (Mixed bde) [x],
-                       bs == varsExcept idx gamma,
-                       let as = varsExcept idx delta,
-                       let e = constFactor (Mixed bde),
+                       let bs = varsRestrict bde delta,
+                       bs == varsRestrict idx delta,
+                       let as = varsRestrict idx gamma,
+                       let e = constFactor bde,
                        let c = constFactor idx + max 0 (-e),
                        let pIdx = [mix|_as,c|]]
           | idx <- mixes q,
-            not $ onlyVars idx (S.fromList gamma),
-            not $ onlyVars idx (S.fromList delta),
-            not $ onlyVars idx (S.singleton x)]
+            not $ onlyVarsOrConst idx gamma,
+            not $ onlyVarsOrConst idx delta]
         (ps'Defined, ps'Cs) = extendAnns ps' $
           [(`le` sum [p!ac
                      | let p = psDefined!!bde,
                        ac <- S.toList $ definedIdxs p]) <$> defEntry bde de
           | bde <- bdes,
-            let d = varsExcept (Mixed bde) delta,
-            let e = max 0 $ constFactor (Mixed bde),
-            let de = [mix|_d,e|]]
+            let d = facForVar bde x,
+            let e = max 0 $ constFactor bde,
+            let de = [mix|exp^d,e|]]
         cs = concat
-             [impl (zero (psDefined!!bde!idx)) (le (ps'Defined!!bde!de) (ps!!bde!idx))
+             [impl (notZero (psDefined!!bde!idx)) (le (ps'Defined!!bde!de) (psDefined!!bde!idx))
              | bde <- bdes,
                idx <- mixes (psDefined!!bde),
                (not . justConst) idx,
-               let d = varsExcept (Mixed bde) delta,
-               let e = max 0 $ constFactor (Mixed bde),
-               let de = [mix|_d,e|]]
+               let d = facForVar bde x,
+               let e = max 0 $ constFactor bde,
+               let de = [mix|exp^d,e|]]
 
 
 cWeakenVar :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
@@ -192,5 +191,5 @@ cWeakenVar q r = let xs = annVars r in
     [(`eq` (q!x)) <$> def x | x <- xs]
     ++ [(`eq` (q!idx)) <$> def idx
        | idx <- mixes q,
-         onlyVars idx (S.fromList xs)]
+         onlyVarsOrConst idx xs]
 
