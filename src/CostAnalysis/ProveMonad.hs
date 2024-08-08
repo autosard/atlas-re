@@ -95,15 +95,22 @@ emptyAnn = withPotAndId P.emptyAnn
 
 fromAnn :: Text -> Text -> RsrcAnn -> ProveMonad RsrcAnn
 fromAnn label comment ann = do
-  pot <- view potential
   id <- genAnnId
   return $ R.fromAnn id label comment ann
+
+enrichWithDefaults :: Text -> Text -> RsrcAnn -> ProveMonad RsrcAnn
+enrichWithDefaults label comment ann = do
+  pot <- view potential
+  id <- genAnnId
+  return $ P.enrichWithDefaults pot id label comment ann
   
 defaultAnn :: Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn
 defaultAnn = withPotAndId P.defaultAnn
 
 defaultNegAnn :: Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn
 defaultNegAnn = withPotAndId P.defaultNegAnn
+
+
 
 annArrayFromIdxs :: [CoeffIdx] -> Text -> [(Id, Type)] -> ProveMonad AnnArray
 annArrayFromIdxs idxs label args = do

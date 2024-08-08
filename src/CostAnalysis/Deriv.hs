@@ -20,7 +20,7 @@ import Typing.Type
 import Typing.Scheme (toType)
 import CostAnalysis.Tactic
 import qualified CostAnalysis.Rules as R
-import CostAnalysis.Potential hiding (Factor(..), emptyAnn, defaultAnn, defaultNegAnn)
+import CostAnalysis.Potential hiding (Factor(..), emptyAnn, defaultAnn, defaultNegAnn, enrichWithDefaults)
 import CostAnalysis.RsrcAnn hiding (fromAnn)
 import CostAnalysis.Constraint ( ge,
                                  Constraint,
@@ -30,6 +30,7 @@ import CostAnalysis.ProveMonad
 import StaticAnalysis(freeVars, calledFunctions')
 import Data.Maybe (fromMaybe, mapMaybe)
 import SourceError
+import GHC.Stack (ccsParent)
 
 type ProofResult = (Derivation, [Constraint], RsrcSignature)
 
@@ -205,7 +206,7 @@ proveApp tactic False ctx e@(App id _) q q' = do
   k <- freshVar
   let cs = ge k (ConstTerm 1)
         ++ annLikeEq q (annAdd p (annScalarMul r k))
-        ++ annLikeEq q (annAdd p (annScalarMul r k))
+        ++ annLikeEq q' (annAdd p' (annScalarMul r' k))
   conclude R.App False q q' cs e []
 proveApp tactic True ctx e@(App id _) q q' = do
   pot <- view potential
@@ -238,22 +239,32 @@ proveWeaken :: Prove TypedExpr Derivation
 proveWeaken tactic@(Rule (R.Weaken wArgs) _) cf ctx e q q' = do
   pot <- view potential
   let [t] = subTactics 1 tactic
-  p <- fromAnn "P" "" q
-  p' <- fromAnn "P'" "" q'
-  cs <- weaken pot (S.fromList wArgs) q q' p p'
+  let wArgs' = S.fromList wArgs
+  
+  p <- enrichWithDefaults "P" "" q
+  -- p <= q
+  pCs <-  farkas pot wArgs' (p^.coeffs) p q
+  
+  p' <- enrichWithDefaults "P'" "" q'
+  -- q' <= p'
+  p'Cs <-  farkas pot wArgs' (p^.coeffs) q' p'
+  
   deriv <- proveExpr t cf ctx e p p'
-  conclude (R.Weaken wArgs) cf q q' cs e [deriv]
+  conclude (R.Weaken wArgs) cf q q' (pCs ++ p'Cs) e [deriv]
 
 proveShift :: Prove TypedExpr Derivation
 proveShift tactic cf ctx e q q' = do
   pot <- view potential
   let [subTactic] = subTactics 1 tactic
-  p <- fromAnn "P" "" q
-  p' <- fromAnn  "P'" "" q'
+
   k <- freshVar
-  let cs = ge k (ConstTerm 0)
-        ++ eqMinus pot p q k
-        ++ eqMinus pot p' q' k
+  
+  p_ <- emptyAnn "P" "" (q^.args)
+  let (p, pCs) = eqMinus pot p_ q k
+  p'_ <- emptyAnn "P'" "" (q'^.args)
+  let (p', p'Cs) = eqMinus pot p'_ q' k
+  
+  let cs = ge k (ConstTerm 0) ++ pCs ++ p'Cs
   deriv <- proveExpr subTactic cf ctx e p p'
   conclude R.Shift cf q q' cs e [deriv]
 
@@ -265,8 +276,9 @@ proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
     deriv <- proveExpr subTactic cf ctx e1 q q'
     conclude R.TickDefer cf q q' [] e [deriv]
   else do
-    p <- fromAnn "P" "" q'
-    let cs = eqPlus pot p q' (ConstTerm (fromMaybe 1 c))
+    p_ <- emptyAnn "P" "" (q'^.args)
+    let (p, cs) = eqPlus pot p_ q' (ConstTerm (fromMaybe 1 c))
+
     deriv <- proveExpr subTactic cf ctx e1 q p
 
     conclude R.TickDefer cf q q' cs e [deriv]

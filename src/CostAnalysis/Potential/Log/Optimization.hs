@@ -34,7 +34,9 @@ weightedNonRankDifference potArgs q q' = do
   where pairs = [(q![mix|x^a,b|], q'![mix|y^a,b|], (a,b))
                 | a <- aRange potArgs,
                   b <- bRange potArgs,
+                  a + b > 0,
                   (a, b) /= (0, 2),
+                  (a, b) /= (0, 1),
                   let x = annVar q,
                   let y = annVar q']
         annVar p = case annVars p of

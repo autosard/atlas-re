@@ -20,6 +20,6 @@ logPot args = Potential
   cLetBody
   cLetCf
   cWeakenVar
-  (genExpertKnowledge args)
+  genExpertKnowledge
   (cOptimize args)
   printBasePot

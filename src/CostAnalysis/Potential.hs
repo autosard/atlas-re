@@ -1,5 +1,6 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 
 module CostAnalysis.Potential where
@@ -69,7 +70,7 @@ data Potential = Potential {
   -- | @ 'cWeakenVar' q r @
   cWeakenVar :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint]),
   
-  genExpertKnowledge :: Set WeakenArg -> RsrcAnn -> RsrcAnn -> ExpertKnowledge,
+  genExpertKnowledge :: Set WeakenArg -> [Id] -> Set CoeffIdx -> ExpertKnowledge,
   
   -- | @ 'cOptimize' q q' @ returns constraints that minimize \[\Phi(\Gamma\mid Q) - \Phi(\Gamma\mid Q')\]
   cOptimize :: RsrcAnn -> RsrcAnn -> OptiMonad Target,
@@ -88,26 +89,32 @@ emptyAnn :: Potential -> Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn
 emptyAnn pot id label comment args = RsrcAnn id args' label comment S.empty
   where args' = filter (\(x, t) -> matchesTypes t (types pot)) args
 
+enrichWithDefaults :: Potential -> Int -> Text -> Text -> RsrcAnn -> RsrcAnn
+enrichWithDefaults pot id label comment origin =
+  RsrcAnn id args_ label comment ((origin^.coeffs) `S.union` defaultCoeffs)
+  where args_ = origin^.args
+        defaultCoeffs = defaultAnn pot id "" "" args_ ^.coeffs
 
-eqExceptConst :: Potential -> RsrcAnn -> RsrcAnn -> [Constraint]
-eqExceptConst pot q p = [Eq (q!?idx) (p!?idx)
-                        | idx <- S.toList $ (p^.coeffs) `S.union` (p^.coeffs),
-                          idx /= constCoeff pot]
+
+eqExceptConst :: Potential -> RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
+eqExceptConst pot q_ p = extendAnn q_ [(`eq` (p!idx)) <$> def idx
+                                     | idx <- S.toList (p^.coeffs),
+                                       idx /= constCoeff pot]
 
 -- | @ 'eqPlus' q p t@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) + t\] where @t@ is a term.
-eqPlus :: Potential -> RsrcAnn -> RsrcAnn -> Term -> [Constraint]
-eqPlus pot q p t = let qs = q^.args in
-  eq (q!constIdx) (sum [p!constIdx, t]) 
-  ++ eqExceptConst pot q p
+eqPlus :: Potential -> RsrcAnn -> RsrcAnn -> Term -> (RsrcAnn, [Constraint])
+eqPlus pot q_ p t = (q, cs ++ eqCs)
   where constIdx = constCoeff pot
+        (eqQ, eqCs) = eqExceptConst pot q_ p
+        (q, cs) = extendAnn eqQ [(`eq` sum [p!?constIdx, t]) <$> def constIdx]
 
 -- | @ 'eqMinus' q p t@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) - t\] where @t@ is a term.
-eqMinus :: Potential -> RsrcAnn -> RsrcAnn -> Term -> [Constraint]
-eqMinus pot q p t = let qs = q^.args in 
-  eq (q!constIdx) (sub [p!constIdx, t]) 
-  ++ eqExceptConst pot q p
+eqMinus :: Potential -> RsrcAnn -> RsrcAnn -> Term -> (RsrcAnn, [Constraint])
+eqMinus pot q_ p t = (q, cs ++ eqCs)
   where constIdx = constCoeff pot
-
+        (eqQ, eqCs) = eqExceptConst pot q_ p
+        (q, cs) = extendAnn eqQ [(`eq` sub [p!?constIdx, t]) <$> def constIdx]
+  
   -- | @ 'forAllCombinations' q xs (rangeA, rangeB) x@ generates an index for all combinations of variables in @xs@ and the variable @x@, based on the indices in @q@.
 forAllCombinations :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 forAllCombinations q xs (rangeA, rangeB) x =

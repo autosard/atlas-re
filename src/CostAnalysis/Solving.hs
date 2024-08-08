@@ -8,12 +8,11 @@ module CostAnalysis.Solving where
 
 import Prelude hiding (sum)
 import Primitive(Id)
-import CostAnalysis.AnnIdxQuoter
 import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.Optimization
 import CostAnalysis.Potential
-import Data.Ratio(numerator, denominator, (%))
+import Data.Ratio(numerator, denominator)
 import Z3.Monad 
 import CostAnalysis.RsrcAnn
 import Control.Monad (mapAndUnzipM, (<=<))
@@ -29,14 +28,6 @@ traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
 
 class Encodeable a where
   toZ3 :: (MonadZ3 z3) => a -> z3 AST
-
--- instance Encodeable Var where
---   toZ3 (Var pos id) = do
---     let k = "k" ++ (if pos then "+" else "") ++ "_"
---     v <- mkRealVar =<< mkStringSymbol (k ++ show id)
---     when pos (assert =<< mkGe v =<< mkReal 0 1)
---     return v
---   toZ3 (AnnCoeff q) = toZ3 q
 
 instance Encodeable Coeff where
   toZ3 q = mkRealVar =<< mkStringSymbol (printCoeff q)
@@ -76,8 +67,6 @@ genOptiTarget pot fns varIdGen = evalState buildTarget (OptimizationState varIdG
         optimizeFn fn = do
           let (q, q') = withCost fn
           cOptimize pot q q'
-
-  
 
 
 evalCoeffs :: MonadZ3 z3 => Model -> [Coeff] -> z3 (Map Coeff Rational)
@@ -156,8 +145,6 @@ solveZ3 pot sig typingCs varIdGen = evalZ3 go
           tracker <- assertConstraints (typingCs ++ optiCs ++ rankEqual) -- ++ solutionCheck)
           target' <- toZ3 optiTarget
           optimizeMinimize target'
---          t <- mkReal 2 1
---          assert =<< mkLe target' t
 
           result <- check
           case result of
@@ -167,8 +154,8 @@ solveZ3 pot sig typingCs varIdGen = evalZ3 go
                             Just model -> model
                             Nothing -> error "bug"
               solution <- modelToString model
-              --Right <$> evalCoeffs (trace solution model) (getCoeffs sig)
-              Right <$> evalCoeffs model (getCoeffs sig)
+              Right <$> evalCoeffs (trace solution model) (getCoeffs sig)
+              --Right <$> evalCoeffs model (getCoeffs sig)
             Unsat -> do
               unsatCore <- getUnsatCore
               astStrings <- mapM astToString unsatCore

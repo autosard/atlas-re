@@ -127,7 +127,7 @@ cLetBinding q p = extendAnn p $
        onlyVarsOrConst idx xs,
        (not . justConst) idx]
   -- move const
-  ++ [(`le` (q![mix|2|])) <$> def [mix|2|]]
+  ++ [(`le` (q!?[mix|2|])) <$> def [mix|2|]]
   where xs = annVars p
 
 
@@ -136,7 +136,7 @@ cLetBody q r p p' ps' x bdes = extendAnn r $
   [(`eq` (q!y)) <$> def y | y <- ys]
   ++ [(`eq` (p'!("e" :: Id))) <$> def x]
   -- move const 
-  ++ [(`eq` sum [sub [p'![mix|2|], p![mix|2|]], q![mix|2|]]) <$> def [mix|2|]]
+  ++ [(`eq` sum [sub [p'![mix|2|], p![mix|2|]], q!?[mix|2|]]) <$> def [mix|2|]]
   ++ [(`eq` (p'!pIdx)) <$> def [mix|x^d,e|]
      | pIdx <- mixes p',
        let d = facForVar pIdx exp,
