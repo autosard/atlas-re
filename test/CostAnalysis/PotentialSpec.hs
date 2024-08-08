@@ -40,32 +40,35 @@ spec = do
     it "generates the correct equality constraints" $ do
       let (x1, x2) = ("x1", "x2")
       let vars = [(x1, treeT), (x2, treeT)]
-      let q = RsrcAnn 0 vars "Q" "" $ S.fromList [[mix|2|], [mix|x1^1|]]
+      let q_ = RsrcAnn 0 vars "Q" "" S.empty
       let p = RsrcAnn 1 vars "P" "" $ S.fromList [[mix|2|], [mix|x1^1|], [mix|x2^1|]]
+      let (q, cs) = eqExceptConst pot q_ p
       let should = [Eq (q![mix|x1^1|]) (p![mix|x1^1|]),
-                    Eq (ConstTerm 0) (p![mix|x2^1|])]
-      eqExceptConst pot q p `shouldBe` should
+                    Eq (q![mix|x2^1|]) (p![mix|x2^1|])]
+      cs `shouldBe` should
   describe "eqPlus" $ do
     it "generates the correct constraints" $ do
       let (x1, x2) = ("x1", "x2")
       let vars = [(x1, treeT), (x2, treeT)]
-      let q = RsrcAnn 0 vars "Q" "" $ S.fromList [[mix|2|], [mix|x1^1|]]
+      let q_ = RsrcAnn 0 vars "Q" "" S.empty
       let p = RsrcAnn 1 vars "P" "" $ S.fromList [[mix|2|], [mix|x1^1|], [mix|x2^1|]]
+      let (q, cs) = eqPlus pot q_ p (ConstTerm 1)
       let should = [Eq (q![mix|2|]) (Sum [(p![mix|2|]), ConstTerm 1]),
                     Eq (q![mix|x1^1|]) (p![mix|x1^1|]),
-                    Eq (ConstTerm 0) (p![mix|x2^1|])]
-      eqPlus pot q p (ConstTerm 1) `shouldBe` should
+                    Eq (q![mix|x2^1|]) (p![mix|x2^1|])]
+      cs `shouldBe` should
   describe "eqMinus" $ do
     it "generates the correct constraints" $ do
       let (x1, x2) = ("x1", "x2")
       let vars = [(x1, treeT), (x2, treeT)]
       let k = VarTerm 0
-      let q = RsrcAnn 0 vars "Q" "" $ S.fromList [[mix|2|], [mix|x1^1|]]
+      let q_ = RsrcAnn 0 vars "Q" "" S.empty
       let p = RsrcAnn 1 vars "P" "" $ S.fromList [[mix|2|], [mix|x1^1|], [mix|x2^1|]]
+      let (q, cs) = eqMinus pot q_ p k                                                      
       let should = [Eq (q![mix|2|]) (Diff [(p![mix|2|]), k]),
                     Eq (q![mix|x1^1|]) (p![mix|x1^1|]),
-                    Eq (ConstTerm 0) (p![mix|x2^1|])]
-      eqMinus pot q p k `shouldBe` should
+                    Eq (q![mix|x2^1|]) (p![mix|x2^1|])]
+      cs `shouldBe` should
   describe "forAllCombinations" $ do
     it "generates the correct constraints" $ do
       let (x1, x2, x3) = ("x1", "x2", "x3")

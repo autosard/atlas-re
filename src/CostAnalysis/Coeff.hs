@@ -109,12 +109,21 @@ instance Show CoeffIdx where
   show (Pure x) = "(" ++ T.unpack x ++ ")"
   show (Mixed xs) = "(" ++ L.intercalate "," (map show (S.toDescList xs)) ++ ")"
 
-substitute :: CoeffIdx -> Id -> CoeffIdx
-substitute (Pure x) y = Pure y
-substitute (Mixed factors) y = Mixed (S.map (subFactor y) factors)
-  where subFactor _ (Const c) = Const c 
-        subFactor y (Arg x a) = Arg y a
+-- substitute :: CoeffIdx -> Id -> CoeffIdx
+-- substitute (Pure x) y = Pure y
+-- substitute (Mixed factors) y = Mixed (S.map (subFactor y) factors)
+--   where subFactor _ (Const c) = Const c 
+--         subFactor y (Arg x a) = Arg y a
 
+substitute :: [Id] -> [Id] -> CoeffIdx -> CoeffIdx
+substitute from to (Pure x) = case L.elemIndex x from of
+  Just i -> Pure $ to !! i
+  Nothing -> error "invalid index"
+substitute from to (Mixed factors) = Mixed (S.map subFactor factors)
+  where subFactor (Const c) = Const c
+        subFactor (Arg x a) = case L.elemIndex x from of
+          Just i -> Arg (to !! i) a
+          Nothing -> error "invalid index"
 
 
 class HasCoeffs a where

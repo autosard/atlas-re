@@ -134,9 +134,8 @@ forAllCombinations q xs (rangeA, rangeB) x =
 
 calculateBound :: (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> Map Coeff Rational
 calculateBound (from, to) solution = M.fromList $ map subtract (getCoeffs from)
-  where [arg] = annVars to
-        subtract left@(Coeff _ _ _ idx) = let
-          (CoeffTerm right) = to!substitute idx arg in
+  where subtract left@(Coeff _ _ _ idx) = let
+          (CoeffTerm right) = to!substitute (annVars to) (annVars from) idx in
           case solution M.!? right of
             Just rightValue -> case solution M.!? left of
               Just leftValue -> let diff =  leftValue - rightValue in (left, diff)

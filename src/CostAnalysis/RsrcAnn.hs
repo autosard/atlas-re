@@ -61,8 +61,10 @@ class AnnLike a where
   infixl 9 !?
   (!?) :: (Index i, Show i) => a -> i -> Term
   definedIdxs :: a -> Set CoeffIdx
+  argVars :: a -> [Id]
 
 instance AnnLike RsrcAnn where
+  argVars = annVars
   definedIdxs q = q^.coeffs
   (!) ann idx = case coeffForIdx ann (toIdx idx) of
     Just q -> CoeffTerm q
@@ -96,24 +98,33 @@ instance Index [Factor] where
 instance Index (Set Factor) where
   toIdx factors = mixed factors
 
-type PointWiseOp = Map CoeffIdx Term
+data PointWiseOp = PointWiseOp {
+  opArgs :: [Id] ,
+  opCoeffs :: Map CoeffIdx Term}
 
-instance AnnLike (Map CoeffIdx Term) where
-  definedIdxs = M.keysSet
-  (!) ann idx = ann M.! toIdx idx
-  (!?) ann idx = fromMaybe (ConstTerm 0) $ ann M.!? toIdx idx
+instance AnnLike PointWiseOp where
+  argVars = opArgs
+  definedIdxs op =  M.keysSet $ opCoeffs op
+  (!) op idx = opCoeffs op M.! toIdx idx
+  (!?) op idx = fromMaybe (ConstTerm 0) $ opCoeffs op M.!? toIdx idx
 
 annScalarMul :: RsrcAnn -> Term -> PointWiseOp
-annScalarMul q k = M.fromList [(idx, prod [q!idx, k]) | idx <- S.toList (q^.coeffs)]
+annScalarMul q k = PointWiseOp (annVars q) $
+  M.fromList [(idx, prod [q!idx, k]) | idx <- S.toList (q^.coeffs)]
 
 annAdd :: RsrcAnn -> PointWiseOp -> PointWiseOp
-annAdd q op = M.fromList
-  [(idx, sum [q!?idx, op!?idx])
-  | idx <- S.toList $ (q^.coeffs) `S.union` definedIdxs op]
+annAdd q op | annVars q == opArgs op = PointWiseOp (annVars q) $
+  M.fromList [(idx, sum [q!?idx, op!?idx])
+             | idx <- S.toList $ (q^.coeffs) `S.union` definedIdxs op]
+            | otherwise = error "point wise operation not valid for annotation likes with different arguments."
 
 annLikeEq :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
 annLikeEq q op = concat [eq (q!?idx) (op!?idx)
-             | idx <- S.toList $ definedIdxs op `S.union` definedIdxs op]
+             | idx <- S.toList $ definedIdxs q `S.union` definedIdxs op]
+
+annLikeUnify :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
+annLikeUnify q p = concat [eq (q!?idx) (p!?substitute (argVars q) (argVars p) idx)
+                          | idx <- S.toList $ definedIdxs q]
 
 annEq :: RsrcAnn -> RsrcAnn -> [Constraint]
 annEq q p | (length . _args $ q) /= (length . _args $ p) = error "Annotations with different lengths can not be equal."

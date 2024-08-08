@@ -59,4 +59,18 @@ spec = do
     it "checks wether an index contains only the given variables and no constant factors" $ do
       let (x1, x2, x3) = ("x1", "x2", "x3")
       let is = onlyVarsOrConst [mix|x2^1,x3^1|] [x2, x3]
-      is `shouldBe` True                                                                       
+      is `shouldBe` True
+  describe "substitute" $ do
+    it "substitutes the variables in an index for the given variables." $ do
+      let (x1, x2) = ("x1", "x2")
+      let (y1, y2) = ("y1", "y2")
+      substitute [x1, x2] [y1, y2] [mix|x1^1,x2^2,2|]  `shouldBe` [mix|y1^1,y2^2,2|]
+      
+
+    
+                                  
+                                   
+                                   
+
+                                  
+                                   

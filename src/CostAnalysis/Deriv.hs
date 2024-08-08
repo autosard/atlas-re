@@ -179,7 +179,7 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       let (r, rCs) = cLetBody pot q r_ p p' ps' x bdes
       deriv2 <- proveExpr t2 cf ctxE2' e2 r q'
 
-      conclude R.Let cf q q' (pCs ++ rCs) e ([deriv1, deriv2] ++ cfDerivs)
+      conclude R.Let cf q q' (pCs ++ rCs ++ cfCs) e ([deriv1, deriv2] ++ cfDerivs)
   -- let:base
   | otherwise = do
       pot <- view potential
@@ -203,10 +203,11 @@ proveApp tactic False ctx e@(App id _) q q' = do
   fnSig <- use sig
   let (p, p') = withCost $ fnSig M.! id
   let (r, r') = withoutCost $ fnSig M.! id
+  
   k <- freshVar
   let cs = ge k (ConstTerm 1)
-        ++ annLikeEq q (annAdd p (annScalarMul r k))
-        ++ annLikeEq q' (annAdd p' (annScalarMul r' k))
+        ++ annLikeUnify q (annAdd p (annScalarMul r k))
+        ++ annLikeUnify q' (annAdd p' (annScalarMul r' k))
   conclude R.App False q q' cs e []
 proveApp tactic True ctx e@(App id _) q q' = do
   pot <- view potential
@@ -214,8 +215,8 @@ proveApp tactic True ctx e@(App id _) q q' = do
   let (p, p') = withoutCost $ fnSig M.! id
   k <- freshVar
   let cs = ge k (ConstTerm 1)
-        ++ annLikeEq q (annScalarMul p k)
-        ++ annLikeEq q' (annScalarMul p' k)
+        ++ annLikeUnify q (annScalarMul p k)
+        ++ annLikeUnify q' (annScalarMul p' k)
   conclude R.App True q q' cs e []  
 
 proveWeakenVar :: Prove TypedExpr Derivation
@@ -247,7 +248,7 @@ proveWeaken tactic@(Rule (R.Weaken wArgs) _) cf ctx e q q' = do
   
   p' <- enrichWithDefaults "P'" "" q'
   -- q' <= p'
-  p'Cs <-  farkas pot wArgs' (p^.coeffs) q' p'
+  p'Cs <-  farkas pot wArgs' (p'^.coeffs) q' p'
   
   deriv <- proveExpr t cf ctx e p p'
   conclude (R.Weaken wArgs) cf q q' (pCs ++ p'Cs) e [deriv]
@@ -259,9 +260,9 @@ proveShift tactic cf ctx e q q' = do
 
   k <- freshVar
   
-  p_ <- emptyAnn "P" "" (q^.args)
+  p_ <- defaultAnn "P" "" (q^.args)
   let (p, pCs) = eqMinus pot p_ q k
-  p'_ <- emptyAnn "P'" "" (q'^.args)
+  p'_ <- defaultAnn "P'" "" (q'^.args)
   let (p', p'Cs) = eqMinus pot p'_ q' k
   
   let cs = ge k (ConstTerm 0) ++ pCs ++ p'Cs
@@ -276,7 +277,7 @@ proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
     deriv <- proveExpr subTactic cf ctx e1 q q'
     conclude R.TickDefer cf q q' [] e [deriv]
   else do
-    p_ <- emptyAnn "P" "" (q'^.args)
+    p_ <- defaultAnn "P" "" (q'^.args)
     let (p, cs) = eqPlus pot p_ q' (ConstTerm (fromMaybe 1 c))
 
     deriv <- proveExpr subTactic cf ctx e1 q p

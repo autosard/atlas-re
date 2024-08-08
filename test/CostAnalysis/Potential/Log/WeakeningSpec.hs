@@ -18,9 +18,6 @@ import CostAnalysis.Potential
 import CostAnalysis.Potential.Log.Base hiding (rsrcAnn)
 import CostAnalysis.Potential.Log.Helper
 
-import Debug.Trace (trace)
-traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
-
 spec :: Spec
 spec = do
   describe "monoLe" $ do
@@ -71,7 +68,7 @@ spec = do
         let p = defaultAnn pot 0 "P" "" args
         let q = fromAnn 1 "Q" "" p
         let rows = []
-        let (asIs, bsIs) = monoLattice potArgs p q
+        let (asIs, bsIs) = monoLattice (definedIdxs p)
         S.fromList (V.toList asIs ) `shouldBe` S.fromList rows
         bsIs `shouldBe` []
     context "given length 1 annotations" $ do
@@ -84,7 +81,7 @@ spec = do
               [0, 0, 1,-1, 0],
               [0, 0, 0, -1, 1],
               [0, -1, 0, 0, 1]]
-        let (asIs, bsIs) = monoLattice potArgs p q 
+        let (asIs, bsIs) = monoLattice (definedIdxs p)
         S.fromList (V.toList asIs ) `shouldBe` S.fromList rows
         bsIs `shouldBe` replicate 4 0
     context "given length 2 annotations" $ do
@@ -126,7 +123,7 @@ spec = do
                     [0, 0, 0, 0, 0, 0, 0,-1, 0, 0, 0, 1],
                     [0, 0, 0, 0, 0, 0, 0, 0,-1, 0, 0, 1],
                     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,-1, 1]]
-        let (asIs, bsIs) = monoLattice potArgs (traceShow "p" p) q 
+        let (asIs, bsIs) = monoLattice (definedIdxs p)
         S.fromList (V.toList asIs ) `shouldBe` S.fromList rows
         bsIs `shouldBe` replicate 24 0
   describe "logLemma" $ do
@@ -135,7 +132,7 @@ spec = do
         let args = []
         let p = defaultAnn pot 0 "P" "" args
         let q = fromAnn 1 "Q" "" p
-        let (asIs, bsIs) = logLemma potArgs p q 
+        let (asIs, bsIs) = logLemma (map fst args) (definedIdxs p)
         V.toList asIs `shouldBe` []
         bsIs `shouldBe` []
     context "given length 1 annotations" $ do
@@ -143,7 +140,7 @@ spec = do
         let args = [("x", treeT)]
         let p = defaultAnn pot 0 "P" "" args
         let q = fromAnn 1 "Q" "" p
-        let (asIs, bsIs) = logLemma potArgs p q 
+        let (asIs, bsIs) = logLemma (map fst args) (definedIdxs p)
         V.toList asIs `shouldBe` []
         bsIs `shouldBe` []        
     context "given length 3 annotations" $ do
@@ -155,7 +152,7 @@ spec = do
         let rows = map V.fromList [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 1, -2, 0, 0, 1, 0, 0],
                                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, -2, 0, 0, 1],
                                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, -2, 1]]
-        let (asIs, bsIs) = logLemma potArgs (traceShow "p" p) q 
+        let (asIs, bsIs) = logLemma (map fst args) (definedIdxs p)
         S.fromList (V.toList asIs ) `shouldBe` S.fromList rows
         bsIs `shouldBe` replicate 3 0
         
