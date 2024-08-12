@@ -36,11 +36,11 @@ data RuleApp
   | ProgRuleApp TypedModule
 
 printRuleApp :: Set Constraint -> RuleApp -> String
-printRuleApp unsatCore (ExprRuleApp rule cf q q' cs e) = show rule ++ printCf ++ printAnns ++": " ++ printCs (unsat cs) ++ " " ++ printExprHead e
+printRuleApp unsatCore (ExprRuleApp rule cf q q' cs e) = show rule ++ printCf ++ printAnns ++": " ++ printExprHead e ++ printCs (unsat cs)  
   where printAnns = " [" ++ printQ q ++ " |- " ++ printQ q' ++ "]"
-        printCs cs = "{" ++ intercalate "," (S.toList cs) ++ "}"
+        printCs cs = "\n\t" ++ intercalate ",\n\t" (S.toList cs) 
         unsat cs = S.map printConstraint (S.fromList cs `S.intersection` unsatCore)
-        printQ q = "q" ++ show (q^.annId)
+        printQ q = "q" ++ show (q^.annId) 
         printCf = if cf then " (cf)" else ""
 printRuleApp _ (FunRuleApp (Fn name _ _)) = "Fun: " ++ unpack name
 printRuleApp _ (ProgRuleApp _) = "Prog" 

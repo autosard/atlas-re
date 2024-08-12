@@ -45,7 +45,7 @@ cConst q q'
       ++ eq (q!?x2) (q'!?exp) 
       ++ eq (q!?[mix|x1^1|]) (q'!?exp) 
       ++ eq (q!?[mix|x2^1|]) (q'!?exp) 
-      ++ concat [eq (q!?[mix|x1^a,x2^a,c|]) (q'!?[mix|exp^a,c|])
+      ++ concat [eq (q!idx) (q'!?[mix|exp^a,c|])
                 | idx <- mixes q,
                   let a = facForVar idx x1,
                   a == facForVar idx x2,

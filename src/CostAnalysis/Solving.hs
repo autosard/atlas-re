@@ -12,11 +12,12 @@ import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.Optimization
 import CostAnalysis.Potential
-import Data.Ratio(numerator, denominator)
+import Data.Ratio(numerator, denominator, (%))
 import Z3.Monad 
 import CostAnalysis.RsrcAnn
 import Control.Monad (mapAndUnzipM, (<=<))
 import Control.Monad.State (evalState)
+import CostAnalysis.AnnIdxQuoter(mix)
 
 import Data.Map(Map)
 import qualified Data.Map as M
@@ -100,17 +101,17 @@ assertCoeffsPos cs = do
   positiveCs <- mapM (\coeff -> mkGe coeff =<< mkReal 0 1) annCoeffs'
   mapM_ assert positiveCs
 
--- checkSolution :: RsrcSignature -> [Constraint]
--- checkSolution sig = let t = "t" :: Id
---                         e = "e" :: Id in
---   [Eq (CoeffTerm (Coeff 0 "Q" "log" (Pure t))) (ConstTerm (1 % 2)),
---   Eq (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|t^1|]))) (ConstTerm (3 % 2)),
---   Eq (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|t^1,2|]))) (ConstTerm (0 % 1)),
---   Eq (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|2|]))) (ConstTerm (1 % 1)),
---   Eq (CoeffTerm (Coeff 1 "Q'" "log" (Pure e))) (ConstTerm (1 % 2)),
---   Eq (CoeffTerm (Coeff 1 "Q'" "log" (Mixed [mix|e^1|]))) (ConstTerm (0 % 1)),
---   Eq (CoeffTerm (Coeff 1 "Q'" "log" (Mixed [mix|e^1,2|]))) (ConstTerm (0 % 1)),
---   Eq (CoeffTerm (Coeff 1 "Q'" "log" (Mixed [mix|2|]))) (ConstTerm (1 % 1))]
+checkSolution :: RsrcSignature -> [Constraint]
+checkSolution sig = let t = "t" :: Id
+                        e = "e" :: Id in
+  [Eq (CoeffTerm (Coeff 0 "Q" "fn" (Pure t))) (ConstTerm (1 % 2)),
+   Eq (CoeffTerm (Coeff 0 "Q" "fn" [mix|t^1|])) (ConstTerm (3 % 2)),
+   Eq (CoeffTerm (Coeff 0 "Q" "fn" [mix|t^1,2|])) (ConstTerm (0 % 1)),
+   Eq (CoeffTerm (Coeff 0 "Q" "fn" [mix|2|])) (ConstTerm (1 % 1)),
+   Eq (CoeffTerm (Coeff 1 "Q'" "fn" (Pure e))) (ConstTerm (1 % 2)),
+   Eq (CoeffTerm (Coeff 1 "Q'" "fn" [mix|e^1|])) (ConstTerm (0 % 1)),
+   Eq (CoeffTerm (Coeff 1 "Q'" "fn" [mix|e^1,2|])) (ConstTerm (0 % 1)),
+   Eq (CoeffTerm (Coeff 1 "Q'" "nf" [mix|2|])) (ConstTerm (1 % 1))]
   -- [Le (CoeffTerm (Coeff 0 "Q" "log" (Pure t))) (ConstTerm (1 % 1)),
   -- Le (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|t^1|]))) (ConstTerm (3 % 2)),
   -- Le (CoeffTerm (Coeff 0 "Q" "log" (Mixed [mix|t^1,2|]))) (ConstTerm (0 % 1)),
@@ -140,9 +141,9 @@ solveZ3 pot sig typingCs varIdGen = evalZ3 go
   where go = do
           let (optiTarget, optiCs) = genOptiTarget pot (M.elems sig) varIdGen
           assertCoeffsPos typingCs
-          --let solutionCheck = checkSolution sig
+          let solutionCheck = checkSolution sig
           let rankEqual = setRankEqual sig
-          tracker <- assertConstraints (typingCs ++ optiCs ++ rankEqual) -- ++ solutionCheck)
+          tracker <- assertConstraints (typingCs ++ optiCs ++ solutionCheck) --rankEqual) -- ++ solutionCheck)
           target' <- toZ3 optiTarget
           optimizeMinimize target'
 

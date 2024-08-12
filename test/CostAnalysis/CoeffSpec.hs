@@ -22,6 +22,16 @@ spec = do
       let should = idxToSet [mix|x1^1|]
       let is = varsExcept [mix|x1^1,x2^1,x3^1,2|] [x2, x3]
       is `shouldBe` should
+    it "removes factors for empty given variables and the constant factor." $ do
+      let (x1, x2, x3) = ("x1", "x2", "x3")
+      let should = idxToSet [mix|x1^1,x2^1,x3^1|]
+      let is = varsExcept [mix|x1^1,x2^1,x3^1,2|] []
+      is `shouldBe` should
+    it "removes factors for empty given variables and the constant factor." $ do
+      let (x1, x2, x3) = ("x1", "x2", "x3")
+      let should = idxToSet [mix||]
+      let is = varsExcept [mix||] []
+      is `shouldBe` should
   describe "restrict" $ do
     it "restricts factors to given variables, keeping constant factors." $ do
       let (x1, x2, x3) = ("x1", "x2", "x3")
@@ -52,6 +62,10 @@ spec = do
       let (x1, x2, x3) = ("x1", "x2", "x3")
       let is = onlyVarsOrConst [mix|x1^1,x2^1,x3^1,2|] [x2, x3]
       is `shouldBe` False
+    it "checks wether an index contains only the given empty variables and no constant factors." $ do
+      let (x1, x2, x3) = ("x1", "x2", "x3")
+      let is = onlyVarsOrConst [mix||] []
+      is `shouldBe` True
     it "checks wether an index contains only the given variables and no constant factors." $ do
       let (x1, x2, x3) = ("x1", "x2", "x3")
       let is = onlyVarsOrConst [mix|x2^1,x3^1,2|] [x2, x3]

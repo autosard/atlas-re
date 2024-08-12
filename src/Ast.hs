@@ -133,13 +133,13 @@ pattern Fn id args e <- FunDef _ id args e
 
 
 printExprHead :: Expr a -> String
-printExprHead (Var _) = "var"
+printExprHead (Var id) = T.unpack id 
 printExprHead (Lit l) = show l
-printExprHead (Const id _) = T.unpack id
+printExprHead (Const id args) = T.unpack id ++ " " ++ unwords (map printExprHead args)
 printExprHead (Ite {}) = "ite"
-printExprHead (Match _ _) = "match"
+printExprHead (Match (Var id) _) = "match " ++ T.unpack id
 printExprHead (App _ _) = "app"
-printExprHead (Let {}) = "let"
+printExprHead (Let id e1 e2) = "let " ++ T.unpack id ++ " = " ++ printExprHead e1
 printExprHead (Tick _ _) = "tick"
 printExprHead (Coin _) = "coin"
 

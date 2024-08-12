@@ -1,4 +1,5 @@
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE InstanceSigs #-}
 
 module CostAnalysis.Coeff where
 
@@ -21,7 +22,7 @@ data Coeff =
   deriving (Eq, Ord, Show)
 
 printCoeff :: Coeff -> String
-printCoeff (Coeff id label comment idx) = "q" ++ show id ++ show idx
+printCoeff (Coeff id label comment idx) = "q" ++ show id ++ "[" ++ T.unpack label ++ "]" ++ show idx
 
 data Factor = Const Int | Arg Id Int
   deriving (Eq, Ord)
@@ -96,6 +97,7 @@ onlyVars idx xs = null $ except idx xs
 onlyVarsOrConst :: CoeffIdx -> [Id] -> Bool
 onlyVarsOrConst idx xs = null $ varsExcept idx xs 
 
+justConst :: CoeffIdx -> Bool
 justConst (Mixed idx) = all isConst idx
 justConst _ = error "pure index"
 
@@ -106,6 +108,7 @@ idxSum (Mixed idx) = foldr go 0 idx
 idxSum _ = error "idx sum only makes sense for mixed indicies."
 
 instance Show CoeffIdx where
+  show :: CoeffIdx -> String
   show (Pure x) = "(" ++ T.unpack x ++ ")"
   show (Mixed xs) = "(" ++ L.intercalate "," (map show (S.toDescList xs)) ++ ")"
 

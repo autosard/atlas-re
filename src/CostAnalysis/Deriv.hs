@@ -30,7 +30,6 @@ import CostAnalysis.ProveMonad
 import StaticAnalysis(freeVars, calledFunctions')
 import Data.Maybe (fromMaybe, mapMaybe)
 import SourceError
-import GHC.Stack (ccsParent)
 
 type ProofResult = (Derivation, [Constraint], RsrcSignature)
 
@@ -119,7 +118,7 @@ proveMatchArm matchVar tactic cf ctx arm@(MatchArm pat@(Alias _ x) e) q q' = do
   if M.member x ctx then do
     deriv <- proveExpr tactic cf ctx e q q'
     return ([], deriv)
-  else errorFrom (SynArm arm) "found invalid alias (variable not previosly defined) in match arm."
+  else errorFrom (SynArm arm) "found invalid alias (variable not previously defined) in match arm."
 proveMatchArm _ _ _ _ arm _ _ = errorFrom (SynArm arm) "unsupported pattern match in rule (match)."
 
 proveMatch :: Prove TypedExpr Derivation
