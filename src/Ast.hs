@@ -243,16 +243,19 @@ type ParsedMatchArm = MatchArm Parsed
 type ParsedPattern = Pattern Parsed
 type ParsedPatternVar = PatternVar Parsed
 
+
 deriving instance Show ParsedPatternVar
 deriving instance Show ParsedPattern
 deriving instance Show ParsedMatchArm
 deriving instance Show ParsedExpr
+deriving instance Show ParsedFunDef
 
 data ParsedFunAnn = ParsedFunAnn {
   pfLoc :: SourcePos,
   pfFqn :: Fqn,
   pfType :: Maybe Scheme,
   pfResourceAnn :: Maybe FullResourceAnn}
+  deriving (Eq, Show)
 
 data Parsed
 type instance XExprAnn Parsed = SourcePos
