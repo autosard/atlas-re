@@ -6,15 +6,20 @@
 
 module CostAnalysis.Deriv where
 
+
 import qualified Data.Tree as T
 import Data.Map(Map)
 import qualified Data.Map as M
+import Data.Set(Set)
 import qualified Data.Set as S
+import qualified Data.Text as Text
+import Prelude hiding (or)
+import Data.Ratio((%))
 
 import Ast hiding (Coefficient)
 import Primitive(Id)
 import Control.Monad.RWS
-import Control.Monad.Except
+import Control.Monad.Except ( runExceptT )
 import Lens.Micro.Platform
 import Typing.Type
 import Typing.Scheme (toType)
@@ -23,6 +28,9 @@ import qualified CostAnalysis.Rules as R
 import CostAnalysis.Potential hiding (Factor(..), emptyAnn, defaultAnn, defaultNegAnn, enrichWithDefaults)
 import CostAnalysis.RsrcAnn hiding (fromAnn)
 import CostAnalysis.Constraint ( ge,
+                                 le,
+                                 eq,
+                                 or,
                                  Constraint,
                                  Term(ConstTerm) )
 import CostAnalysis.Weakening
@@ -30,6 +38,7 @@ import CostAnalysis.ProveMonad
 import StaticAnalysis(freeVars, calledFunctions')
 import Data.Maybe (fromMaybe, mapMaybe)
 import SourceError
+
 
 type ProofResult = (Derivation, [Constraint], RsrcSignature)
 
@@ -71,8 +80,8 @@ proveCmp _ cf _ e q q' = do
 
 proveVar :: Prove TypedExpr Derivation
 proveVar _ cf ctx e@(Var id) q q' = do
-  when (length ctx /= 1) $ errorFrom (SynExpr e) "(var) applied to non-singleton context."
-  when (M.notMember id ctx) $ errorFrom (SynExpr e) "(var) applied for variable that is not in the context."
+  --when (length ctx /= 1) $ errorFrom (SynExpr e) "(var) applied to non-singleton context."
+  when (M.notMember id ctx) $ errorFrom (SynExpr e) $ "(var) applied for variable '" ++ Text.unpack id ++ "' that is not in the context."
   let cs = annEq q q'
   conclude R.Var cf q q' cs e []
 
@@ -164,6 +173,7 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       
       let rangeD = rangeA . ranges $ pot
       let rangeE = if neg then rangeBNeg . ranges $ pot else rangeB . ranges $ pot
+--      let bdes = if null delta then [] else
       let bdes = forAllCombinations q (M.keys ctxE2) (rangeD, rangeE) x
       
       ps_ <- annArrayFromIdxs bdes "P" (M.toAscList ctxE1)
@@ -184,15 +194,16 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       pot <- view potential
       let [t1, t2] = subTactics 2 tactic
       (ctxE1, ctxE2) <- splitLetCtx ctx e1 e2
+      let ctxE2' = M.insert x (getType e1) ctxE2 
 
       p_ <- emptyAnn "P" "let:base e1" (M.toAscList ctxE1)
       p' <- defaultAnn  "P'"  "let:base e1" []
-      r_ <- emptyAnn "R" "let:base e2" (M.toAscList ctxE2)
+      r_ <- emptyAnn "R" "let:base e2" (M.toAscList ctxE2')
       
       let (p, pCs) = cLetBindingBase pot q p_ 
       deriv1 <- proveExpr t1 cf ctxE1 e1 p p'
       let (r, rCs) = cLetBodyBase pot q r_ p'
-      deriv2 <- proveExpr t2 cf ctxE2 e2 r q'
+      deriv2 <- proveExpr t2 cf ctxE2' e2 r q'
 
       conclude R.Let cf q q' (pCs ++ rCs) e [deriv1, deriv2]
 
@@ -204,7 +215,9 @@ proveApp tactic False ctx e@(App id _) q q' = do
   let (r, r') = withoutCost $ fnSig M.! id
   
   k <- freshVar
-  let cs = ge k (ConstTerm 1)
+  let cs =
+        --or (concatMap (eq k . ConstTerm) [0,1,2])
+        or (eq k (ConstTerm 0) ++ ge k (ConstTerm 1))
         ++ annLikeUnify q (annAdd p (annScalarMul r k))
         ++ annLikeUnify q' (annAdd p' (annScalarMul r' k))
   conclude R.App False q q' cs e []
@@ -213,23 +226,28 @@ proveApp tactic True ctx e@(App id _) q q' = do
   fnSig <- use sig
   let (p, p') = withoutCost $ fnSig M.! id
   k <- freshVar
-  let cs = ge k (ConstTerm 1)
+  let cs =
+        --or (concatMap (eq k . ConstTerm) [0,1,2])
+        or (eq k (ConstTerm 0) ++ ge k (ConstTerm 1))
         ++ annLikeUnify q (annScalarMul p k)
         ++ annLikeUnify q' (annScalarMul p' k)
-  conclude R.App True q q' cs e []  
+  conclude R.App True q q' cs e []
+
+redundentVars :: RsrcAnn -> TypedExpr -> Set Id
+redundentVars q e = S.fromList (annVars q) S.\\ freeVars e
 
 proveWeakenVar :: Prove TypedExpr Derivation
 proveWeakenVar tactic cf ctx e q q' = do
   pot <- view potential
-  let redundantVars = M.keysSet ctx S.\\ freeVars e
-  var <- if S.null redundantVars then
+  let redundant = redundentVars q e
+  var <- if S.null redundant then
         errorFrom (SynExpr e) "Could not find a redundant variable to eleminate with the (w:var) rule."
         else
-        return $ S.elemAt 0 redundantVars
+        return $ S.elemAt 0 redundant
   let ctx' = M.delete var ctx 
   let [t] = subTactics 1 tactic
   
-  r_ <- emptyAnn "R" "" (M.toAscList ctx')
+  r_ <- emptyAnn "R" "weaken var" (M.toAscList ctx')
   let (r,cs) = cWeakenVar pot q r_
   
   deriv <- proveExpr t cf ctx' e r q'
@@ -259,9 +277,9 @@ proveShift tactic cf ctx e q q' = do
 
   k <- freshVar
   
-  p_ <- defaultAnn "P" "" (q^.args)
+  p_ <- emptyAnn "P" "" (q^.args)
   let (p, pCs) = eqMinus pot p_ q k
-  p'_ <- defaultAnn "P'" "" (q'^.args)
+  p'_ <- emptyAnn "P'" "" (q'^.args)
   let (p', p'Cs) = eqMinus pot p'_ q' k
   
   let cs = ge k (ConstTerm 0) ++ pCs ++ p'Cs
@@ -276,28 +294,33 @@ proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
     deriv <- proveExpr subTactic cf ctx e1 q q'
     conclude R.TickDefer cf q q' [] e [deriv]
   else do
-    p_ <- defaultAnn "P" "" (q'^.args)
+    p_ <- emptyAnn "P" "" (q'^.args)
     let (p, cs) = eqPlus pot p_ q' (ConstTerm (fromMaybe 1 c))
 
     deriv <- proveExpr subTactic cf ctx e1 q p
 
     conclude R.TickDefer cf q q' cs e [deriv]
 
+removeRedundantVars :: Prove TypedExpr Derivation -> Prove TypedExpr Derivation
+removeRedundantVars prove tactic cf ctx e q q' = if (not . null) (redundentVars q e) then
+  proveWeakenVar (Rule R.WeakenVar [tactic]) cf ctx e q q'
+  else prove tactic cf ctx e q q'
 
 proveExpr :: Prove TypedExpr Derivation
 -- manual tactic
-proveExpr (Rule R.Var []) cf ctx e@(Var _) = proveVar Auto cf ctx e
-proveExpr (Rule R.Cmp []) cf ctx e@(Const {}) | isCmp e = proveCmp Auto cf ctx e
-proveExpr (Rule R.Const []) cf ctx e@(Tuple {}) = provePair Auto cf ctx e
-proveExpr (Rule R.Const []) cf ctx e@(Const {}) = proveConst Auto cf ctx e
+proveExpr tactic@(Rule R.Var []) cf ctx e@(Var _) = removeRedundantVars proveVar tactic cf ctx e
+proveExpr tactic@(Rule R.Cmp []) cf ctx e@(Const {}) | isCmp e = proveCmp tactic cf ctx e
+proveExpr tactic@(Rule R.Const []) cf ctx e@(Tuple {}) = removeRedundantVars provePair tactic cf ctx e
+
+proveExpr tactic@(Rule R.Const []) cf ctx e@(Const {}) = removeRedundantVars proveConst tactic cf ctx e 
 proveExpr tactic@(Rule R.Match _) cf ctx e@(Match {}) = proveMatch tactic cf ctx e
 proveExpr tactic@(Rule R.Ite _) cf ctx e@(Ite {}) = proveIte tactic cf ctx e
 proveExpr tactic@(Rule R.Let _) cf ctx e@(Let {}) = proveLet tactic cf ctx e
-proveExpr tactic@(Rule R.TickDefer _) cf ctx e = proveTickDefer tactic cf ctx e
+proveExpr tactic@(Rule R.TickDefer _) cf ctx e = removeRedundantVars proveTickDefer tactic cf ctx e
 proveExpr tactic@(Rule R.WeakenVar _) cf ctx e = proveWeakenVar tactic cf ctx e
 proveExpr tactic@(Rule (R.Weaken _) _) cf ctx e = proveWeaken tactic cf ctx e
 proveExpr tactic@(Rule R.Shift _) cf ctx e = proveShift tactic cf ctx e
-proveExpr tactic@(Rule R.App _) cf ctx e@(App {}) = proveApp Auto cf ctx e
+proveExpr tactic@(Rule R.App _) cf ctx e@(App {}) = removeRedundantVars proveApp tactic cf ctx e
 -- auto tactic
 -- proveExpr Auto cf ctx e@Leaf = proveWeaken (Rule (R.Weaken []) [Auto]) cf ctx e
 -- proveExpr Auto cf ctx e@(Var _) = proveVar Auto cf ctx e

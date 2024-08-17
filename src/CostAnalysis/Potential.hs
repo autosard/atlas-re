@@ -113,19 +113,24 @@ eqMinus :: Potential -> RsrcAnn -> RsrcAnn -> Term -> (RsrcAnn, [Constraint])
 eqMinus pot q_ p t = (q, cs ++ eqCs)
   where constIdx = constCoeff pot
         (eqQ, eqCs) = eqExceptConst pot q_ p
-        (q, cs) = extendAnn eqQ [(`eq` sub [p!?constIdx, t]) <$> def constIdx]
+        constP = p!?constIdx
+        (q, cs) = case constP of
+          (ConstTerm 0) -> (eqQ, [])
+          _nonZero -> extendAnn eqQ [(`eq` sub [p!?constIdx, t]) <$> def constIdx]
   
   -- | @ 'forAllCombinations' q xs (rangeA, rangeB) x@ generates an index for all combinations of variables in @xs@ and the variable @x@, based on the indices in @q@.
 forAllCombinations :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 forAllCombinations q xs (rangeA, rangeB) x =
-  [[mix|_xsIdx,_xIdx,c|]
+  [[mix|_bs,_xIdx,e|]
   | idx <- varsRestrictMixes q xs,
-    let xsIdx = idxToSet idx,
-    (not . null) xsIdx,
+    let bs = idxToSet idx,
+    (not . null) bs,
     d <- rangeA,
-    d /= 0,
-    let xIdx = S.singleton $ Arg x d,
-    c <- rangeB] 
+    e <- rangeB,
+--    (annVars q == xs) || d /= 0,
+    d + e > 0,
+    let xIdx = S.singleton $ Arg x d]
+--    (annVars q /= xs) || c /= 0] 
 
 
 --  -- | @ 'cPlusMulti' q p r k@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(* \mid P) + \phi(*\mid R) \cdot K\].

@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE StrictData #-}
 
 module Cli(Options(..), Command(..), RunOptions(..), optionsP, EvalOptions(..), cliP) where
 
@@ -36,7 +37,9 @@ optionsP = do
 
 data RunOptions = RunOptions {
   fqn :: Fqn,
-  tacticsPath :: Maybe FilePath}
+  tacticsPath :: Maybe FilePath,
+  switchPrintDeriv :: Bool,
+  switchHideConstraints :: Bool}
 
 runOptionsP :: Parser RunOptions
 runOptionsP = do
@@ -45,6 +48,12 @@ runOptionsP = do
      <> short 't'
      <> metavar "PATH"
      <> help "When present, tactics will be loaded from this directory.")
+  switchPrintDeriv <- switch
+    (long "print-deriv"
+    <> help "Print the derivation tree in ascii.")
+  switchHideConstraints <- switch
+    (long "hide-constraints"
+    <> help "When active, only the derivation tree is printed without constraints.")
   fqn <- argument (eitherReader parseFqn) (metavar "FQN")
   return RunOptions{..}
 

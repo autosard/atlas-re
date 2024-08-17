@@ -1,5 +1,6 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module CostAnalysis.Coeff where
 
@@ -8,6 +9,7 @@ import qualified Data.Text as T
 import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Map(Map)
+import qualified Data.Map as M
 import qualified Data.List as L
 
 import Primitive(Id)
@@ -106,6 +108,21 @@ idxSum (Mixed idx) = foldr go 0 idx
   where go (Const c) s = s + c
         go (Arg _ a) s = s + a
 idxSum _ = error "idx sum only makes sense for mixed indicies."
+
+facToTuple (Arg x a) = (x,a)
+facToTuple (Const a) = (":c",a)
+tupleToFac :: (Id, Int) -> Factor
+tupleToFac (":c", a) = Const a
+tupleToFac (x, a) = Arg x a
+
+idxToMap :: CoeffIdx -> Map Id Int
+idxToMap = M.fromList . S.toList . S.map facToTuple . idxToSet
+
+idxFromMap :: Map Id Int -> CoeffIdx
+idxFromMap = mixed . S.fromList . map tupleToFac . M.toList
+
+addIdxs :: CoeffIdx -> CoeffIdx -> CoeffIdx
+addIdxs idxX idxY = idxFromMap $ M.unionWith (+) (idxToMap idxX) (idxToMap idxY)
 
 instance Show CoeffIdx where
   show :: CoeffIdx -> String

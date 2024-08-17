@@ -51,6 +51,10 @@ varsRestrictMixes ann xs = S.toList $ S.map (mixed . (`varsRestrict` xs)) . S.fi
 pures :: RsrcAnn -> [CoeffIdx]
 pures ann = S.toList . S.filter isPure $ ann^.coeffs
 
+constRange :: RsrcAnn -> [Int]
+constRange q = S.toList $ foldr go S.empty (q^.coeffs) 
+  where go (Pure _) consts = consts
+        go coeff@(Mixed _) consts = S.insert (constFactor coeff) consts
 
 annVars :: RsrcAnn -> [Id]
 annVars = map fst . _args
@@ -186,4 +190,7 @@ instance HasCoeffs FunRsrcAnn where
 instance HasCoeffs RsrcSignature where
   getCoeffs = concatMap getCoeffs . M.elems
 
-  
+-- printSolution :: (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> String
+-- printSolution (q, q') solution =
+--   where printCoeffs p =
+--         printCoeff :: Text -> CoeffIdx -> Rational

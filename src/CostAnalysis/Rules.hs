@@ -11,6 +11,8 @@ import Data.List(intercalate)
 import qualified Data.Set as S
 import Lens.Micro.Platform
 import Data.Text(unpack)
+import Text.Megaparsec
+
 
 data WeakenArg = Mono | L2xy
   deriving (Eq, Ord, Show)
@@ -35,13 +37,25 @@ data RuleApp
   | FunRuleApp TypedFunDef
   | ProgRuleApp TypedModule
 
-printRuleApp :: Set Constraint -> RuleApp -> String
-printRuleApp unsatCore (ExprRuleApp rule cf q q' cs e) = show rule ++ printCf ++ printAnns ++": " ++ printExprHead e ++ printCs (unsat cs)  
-  where printAnns = " [" ++ printQ q ++ " |- " ++ printQ q' ++ "]"
-        printCs cs = "\n\t" ++ intercalate ",\n\t" (S.toList cs) 
-        unsat cs = S.map printConstraint (S.fromList cs `S.intersection` unsatCore)
-        printQ q = "q" ++ show (q^.annId) 
+printRuleApp :: Bool -> Maybe (Set Constraint, String -> String) -> RuleApp -> String
+printRuleApp showCs integrateCore (ExprRuleApp rule cf q q' cs e) =
+  case integrateCore of
+    Just (unsatCore, highlight) ->
+      let unsatCs = unsat cs unsatCore
+          highlight' = if not . null $ unsatCs then highlight else id in
+        highlight' printRule ++ printCs unsatCs 
+    Nothing -> printRule ++ printCs cs
+  where printRule = show rule ++ printCf ++ printAnns ++": " ++ printExprHead e ++ " (" ++ printPos srcPos ++ ")"
+        printAnns = " [" ++ printQ q ++ " |- " ++ printQ q' ++ "]"
+        printCs cs = if showCs then
+          "\n\t" ++ intercalate ",\n\t" (map printConstraint cs)
+          else ""
+        unsat cs core = S.toList (S.fromList cs `S.intersection` core)
+        printQ q = "q" ++ show (q^.annId) ++ "(" ++ intercalate "," (map (unpack . fst) (q^.args)) ++ ")"
         printCf = if cf then " (cf)" else ""
-printRuleApp _ (FunRuleApp (Fn name _ _)) = "Fun: " ++ unpack name
-printRuleApp _ (ProgRuleApp _) = "Prog" 
-
+        srcPos = case teSrc $ getAnn e of
+          Loc pos -> pos
+          DerivedFrom pos -> pos
+        printPos pos = show (unPos . sourceLine $ pos) ++ ","  ++ show (unPos $ sourceColumn pos)
+printRuleApp _ _ (FunRuleApp (Fn name _ _)) = "Fun: " ++ unpack name
+printRuleApp _ _ (ProgRuleApp _) = "Prog" 

@@ -203,7 +203,7 @@ spec = do
     context "given a monomorphic tree construction function" $ do
       it "determines the type" $ do
         let tFun = [tTreeNum, tTreeNum] `fn` tTreeNum
-        let ctx = M.empty
+        let ctx = M.fromList [("f", toScheme $ TVar (Tyvar "foo"))]
         let args = ["a", "b"]
         let body = ConstAnn sp "node" [VarAnn sp "a", LitAnn sp (LitNum 2), VarAnn sp "b"]
         let f = FunDef pfann "f" args body

@@ -100,7 +100,8 @@ executable atlas-revisited
         mtl ^>= 2.2.2,
         containers,
         random ^>= 1.2.1,
-        co-log ^>= 0.6.1.0
+        co-log ^>= 0.6.1.0,
+        ansi-terminal >=1.0
     hs-source-dirs: app
     -- profiling: True
     default-language: Haskell2010
@@ -116,7 +117,8 @@ test-suite tests
         hspec,
         random ^>= 1.2.1,
         text ^>= 2.0.2,
-        vector ^>=  0.13.1.0
+        vector ^>=  0.13.1.0,
+        mtl ^>= 2.2.2
     hs-source-dirs: test
     other-modules:
         Typing.InferenceSpec,
@@ -126,9 +128,10 @@ test-suite tests
         CostAnalysis.CoeffSpec,
         CostAnalysis.Potential.Log.Helper,
         CostAnalysis.PotentialSpec,
-        CostAnalysis.Potential.Log.BaseSpec
-        CostAnalysis.Potential.Log.ConstraintsSpec
+        CostAnalysis.Potential.Log.BaseSpec,
+        CostAnalysis.Potential.Log.ConstraintsSpec,
         CostAnalysis.Potential.Log.WeakeningSpec
+        -- CostAnalysis.WeakeningSpec
     default-language: Haskell2010
     build-tool-depends: hspec-discover:hspec-discover
  

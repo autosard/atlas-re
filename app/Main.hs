@@ -8,6 +8,8 @@
 module Main (main) where
 
 import Options.Applicative
+import System.Console.ANSI.Codes
+import System.Console.ANSI
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Map(Map)
 import qualified Data.Map as M
@@ -22,6 +24,8 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
+import Ast(TypedModule, TypedExpr)
+
 
 import Colog (cmap, fmtMessage, logTextStdout, logWarning,
               usingLoggerT, logError, LoggerT, Msg, Severity)
@@ -30,7 +34,6 @@ import Colog (cmap, fmtMessage, logTextStdout, logWarning,
 import System.Environment(lookupEnv)
 
 import Typing.Inference(inferExpr, inferModule)
-import Ast(TypedModule, TypedExpr)
 import Normalization(normalizeMod, normalizeExpr)
 import Parsing.Program(parseExpr, parseModule)
 import Parsing.Tactic
@@ -76,8 +79,8 @@ run Options{..} RunOptions{..} = do
   (deriv, cs, sig) <- liftIO $ case proofResult of
         Left srcErr -> die $ printSrcError srcErr contents
         Right v -> return v
-  liftIO $ printDeriv (S.fromList cs) deriv        
-
+  when switchPrintDeriv $
+    liftIO $ printDeriv (not switchHideConstraints)  Nothing deriv
   let dump = False
   when dump (do
                 liftIO $ dumpSMT pot sig cs varIdGen
@@ -86,15 +89,21 @@ run Options{..} RunOptions{..} = do
   case solution of
     (Left core) -> let core' = S.fromList core in do
       logError $ "solver returned unsat. See unsat-core for details."
-      liftIO $ printDeriv core' deriv
+      liftIO $ printDeriv True (Just core') deriv
     (Right coeffs) -> let target = withCost $ sig M.! funName in do
       --liftIO $ print solution 
       liftIO $ putStr (printBound pot target coeffs)
       
 
-printDeriv :: Set Constraint -> Derivation -> IO ()
-printDeriv unsatCore deriv = putStr (drawTree deriv')
-  where deriv' = fmap (printRuleApp unsatCore) deriv
+printDeriv :: Bool -> Maybe (Set Constraint) -> Derivation -> IO ()
+printDeriv showCs unsatCore deriv = putStr (drawTree deriv')
+  where integrateCore = case unsatCore of
+                          Just core -> Just (core, red)
+                          Nothing -> Nothing 
+        deriv' = fmap (printRuleApp showCs integrateCore) deriv
+
+red :: String -> String
+red s = setSGRCode [SetColor Foreground Vivid Red] ++ s ++ setSGRCode [Reset]
 
 eval :: Options -> EvalOptions -> App ()
 eval Options{..} EvalOptions{..} = do
@@ -131,7 +140,7 @@ loadMod pathSearch modName = do
   searchPathfromEnv <- lookupEnv "ATLAS_SEARCH"
   let path = (`fromMaybe` pathSearch) . (`fromMaybe` searchPathfromEnv) $ "."
   (fileName, contents) <- loadSimple path modName
-  let parsedMod = parseModule fileName modName contents 
+  let parsedMod = parseModule fileName modName contents
   typedMod <- case inferModule parsedMod of
         Left srcErr -> die $ printSrcError srcErr contents
         Right mod -> return mod

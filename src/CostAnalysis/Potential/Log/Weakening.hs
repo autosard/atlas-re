@@ -1,4 +1,5 @@
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module CostAnalysis.Potential.Log.Weakening where
 
@@ -7,6 +8,7 @@ import Data.Set(Set)
 import Data.Maybe(catMaybes)
 import qualified Data.Set as S
 import qualified Data.List as L
+import Data.Containers.ListUtils
 
 import Primitive(Id)
 import CostAnalysis.Rules(WeakenArg(..))
@@ -15,6 +17,8 @@ import CostAnalysis.Coeff
 import CostAnalysis.AnnIdxQuoter(mix)
 
 import Debug.Trace (trace)
+import CostAnalysis.RsrcAnn (isPure)
+import qualified Data.Map as M
 traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
 
 supportedArgs = S.fromList [Mono, L2xy]
@@ -56,14 +60,25 @@ monoLe s1 s2 = go (S.toAscList s1) (S.toAscList s2)
         go ((Const c):xs) ((Arg y b):ys) = False
 
 logLemma :: [Id] -> Set CoeffIdx -> ExpertKnowledge
-logLemma args idxs = merge $ [(V.singleton (row x y), [0])
-                               | (x,y) <- varPairs]
+logLemma args idxs = merge $ [(V.singleton (row x y xy), [0])
+                             | (x,y,xy) <- idxTriples]
   where iConst = S.findIndex [mix|2|] idxs
-        row x y = let iX = S.findIndex [mix|x^1|] idxs
-                      iY = S.findIndex [mix|y^1|] idxs
-                      iXY = S.findIndex [mix|x^1,y^1|] idxs in
+        row idxX idxY idxXY = let iX = S.findIndex idxX idxs
+                                  iY = S.findIndex idxY idxs
+                                  iXY = S.findIndex idxXY idxs in
                     V.fromList [if k == iConst then 2 else
                        if k == iX || k == iY then 1 else
                          if k == iXY then -2 else 0
                     | k <- [0..length idxs -1]]
-        varPairs = [(x,y) | (x:ys) <- L.tails args, y <- ys]
+        idxsMixed = S.toList $ S.filter (\i -> (not . isPure) i && (not . justConst) i) idxs
+        idxTriples = [(idxX, idxY, idxXY)
+                     | idxX <- idxsMixed,
+                       idxY <- idxsMixed,
+                       idxX `idxLessThen` idxY,
+                       let idxXY = addIdxs idxX idxY,
+                       S.member idxXY idxs]
+        idxLessThen idxX idxY = xs < ys
+          where xs = map (facForVar idxX) args ++ [constFactor idxX]
+                ys = map (facForVar idxY) args ++ [constFactor idxY]
+        
+                              

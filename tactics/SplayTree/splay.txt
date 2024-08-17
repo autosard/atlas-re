@@ -37,12 +37,12 @@
               )
             )
             (match
-              (w{mono} (let const (let const (w{mono} const))))
+              (w{mono} (let const (let (w{mono} const) (w{mono} const))))
               (w{l2xy mono}
                 (let
                   (tick:defer (shift app))
                   (match
-                    (w{mono} const)
+                    (w{mono l2xy} const)
                     (w{l2xy mono} (let const (let const (w{mono} const))))
                   )
                 )
@@ -59,12 +59,12 @@
 	  (let cmp
           (ite
             (match
-              (w{mono} (let const (let const (w{mono} const))))
+              (w{mono} (let const (let (w{mono} const) (w{mono} const))))
               (w{l2xy mono}
                 (let
                   (tick:defer (shift app))
                   (match
-                    (w{mono} const)
+                    (w{mono l2xy} const)
                     (w{l2xy mono} (let const (let const (w{mono} const))))
                   )
                 )

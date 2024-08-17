@@ -36,15 +36,16 @@ cConst q q'
     ++ concat [zero (q'!idx)
        | let qConsts = S.fromList $ (filter (>=2) . map constFactor) (mixes q),
          idx <- mixes q',
+--         idx /= [mix|exp^1|],
          idxSum idx `S.notMember` qConsts]
 
   -- node
   | (length . _args $ q) == 2 && (length . _args $ q') == 1 =
     let [x1, x2] = annVars q in
       eq (q!?x1) (q'!?exp) 
-      ++ eq (q!?x2) (q'!?exp) 
-      ++ eq (q!?[mix|x1^1|]) (q'!?exp) 
-      ++ eq (q!?[mix|x2^1|]) (q'!?exp) 
+      ++ eq (q!?x2) (q'!?exp)
+      ++ eq (q!?[mix|x1^1|]) (q'!?exp)
+      ++ eq (q!?[mix|x2^1|]) (q'!?exp)
       ++ concat [eq (q!idx) (q'!?[mix|exp^a,c|])
                 | idx <- mixes q,
                   let a = facForVar idx x1,
@@ -144,11 +145,13 @@ cLetBody q r p p' ps' x bdes = extendAnn r $
        (d, e) /= (0,2)]
   ++ [(`eq` (q!idx)) <$> def idx
      | idx <- mixes q,
-       onlyVarsOrConst idx ys,
-       (not . justConst) idx]
+--       annVars q /= ys || onlyVars idx ys,
+       onlyVars idx ys]
   ++ [(`eq` (ps'!!bde![mix|exp^d,e|])) <$> def bde
      | bde <- bdes,
        let d = facForVar bde x,
+--       annVars q == ys || d /= 0,
+       -- d /= 0 || constFactor bde /= 0,
        let e = max 0 $ constFactor bde]
   where ys = L.delete x (annVars r)
 
@@ -158,15 +161,19 @@ cLetCf q ps ps' x (gamma, delta) bdes = (psDefined, ps'Defined, psCs ++ ps'Cs ++
           [ eq (q!idx) . sum <$>
             sequence [defEntry bde pIdx
                      | bde <- bdes,
-                       let bs = varsRestrict bde delta,
-                       bs == varsRestrict idx delta,
+                       varsRestrict bde delta == varsRestrict idx delta,
                        let as = varsRestrict idx gamma,
                        let e = constFactor bde,
-                       let c = constFactor idx + max 0 (-e),
-                       let pIdx = [mix|_as,c|]]
+                       let ce = constFactor idx + max 0 (-e),
+                       let pIdx = [mix|_as,ce|]]
           | idx <- mixes q,
-            not $ onlyVarsOrConst idx gamma,
-            not $ onlyVarsOrConst idx delta]
+            let c = constFactor idx,
+            (not . null) (varsRestrict idx delta),
+            (not . null) (varsRestrict idx gamma) || c /= 0]
+            --not (onlyVarsOrConst idx gamma),
+            --not (onlyVarsOrConst idx delta)]
+--            (null gamma && c /= 0) || not (onlyVarsOrConst idx delta)]
+            
         (ps'Defined, ps'Cs) = extendAnns ps' $
           [(`le` sum [p!ac
                      | let p = psDefined!!bde,
@@ -179,7 +186,7 @@ cLetCf q ps ps' x (gamma, delta) bdes = (psDefined, ps'Defined, psCs ++ ps'Cs ++
              [impl (notZero (psDefined!!bde!idx)) (le (ps'Defined!!bde!de) (psDefined!!bde!idx))
              | bde <- bdes,
                idx <- mixes (psDefined!!bde),
-               (not . justConst) idx,
+               (not . null) (varsRestrict idx gamma) || constFactor idx /= 0,
                let d = facForVar bde x,
                let e = max 0 $ constFactor bde,
                let de = [mix|exp^d,e|]]

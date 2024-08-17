@@ -36,11 +36,13 @@ data Constraint
   | Ge Term Term
   | Impl Constraint Constraint
   | Not Constraint
+  | Or [Constraint] 
   deriving (Eq, Ord, Show)
 
 -- pattern Prod2 :: Term -> Term -> Term 
 -- pattern Prod2 t1 t2 <- Prod [t1, t2]
 --   where Prod2 t1 t2 = Prod [t1, t2]
+
 
 eq :: Term -> Term -> [Constraint]
 eq (ConstTerm x) (ConstTerm y) | x == y = []
@@ -100,6 +102,10 @@ impl [c1] [] = []
 impl [c1] [c2] = [Impl c1 c2]
 impl _ _ = error "cannot construct implication. "
 
+or :: [Constraint] -> [Constraint]
+or [] = []
+or cs = [Or cs]
+
 printTerm :: Term -> String
 printTerm (VarTerm k) = printVar k
 printTerm (CoeffTerm q) = printCoeff q
@@ -119,6 +125,7 @@ printConstraint (Le t1 t2) = printTerm t1 ++ " <= " ++ printTerm t2
 printConstraint (Ge t1 t2) = printTerm t1 ++ " >= " ++ printTerm t2
 printConstraint (Impl c1 c2) = "(" ++ printConstraint c1 ++ ") => (" ++ printConstraint c2 ++ ")"
 printConstraint (Not c) = "not (" ++ printConstraint c ++ ")"
+printConstraint (Or cs) = "or (" ++ intercalate "," (map printConstraint cs) ++ ")"
 
 instance HasCoeffs Term where
   getCoeffs (CoeffTerm q) = [q]
@@ -133,3 +140,4 @@ instance HasCoeffs Constraint where
   getCoeffs (Ge t1 t2) = getCoeffs t1 ++ getCoeffs t2
   getCoeffs (Impl c1 c2) = getCoeffs c1 ++ getCoeffs c2
   getCoeffs (Not c) = getCoeffs c
+  getCoeffs (Or cs) = getCoeffs cs
