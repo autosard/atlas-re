@@ -100,9 +100,13 @@ assertCoeffsPos cs = do
   mapM_ assert positiveCs
 
 setRankEqual :: RsrcSignature -> [Constraint]
-setRankEqual sig = let t = "t" :: Id
-                       e = "e" :: Id in
-  [Eq (CoeffTerm (Coeff 0 "Q" "log" (Pure t))) (CoeffTerm (Coeff 1 "Q'" "log" (Pure e))) ]
+setRankEqual sig = concatMap setRankEqual' (M.elems sig) 
+
+setRankEqual' :: FunRsrcAnn -> [Constraint]
+setRankEqual' ann = eq (q!Pure x) (q'!Pure y)
+  where (q, q') = withCost ann
+        x = head $ annVars q
+        y = head $ annVars q'
 
 dumpSMT :: Potential -> RsrcSignature -> [Constraint] -> Int -> IO ()
 dumpSMT pot sig cs varIdGen = do

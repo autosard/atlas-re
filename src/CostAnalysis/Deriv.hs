@@ -83,7 +83,7 @@ proveVar :: Prove TypedExpr Derivation
 proveVar _ cf ctx e@(Var id) q q' = do
   --when (length ctx /= 1) $ errorFrom (SynExpr e) "(var) applied to non-singleton context."
   when (M.notMember id ctx) $ errorFrom (SynExpr e) $ "(var) applied for variable '" ++ Text.unpack id ++ "' that is not in the context."
-  let cs = annEq q q'
+  let cs = annLikeUnify q q'
   conclude R.Var cf q q' cs e []
 
 provePair :: Prove TypedExpr Derivation

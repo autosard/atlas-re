@@ -1,5 +1,5 @@
 (match
-  const
+  (w{mono} const)
   (match
     (let const (w{mono} const))
     (match
@@ -7,7 +7,7 @@
       (w{mono l2xy} (let
         (tick:defer app)
         (match
-          const
+          (w{mono} const)
           (let const (let const (w{mono} const)))
         )
       ))

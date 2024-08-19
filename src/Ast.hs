@@ -139,7 +139,7 @@ printExprHead (Lit l) = show l
 printExprHead (Const id args) = T.unpack id ++ " " ++ unwords (map printExprHead args)
 printExprHead (Ite {}) = "ite"
 printExprHead (Match (Var id) _) = "match " ++ T.unpack id
-printExprHead (App id args) = "app " ++ T.unpack id ++ " " ++ unwords (map printExprHead args)
+printExprHead (App id args) = T.unpack id ++ " " ++ unwords (map printExprHead args)
 printExprHead (Let id e1 e2) = "let " ++ T.unpack id ++ " = " ++ printExprHead e1
 printExprHead (Tick _ _) = "tick"
 printExprHead (Coin _) = "coin"
