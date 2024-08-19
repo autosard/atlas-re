@@ -20,6 +20,7 @@ import Typing.Type (Type, splitProdType, splitFnType)
 import Typing.Subst(Types(apply, tv))
 import Typing.Scheme (Scheme, toType)
 import Data.Ratio(numerator, denominator)
+import CostAnalysis.Coeff(CoeffIdx)
     
 type Fqn = (Text, Text)
 
@@ -254,7 +255,8 @@ data ParsedFunAnn = ParsedFunAnn {
   pfLoc :: SourcePos,
   pfFqn :: Fqn,
   pfType :: Maybe Scheme,
-  pfResourceAnn :: Maybe FullResourceAnn}
+  pfRsrcWithCost :: Maybe (Map CoeffIdx Rational, Map CoeffIdx Rational),
+  pfRsrcWithoutCost :: Maybe (Map CoeffIdx Rational, Map CoeffIdx Rational)}
   deriving (Eq, Show)
 
 data Parsed
@@ -287,7 +289,8 @@ data TypedFunAnn = TypedFunAnn {
   tfLoc :: SourcePos,
   tfFqn :: Fqn,
   tfType :: Scheme,
-  tfResourceAnn :: Maybe FullResourceAnn}
+  tfRsrcWithCost :: Maybe (Map CoeffIdx Rational, Map CoeffIdx Rational),
+  tfRsrcWithoutCost :: Maybe (Map CoeffIdx Rational, Map CoeffIdx Rational)}
   deriving (Eq, Show)
 
 data TypedExprSrc = Loc SourcePos | DerivedFrom SourcePos
@@ -320,19 +323,6 @@ ctxFromFn (FunDef ann _ args _) =
 instance Types TypedExpr where
   apply s = mapAnn (\ann -> ann{teType = apply s (teType ann) })
   tv e = tv (getType e)
-
-
--- TODO replace with FunRsrcAnn from CostAnalysis
-type FullResourceAnn = (FunResourceAnn, Maybe FunResourceAnn)
-
-data ResourceAnn = ResourceAnn {
-  annLength :: Int,
-  annCoefs :: Maybe (Map [Int] Coefficient)
-  }
-  deriving (Eq, Show)
-  
-type FunResourceAnn = (ResourceAnn, ResourceAnn)
---
 
 data Val = ConstVal !Id ![Val] | LitVal !Literal
   deriving Eq

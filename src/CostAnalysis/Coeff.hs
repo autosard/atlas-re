@@ -13,7 +13,6 @@ import qualified Data.Map as M
 import qualified Data.List as L
 
 import Primitive(Id)
-import Data.Maybe (isJust)
 
 data Coeff =
   Coeff

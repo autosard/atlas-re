@@ -16,6 +16,7 @@ import Control.Monad.Combinators.Expr
 import Data.Char (isAlphaNum)
 import qualified Data.Map as M
 import Data.Map(Map)
+import qualified Data.Set as S
 import Data.Ratio((%))
 
 import Prelude hiding (LT, EQ, GT)
@@ -29,6 +30,7 @@ import Typing.Type
 import Typing.Scheme
 import Control.Monad.RWS
 import Primitive(Id)
+import qualified CostAnalysis.Coeff as Coeff
 
 defaultCoinPropability :: Rational
 defaultCoinPropability = 1 % 2
@@ -58,10 +60,12 @@ type Parser = ParsecT Void Text (RWS ParserContext () ParserState)
 pModule :: Parser ParsedModule
 pModule = sc *> manyTill pFunc eof
 
+type FunRsrcAnn = (Map Coeff.CoeffIdx Rational, Map Coeff.CoeffIdx Rational)
+
 pFunc :: Parser ParsedFunDef
 pFunc = do
   pos <- getSourcePos
-  sig <- optional (try pSignature)
+  sig <- optional pSignature
   funName <- pIdentifier
   (_type, resourceAnn) <- case sig of
     Just (name, _type, resouceAnn) -> do
@@ -71,11 +75,14 @@ pFunc = do
   modName <- asks ctxModuleName
   let funFqn = (modName, funName)
   args <- manyTill pIdentifier (symbol "=")
-  FunDef (ParsedFunAnn pos funFqn _type resourceAnn) funName args <$> pExpr
+  let (withCost, withoutCost) = case resourceAnn of
+        Just (with, without) -> (Just with, without)
+        Nothing -> (Nothing, Nothing)
+  FunDef (ParsedFunAnn pos funFqn _type withCost withoutCost) funName args <$> pExpr
 
-pSignature :: Parser (Id, Scheme, Maybe FullResourceAnn)
+pSignature :: Parser (Id, Scheme, Maybe (FunRsrcAnn, Maybe FunRsrcAnn))
 pSignature = do
-  name <- pIdentifier <?> "function name"
+  name <- try pIdentifier <?> "function name"
   void pDoubleColon2
   constraints <- optional ((pConstraints <* pDoubleArrow) <?> "type constraint(s)")
   _type <- pFunctionType <?> "function type"
@@ -126,25 +133,33 @@ pTypeConst
   <|> TAp <$> (Tree <$ symbol "Tree") <*> (singleton <$> pType)
   <|> TAp Prod <$> pParens (sepBy1 pType pCross)
 
-pFunResourceAnn :: Parser FunResourceAnn
+
+pFunResourceAnn :: Parser FunRsrcAnn
 pFunResourceAnn = (,) <$> pResourceAnn <* pArrow <*> pResourceAnn
-  <|> return (ResourceAnn 0 Nothing, ResourceAnn 0 Nothing) 
 
-pResourceAnn :: Parser ResourceAnn
-pResourceAnn = do
-  coefs <- pCoefficients
-  return $ ResourceAnn (length coefs) (Just (M.fromList coefs))
-  
+pResourceAnn :: Parser (Map Coeff.CoeffIdx Rational)
+pResourceAnn = M.fromList <$> pCoefficients
 
-pCoefficients :: Parser [([Int], Coefficient)]
+pCoefficients :: Parser [(Coeff.CoeffIdx, Coefficient)]
 pCoefficients = pSqParens $ sepBy pCoefficient (symbol ",")
 
-pCoefficient :: Parser ([Int], Coefficient)
+pCoefficient :: Parser (Coeff.CoeffIdx, Coefficient)
 pCoefficient = do
-  index <- (singleton <$> pInt) <|> pNumberList
+  index <- pCoeffIdx
   void pMapsTo
   coefficient <- try pRational <|> toRational <$> pInt
   return (index, coefficient)
+
+pCoeffIdx :: Parser Coeff.CoeffIdx
+pCoeffIdx = Coeff.Pure <$> pIdentifier
+  <|> Coeff.mixed . S.fromList <$> pParens (sepBy1 pFactor (symbol ","))
+
+pFactor :: Parser Coeff.Factor
+pFactor = Coeff.Const <$> pInt
+  <|> (do id <- pIdentifier
+          symbol "^"
+          Coeff.Arg id <$> pInt)
+
 
 pExpr :: Parser ParsedExpr
 pExpr = pKeywordExpr
@@ -246,9 +261,6 @@ pIdentifier = do
   if ident `elem` keywords
     then fail $ "Use of reserved keyword " ++ T.unpack ident
     else return ident
-
-pNumberList :: Parser [Int]
-pNumberList = pParens $ some pInt 
 
 pInt :: Parser Int
 pInt = lexeme L.decimal

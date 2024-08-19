@@ -14,7 +14,6 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import qualified Data.Text as Text
 import Prelude hiding (or)
-import Data.Ratio((%))
 
 import Ast hiding (Coefficient)
 import Primitive(Id)
@@ -36,17 +35,19 @@ import CostAnalysis.Constraint ( ge,
 import CostAnalysis.Weakening
 import CostAnalysis.ProveMonad
 import StaticAnalysis(freeVars, calledFunctions')
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe, maybeToList)
 import SourceError
 
-
+import Debug.Trace (trace)
+traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
+  
 type ProofResult = (Derivation, [Constraint], RsrcSignature)
 
-runProof :: TypedModule -> Potential -> Map Id Tactic
+runProof :: Bool -> TypedModule -> Potential -> Map Id Tactic
   -> (Int, Either SourceError ProofResult)
-runProof mod pot tactics = (state' ^. varIdGen, (,cs, state' ^. sig) <$> deriv)
+runProof ignoreAnns mod pot tactics = (state' ^. varIdGen, (,cs, state' ^. sig) <$> deriv)
   where (deriv, state', cs) = runRWS rws env state
-        rws = runExceptT $ proveModule mod
+        rws = runExceptT $ proveModule mod ignoreAnns
         env = ProofEnv pot tactics
         state = ProofState M.empty 0 0 Nothing
 
@@ -216,8 +217,8 @@ proveApp tactic False ctx e@(App id _) q q' = do
   
   k <- freshVar
   let cs =
-        --or (concatMap (eq k . ConstTerm) [0,1,2])
-        or (eq k (ConstTerm 0) ++ ge k (ConstTerm 1))
+        or (concatMap (eq k . ConstTerm) [0,1,2])
+        --or (eq k (ConstTerm 0) ++ ge k (ConstTerm 1))
         ++ annLikeUnify q (annAdd p (annScalarMul r k))
         ++ annLikeUnify q' (annAdd p' (annScalarMul r' k))
   conclude R.App False q q' cs e []
@@ -227,8 +228,8 @@ proveApp tactic True ctx e@(App id _) q q' = do
   let (p, p') = withoutCost $ fnSig M.! id
   k <- freshVar
   let cs =
-        --or (concatMap (eq k . ConstTerm) [0,1,2])
-        or (eq k (ConstTerm 0) ++ ge k (ConstTerm 1))
+        or (concatMap (eq k . ConstTerm) [0,1,2])
+        --or (eq k (ConstTerm 0) ++ ge k (ConstTerm 1))
         ++ annLikeUnify q (annScalarMul p k)
         ++ annLikeUnify q' (annScalarMul p' k)
   conclude R.App True q q' cs e []
@@ -343,23 +344,35 @@ proveFun _ cf _ (FunDef ann id args e) q q' = do
   tactic <- fromMaybe Auto . M.lookup id <$> view tactics
   proveExpr tactic cf ctx e q q'
 
-proveFunWithAnn :: TypedFunDef -> FunRsrcAnn -> ProveMonad Derivation
-proveFunWithAnn fun ann = do
+proveFunWithAnn :: Bool -> TypedFunDef  -> FunRsrcAnn -> ProveMonad Derivation
+proveFunWithAnn ignoreAnns fun@(FunDef funAnn _ _ _) ann  = do
   currentFn .= Just fun
+  
   -- prove both with and without costs for well-typedness
   let (p, p') = withoutCost ann
   derivCf <- proveFun Auto True M.empty fun p p'
   
   let (q, q') = withCost ann  
   deriv <- proveFun Auto False M.empty fun q q'
+
+  unless ignoreAnns (do
+    tell . concat . maybeToList $ (annLe q . fst <$> tfRsrcWithCost funAnn)
+    tell . concat . maybeToList $ (annLe q' . snd <$> tfRsrcWithCost funAnn)
+    tell . concat . maybeToList $ (annLe p . fst <$> tfRsrcWithoutCost funAnn)
+    tell . concat . maybeToList $ (annLe p' . snd <$> tfRsrcWithoutCost funAnn))
   
   return $ T.Node (R.FunRuleApp fun) [derivCf, deriv]
 
-proveModule :: TypedModule -> ProveMonad Derivation
-proveModule mod = do
+setRightSidesEqual :: [FunRsrcAnn] -> [Constraint]
+setRightSidesEqual [] = []
+setRightSidesEqual (ann:anns) = concat [annEq (snd . withCost $ ann) (snd . withCost $ ann')
+                                       | ann' <- anns]
+
+proveModule :: TypedModule -> Bool -> ProveMonad Derivation
+proveModule mod ignoreAnns = do
   s <- use sig
-  -- TODO merge with existing signatures / or type check afterwards
   funAnns <- mapM (\f@(Fn name _ _) -> (name,) <$> genFunRsrcAnn f) mod
+  tell $ setRightSidesEqual (map snd funAnns)
   sig .= s `M.union` M.fromList funAnns
-  derivs <- mapM (uncurry proveFunWithAnn) $ zipWith (\x y -> (x, snd y)) mod funAnns
+  derivs <- mapM (uncurry (proveFunWithAnn ignoreAnns)) $ zipWith (\x y -> (x, snd y)) mod funAnns
   return $ T.Node (R.ProgRuleApp mod) derivs

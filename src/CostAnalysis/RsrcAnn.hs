@@ -152,7 +152,6 @@ data FunRsrcAnn = FunRsrcAnn {
 
 type RsrcSignature = Map Id FunRsrcAnn
 
-
 type CoeffDef s a = State s a
 
 def :: Index i => i -> CoeffDef RsrcAnn Term
@@ -177,6 +176,10 @@ extendAnns :: AnnArray -> [CoeffDef AnnArray [Constraint]] -> (AnnArray, [Constr
 extendAnns arr defs = (arr', concat cs)
   where (cs, arr') = runState def arr
         def = sequence defs
+
+annLe :: RsrcAnn -> Map CoeffIdx Rational -> [Constraint]
+annLe ann values = concat [le (ann!idx) $ ConstTerm (M.findWithDefault 0 idx values)
+                          | idx <- S.toList $ definedIdxs ann]
                 
 instance HasCoeffs RsrcAnn where
   getCoeffs ann = map (coeffFromAnn ann) $ S.toList (ann^.coeffs)

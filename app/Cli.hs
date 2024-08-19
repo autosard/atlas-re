@@ -39,6 +39,7 @@ data RunOptions = RunOptions {
   fqn :: Fqn,
   tacticsPath :: Maybe FilePath,
   switchPrintDeriv :: Bool,
+  switchIgnoreAnns :: Bool,
   switchHideConstraints :: Bool}
 
 runOptionsP :: Parser RunOptions
@@ -51,6 +52,9 @@ runOptionsP = do
   switchPrintDeriv <- switch
     (long "print-deriv"
     <> help "Print the derivation tree in ascii.")
+  switchIgnoreAnns <- switch
+    (long "ignore-annotations"
+    <> help "When present, resource annotations are inferred, even if annotations are present in the source.")  
   switchHideConstraints <- switch
     (long "hide-constraints"
     <> help "When active, only the derivation tree is printed without constraints.")

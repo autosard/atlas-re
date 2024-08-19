@@ -1,7 +1,6 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module CostAnalysis.Solving where
@@ -12,19 +11,18 @@ import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.Optimization
 import CostAnalysis.Potential
-import Data.Ratio(numerator, denominator, (%))
+import Data.Ratio(numerator, denominator)
 import Z3.Monad 
 import CostAnalysis.RsrcAnn
 import Control.Monad (mapAndUnzipM, (<=<))
 import Control.Monad.State (evalState)
-import CostAnalysis.AnnIdxQuoter(mix)
 
 import Data.Map(Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.Foldable (foldrM)
 
 import Debug.Trace (trace)
-import Data.Foldable (foldrM)
 traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
 
 class Encodeable a where
@@ -91,7 +89,6 @@ assertConstraints = foldrM go M.empty
           p <- mkFreshBoolVar "c"
           pS <- astToString p
           c' <- toZ3 c
---          assert p
           solverAssertAndTrack c' p
           return $ M.insert pS c tracker
 
@@ -101,59 +98,6 @@ assertCoeffsPos cs = do
   annCoeffs' <- mapM (toZ3 . CoeffTerm) (S.toList annCoeffs)
   positiveCs <- mapM (\coeff -> mkGe coeff =<< mkReal 0 1) annCoeffs'
   mapM_ assert positiveCs
-
-checkSolution :: RsrcSignature -> [Constraint]
-checkSolution sig = let t = "t" :: Id
-                        e = "e" :: Id in
-  [Le (CoeffTerm (Coeff 0 "Q" "fn" (Pure t))) (ConstTerm (1 % 2)),
-   Le (CoeffTerm (Coeff 0 "Q" "fn" [mix|t^1|])) (ConstTerm (3 % 2)),
-   Le (CoeffTerm (Coeff 0 "Q" "fn" [mix|t^1,2|])) (ConstTerm (0 % 1)),
-   Le (CoeffTerm (Coeff 0 "Q" "fn" [mix|t^1,1|])) (ConstTerm (0 % 1)),
-   Le (CoeffTerm (Coeff 0 "Q" "fn" [mix|2|])) (ConstTerm (1 % 1)),
-   Le (CoeffTerm (Coeff 1 "Q'" "fn" (Pure e))) (ConstTerm (1 % 2)),
-   Le (CoeffTerm (Coeff 1 "Q'" "fn" [mix|e^1|])) (ConstTerm (0 % 1)),
-   Le (CoeffTerm (Coeff 1 "Q'" "fn" [mix|e^1,2|])) (ConstTerm (0 % 1)),
-   Le (CoeffTerm (Coeff 1 "Q'" "fn" [mix|e^1,1|])) (ConstTerm (0 % 1)),
-   Le (CoeffTerm (Coeff 1 "Q'" "fn" [mix|2|])) (ConstTerm (1 % 1)),
-   Le (CoeffTerm (Coeff 2 "P" "fn cf" (Pure t))) (ConstTerm 0),
-   Le (CoeffTerm (Coeff 2 "P" "fn cf" [mix|t^1|])) (ConstTerm (1 % 2)),
-   Le (CoeffTerm (Coeff 2 "P" "fn cf" [mix|t^1,2|])) (ConstTerm 0),
-   Le (CoeffTerm (Coeff 2 "P" "fn cf" [mix|t^1,1|])) (ConstTerm 0),
-   Le (CoeffTerm (Coeff 2 "P" "fn cf" [mix|2|])) (ConstTerm 0),
-   Le (CoeffTerm (Coeff 3 "P'" "fn cf" (Pure e))) (ConstTerm 0),
-   Le (CoeffTerm (Coeff 3 "P'" "fn cf" [mix|e^1|])) (ConstTerm (1 % 2)),
-   Le (CoeffTerm (Coeff 3 "P'" "fn cf" [mix|e^1,2|])) (ConstTerm 0),
-   Le (CoeffTerm (Coeff 3 "P'" "fn cf" [mix|e^1,1|])) (ConstTerm 0),
-   Le (CoeffTerm (Coeff 3 "P'" "fn cf" [mix|2|])) (ConstTerm 0)]
-  
--- checkSolution :: RsrcSignature -> [Constraint]
--- checkSolution sig = let t = "t" :: Id
---                         e = "e" :: Id in
---   [Le (CoeffTerm (Coeff 0 "Q" "fn" (Pure t))) (ConstTerm (1 % 2)),
---    Le (CoeffTerm (Coeff 0 "Q" "fn" [mix|t^1|])) (ConstTerm (3 % 2)),
---    Le (CoeffTerm (Coeff 0 "Q" "fn" [mix|t^1,2|])) (ConstTerm (0 % 1)),
---    Le (CoeffTerm (Coeff 0 "Q" "fn" [mix|t^1,1|])) (ConstTerm (0 % 1)),
---    Le (CoeffTerm (Coeff 0 "Q" "fn" [mix|2|])) (ConstTerm (1 % 44)),
---    Le (CoeffTerm (Coeff 1 "Q'" "fn" (Pure e))) (ConstTerm (1 % 2)),
---    Le (CoeffTerm (Coeff 1 "Q'" "fn" [mix|e^1|])) (ConstTerm (0 % 1)),
---    Le (CoeffTerm (Coeff 1 "Q'" "fn" [mix|e^1,2|])) (ConstTerm (0 % 1)),
---    Le (CoeffTerm (Coeff 1 "Q'" "fn" [mix|e^1,1|])) (ConstTerm (0 % 1)),
---    Le (CoeffTerm (Coeff 1 "Q'" "nf" [mix|2|])) (ConstTerm (1 % 44))]
-
--- checkSolution :: RsrcSignature -> [Constraint]
--- checkSolution sig = let t = "t" :: Id
---                         e = "e" :: Id in
---   [Eq (CoeffTerm (Coeff 0 "Q" "fn" (Pure t))) (ConstTerm (0 % 1)),
---    Eq (CoeffTerm (Coeff 0 "Q" "fn" [mix|t^1|])) (ConstTerm (0 % 1)),
---    Eq (CoeffTerm (Coeff 0 "Q" "fn" [mix|t^1,2|])) (ConstTerm (0 % 1)),
---    Eq (CoeffTerm (Coeff 0 "Q" "fn" [mix|t^1,1|])) (ConstTerm (0 % 1)),
---    Eq (CoeffTerm (Coeff 0 "Q" "fn" [mix|2|])) (ConstTerm (1 % 2)),
---    Eq (CoeffTerm (Coeff 1 "Q'" "fn" (Pure e))) (ConstTerm (0 % 1)),
---    Eq (CoeffTerm (Coeff 1 "Q'" "fn" [mix|e^1|])) (ConstTerm (0 % 1)),
---    Eq (CoeffTerm (Coeff 1 "Q'" "fn" [mix|e^1,2|])) (ConstTerm (0 % 1)),
---    Eq (CoeffTerm (Coeff 1 "Q'" "fn" [mix|e^1,1|])) (ConstTerm (0 % 1)),
---    Eq (CoeffTerm (Coeff 1 "Q'" "nf" [mix|2|])) (ConstTerm (0 % 1))]
-
 
 setRankEqual :: RsrcSignature -> [Constraint]
 setRankEqual sig = let t = "t" :: Id
@@ -175,9 +119,8 @@ solveZ3 pot sig typingCs varIdGen = evalZ3 go
   where go = do
           let (optiTarget, optiCs) = genOptiTarget pot (M.elems sig) varIdGen
           assertCoeffsPos typingCs
-          let solutionCheck = checkSolution sig
           let rankEqual = setRankEqual sig
-          tracker <- assertConstraints (typingCs ++ optiCs ++ rankEqual ++ solutionCheck)
+          tracker <- assertConstraints (typingCs ++ optiCs ++ rankEqual)
           target' <- toZ3 optiTarget
           optimizeMinimize target'
 

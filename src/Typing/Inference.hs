@@ -318,7 +318,8 @@ tiProg ctx defs = do
   return $ map extendDef (zip3 defs qts bodies')
   where extendAnn t ann = TypedFunAnn{
           tfType = t,
-          tfResourceAnn = pfResourceAnn ann,
+          tfRsrcWithCost = pfRsrcWithCost ann,
+          tfRsrcWithoutCost = pfRsrcWithoutCost ann,
           tfLoc = pfLoc ann,
           tfFqn = pfFqn ann}
         extendDef :: (ParsedFunDef, Scheme, TypedExpr) -> TypedFunDef

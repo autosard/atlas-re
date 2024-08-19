@@ -9,7 +9,6 @@ module Main (main) where
 
 import Options.Applicative
 import System.Console.ANSI.Codes
-import System.Console.ANSI
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Map(Map)
 import qualified Data.Map as M
@@ -75,7 +74,7 @@ run Options{..} RunOptions{..} = do
   let _bRange = [0,1,2]
   let args = Args _aRange _bRange 
   let pot = logPot args
-  let (varIdGen, proofResult) = runProof normalizedProg pot tactics
+  let (varIdGen, proofResult) = runProof switchIgnoreAnns normalizedProg pot tactics
   (deriv, cs, sig) <- liftIO $ case proofResult of
         Left srcErr -> die $ printSrcError srcErr contents
         Right v -> return v
