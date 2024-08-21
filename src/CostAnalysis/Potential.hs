@@ -128,7 +128,7 @@ forAllCombinations q xs (rangeA, rangeB) x =
     d <- rangeA,
     e <- rangeB,
 --    (annVars q == xs) || d /= 0,
-    d + e > 0,
+    d + max e 0 > 0,
     let xIdx = S.singleton $ Arg x d]
 --    (annVars q /= xs) || c /= 0] 
 

@@ -17,13 +17,16 @@ import Text.Megaparsec
 data WeakenArg = Mono | L2xy
   deriving (Eq, Ord, Show)
 
+data LetArg = NegE
+  deriving (Eq, Ord, Show)
+
 data Rule 
   = Const
   | Cmp
   | Var
   | Ite 
   | Match 
-  | Let 
+  | Let [LetArg]
   | App 
   | TickNow 
   | TickDefer

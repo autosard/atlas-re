@@ -39,20 +39,20 @@ spec = do
         let a2' = ConstAnn (testAnn tTreeNum) "node" [
               VarAnn (testAnn tTreeNum) "l",
               VarAnn (testAnn tNum) "b",
-              VarAnn (testAnnDerived tTreeNum) "?:0"]
+              VarAnn (testAnnDerived tTreeNum) "?0"]
         let result = LetAnn
-                     (testAnnDerived tNum) "?:1" a1
-                      (LetAnn (testAnnDerived tNum) "?:0" (ConstAnn (testAnn tTreeNum) "leaf" [])
-                       (LetAnn (testAnnDerived tNum) "?:2" a2'
-                        (LetAnn (testAnnDerived tNum) "?:3" a3
+                     (testAnnDerived tNum) "?1" a1
+                      (LetAnn (testAnnDerived tNum) "?0" (ConstAnn (testAnn tTreeNum) "leaf" [])
+                       (LetAnn (testAnnDerived tNum) "?2" a2'
+                        (LetAnn (testAnnDerived tNum) "?3" a3
                          (AppAnn (testAnn tNum) "testFn" [
-                             VarAnn (testAnnDerived tSplay) "?:1",
-                             VarAnn (testAnnDerived tTreeNum) "?:2",
-                             VarAnn (testAnnDerived tNum) "?:3",
+                             VarAnn (testAnnDerived tSplay) "?1",
+                             VarAnn (testAnnDerived tTreeNum) "?2",
+                             VarAnn (testAnnDerived tNum) "?3",
                              VarAnn (testAnn tNum) "x"]))))
         runNorm (nmExpr e) `shouldBe` result
     context "given nested node constructor" $ do
-      it "correctly creates a nest let binding" $ do
+      it "correctly creates a nested let binding" $ do
          let e = ConstAnn (testAnn tTreeNum) "node" [
                VarAnn (testAnn tTreeNum) "al",
                VarAnn (testAnn tNum) "a",
@@ -69,7 +69,7 @@ spec = do
          let annDeriv = testAnnDerived tTreeNum
 
          
-         let result = LetAnn annDeriv "?:0" (ConstAnn ann "node" [VarAnn ann "br", VarAnn annNum "c", VarAnn ann  "cr"]) (LetAnn annDeriv "?:1" (ConstAnn ann "node" [VarAnn ann "ar", VarAnn annNum "b", VarAnn annDeriv "?:0"]) (ConstAnn ann "node" [VarAnn ann "al", VarAnn annNum "a", VarAnn annDeriv "?:1"]))
+         let result = LetAnn annDeriv "?0" (ConstAnn ann "node" [VarAnn ann "br", VarAnn annNum "c", VarAnn ann  "cr"]) (LetAnn annDeriv "?1" (ConstAnn ann "node" [VarAnn ann "ar", VarAnn annNum "b", VarAnn annDeriv "?0"]) (ConstAnn ann "node" [VarAnn ann "al", VarAnn annNum "a", VarAnn annDeriv "?1"]))
          let is = runNorm (nmExpr e)
          is `shouldBe` result 
         

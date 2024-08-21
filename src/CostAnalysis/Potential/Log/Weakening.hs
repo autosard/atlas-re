@@ -47,17 +47,43 @@ monoLattice idxs = merge . catMaybes $
                               | k <- [0..length idxs-1]], [0])
             else Nothing
         compare _ _ = Nothing
+
+
+
+-- monoLe' :: CoeffIdx -> CoeffIdx -> Bool
+-- monoLe' =
+
+monoLePre :: (Set Factor, Set Factor) -> (Set Factor, Set Factor)
+monoLePre (s1, s2) = go (S.toList s1) s2 S.empty S.empty
+  where go ((Arg x a):xs) ys xs' ys' =
+          let b = facForVar (Mixed ys) x 
+              ys'' = S.delete (Arg x b) ys in
+            if b - a > 0 then go xs ys'' xs' (S.insert (Arg x (b - a)) ys') else
+              if b - a < 0 then go xs ys'' (S.insert (Arg x (a - b)) xs') ys' else
+                go xs ys'' xs' ys'
+        go ((Const c):xs) ys xs' ys' =
+          let d = constFactor (Mixed ys) 
+              ys'' = S.delete (Const d) ys in
+            if d - c > 0 then go xs ys'' xs' (S.insert (Const (d - c)) ys') else
+              if d - c < 0 then go xs ys'' (S.insert (Const (c - d)) xs') ys' else
+                go xs ys'' xs' ys'
+        go [] ys xs' ys' = (xs', ys' `S.union` ys)
+
   
 monoLe :: Set Factor -> Set Factor -> Bool
-monoLe s1 s2 = go (S.toAscList s1) (S.toAscList s2)
-  where go :: [Factor] -> [Factor] -> Bool
+monoLe s1 s2 = go (S.toAscList s1') (S.toAscList s2')
+  where (s1', s2') = monoLePre (s1, s2)
+        go :: [Factor] -> [Factor] -> Bool
         go [] ys = True
         go xs [] = False
         go ((Arg x a):xs) ((Const c):ys) = go (Arg x a:xs) ys
         go ((Arg x a):xs) ((Arg y b):ys) | x == y = a <= b && go xs ys
                                          | otherwise = go (Arg x a:xs) ys
-        go ((Const c):xs) ((Const d):ys) = c <= d && go xs ys
-        go ((Const c):xs) ((Arg y b):ys) = False
+        go ((Const c):xs) ((Const d):ys) | c >= d = if c - d /= 0 then go (Const (c - d):xs) ys else go xs ys
+                                         | otherwise = if d - c /= 0 then go xs (Const (d - c):ys) else go xs ys
+          -- c <= d && go xs ys
+        go ((Const c):xs) ((Arg y b):ys) | c >= b = if c - b /= 0 then go (Const (c - b):xs) ys else go xs ys
+                                         | otherwise = if b - c /= 0 then go xs (Arg y (b - c):ys) else go xs ys
 
 logLemma :: [Id] -> Set CoeffIdx -> ExpertKnowledge
 logLemma args idxs = merge $ [(V.singleton (row x y xy), [0])

@@ -1,24 +1,10 @@
-(match
-  (w{mono}
-    (let
-      const
-      (let
-        const
-        (w{mono}
-          const
-        )
-      )
-    )
-  )
   (w{l2xy mono}
     (let
       (shift
         app
       )
       (match
-        (w{mono}
-          const
-        )
+        (w{mono} (let const (let const (w{mono} const))))
 	(let cmp
         (ite
           (w{mono}
@@ -37,20 +23,16 @@
                 )
               )
             )
-            (w{mono}
-              (let
-                const 
+             (w{mono} (let
+                const
                 (let
                   const
-                  (w{mono}
-                    const
-                  )
+                  (w{mono} const)
                 )
-              )
-            )
+              ))
           ))
         ))
       )
     )
   )
-)
+

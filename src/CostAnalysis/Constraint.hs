@@ -66,6 +66,11 @@ sub ts | all termIsZero ts = ConstTerm 0
 eqSum :: Term -> [Term] -> [Constraint]
 eqSum t ts = eq t $ sum ts
 
+-- eqSumNonZero :: Term -> [Term] -> [Constraint]
+-- eqSumNonZero t ts | (not . all termIsZero) ts = eqSum t ts
+--                   | otherwise = []
+
+
 eqPlusMulti :: Coeff -> Coeff -> Coeff -> Var -> [Constraint]
 eqPlusMulti q p r k = eq (CoeffTerm q) $ Sum [CoeffTerm p, Prod [VarTerm k, CoeffTerm r]]
 

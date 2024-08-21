@@ -22,6 +22,7 @@ constType "(,)" = Forall 2 $ [TGen 0, TGen 1] `fn` tupleT
 constType "true" = Forall 0 boolT
 constType "false" = Forall 0 boolT
 constType "LT" = Forall 1 $ [TGen 0, TGen 0] `fn` boolT
+constType "LE" = Forall 1 $ [TGen 0, TGen 0] `fn` boolT
 constType "EQ" = Forall 1 $ [TGen 0, TGen 0] `fn` boolT
 constType "GT" = Forall 1 $ [TGen 0, TGen 0] `fn` boolT
 constType c = error $ "undefined constant '" ++ T.unpack c ++ "'"

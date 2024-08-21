@@ -156,7 +156,7 @@ isRecursive e = do
     Just (FunDef _ fn _ _) -> return $ S.member fn (calledFunctions' e)
    
 proveLet :: Prove TypedExpr Derivation
-proveLet tactic cf ctx e@(Let x e1 e2) q q'
+proveLet tactic@(Rule (R.Let letArgs) _) cf ctx e@(Let x e1 e2) q q'
   -- let
   | isTree $ getType e1 = do
       pot <- view potential
@@ -166,7 +166,7 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       let ctxE2' = M.insert x (getType e1) ctxE2 
       -- TODO if let binds a recursive call then use negative numbers for e
       -- neg <- isRecursive e1
-      let neg = False
+      let neg = R.NegE `elem` letArgs 
 
       p_ <- emptyAnn "P" "let:base e1" gamma
       p' <- defaultAnn  "P'"  "let:base e1" [("e", getType e1)]
@@ -174,7 +174,7 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       
       let rangeD = rangeA . ranges $ pot
       let rangeE = if neg then rangeBNeg . ranges $ pot else rangeB . ranges $ pot
---      let bdes = if null delta then [] else
+      
       let bdes = forAllCombinations q (M.keys ctxE2) (rangeD, rangeE) x
       
       ps_ <- annArrayFromIdxs bdes "P" (M.toAscList ctxE1)
@@ -189,7 +189,7 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       let (r, rCs) = cLetBody pot q r_ p p' ps' x bdes
       deriv2 <- proveExpr t2 cf ctxE2' e2 r q'
 
-      conclude R.Let cf q q' (pCs ++ rCs ++ cfCs) e ([deriv1, deriv2] ++ cfDerivs)
+      conclude (R.Let letArgs) cf q q' (pCs ++ rCs ++ cfCs) e ([deriv1, deriv2] ++ cfDerivs)
   -- let:base
   | otherwise = do
       pot <- view potential
@@ -206,7 +206,7 @@ proveLet tactic cf ctx e@(Let x e1 e2) q q'
       let (r, rCs) = cLetBodyBase pot q r_ p'
       deriv2 <- proveExpr t2 cf ctxE2' e2 r q'
 
-      conclude R.Let cf q q' (pCs ++ rCs) e [deriv1, deriv2]
+      conclude (R.Let letArgs) cf q q' (pCs ++ rCs) e [deriv1, deriv2]
 
 proveApp :: Prove TypedExpr Derivation
 proveApp tactic False ctx e@(App id _) q q' = do
@@ -316,7 +316,7 @@ proveExpr tactic@(Rule R.Const []) cf ctx e@(Tuple {}) = removeRedundantVars pro
 proveExpr tactic@(Rule R.Const []) cf ctx e@(Const {}) = removeRedundantVars proveConst tactic cf ctx e 
 proveExpr tactic@(Rule R.Match _) cf ctx e@(Match {}) = proveMatch tactic cf ctx e
 proveExpr tactic@(Rule R.Ite _) cf ctx e@(Ite {}) = proveIte tactic cf ctx e
-proveExpr tactic@(Rule R.Let _) cf ctx e@(Let {}) = proveLet tactic cf ctx e
+proveExpr tactic@(Rule (R.Let _) _) cf ctx e@(Let {}) = proveLet tactic cf ctx e
 proveExpr tactic@(Rule R.TickDefer _) cf ctx e = removeRedundantVars proveTickDefer tactic cf ctx e
 proveExpr tactic@(Rule R.WeakenVar _) cf ctx e = proveWeakenVar tactic cf ctx e
 proveExpr tactic@(Rule (R.Weaken _) _) cf ctx e = proveWeaken tactic cf ctx e

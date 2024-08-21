@@ -15,7 +15,6 @@ import CostAnalysis.Coeff
 import CostAnalysis.RsrcAnn
 import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
-import CostAnalysis.Constraint
 import CostAnalysis.Potential (AnnRanges(..))
 
 data Args = Args {

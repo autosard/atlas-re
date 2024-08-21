@@ -33,10 +33,10 @@ spec = do
       let q' = defaultAnn pot 1 "Q'" "" [("e", treeT)]
       let e = ("e" :: Id)
       let should = concat [
-            eqSum (q![mix|2|]) [q'!e, q'![mix|2|]],
+            eqSum (q![mix|2|]) [q'![mix|2|], q'![mix|e^1,1|], q'!e],
             zero (q'![mix|e^1,2|]),
             zero (q'![mix|e^1|])]
-      cConst q q' `shouldBe` should
+      S.fromList (cConst q q') `shouldBe` S.fromList should
     it "generates the correct constraints for the node case" $ do
       let [x1, x2] = ["x1", "x2"]
       let e = "e"

@@ -13,7 +13,6 @@ import Data.List(replicate)
 import CostAnalysis.Potential.Log.Weakening
 import Constants (treeT)
 import CostAnalysis.AnnIdxQuoter(mix)
-import CostAnalysis.Coeff(idxToSet)
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Coeff
 import CostAnalysis.Potential
@@ -100,20 +99,30 @@ spec = do
                    [[0, 0, 1,-1, 0, 0, 0, 0, 0, 0, 0, 0],
                     [0, 0, 1, 0, 0, 0,-1, 0, 0, 0, 0, 0],
                     [0, 0, 1, 0, 0, 0, 0,-1, 0, 0, 0, 0],
+                    [0, 0, 1, 0, 0, 0, 0, 0, 0, 0,-1, 0],
 
                     [0, 0, 0, 1, 0, 0, 0,-1, 0, 0, 0, 0],
 
+
+                    [0, 0, 0, 0, 1, 0, 0, 0, 0, 0,-1, 0],
                     [0, 0, 0, 0, 1, 0, 0,-1, 0, 0, 0, 0],
                     [0, 0, 0, 0, 1, 0, 0, 0,-1, 0, 0, 0],
                     [0, 0, 0,-1, 1, 0, 0, 0, 0, 0, 0, 0],
-                    
+
+                    [0, 0, 0, 0,-1, 1, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0,-1, 0, 1, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0,-1, 0],                    
+                    [0, 0,-1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
                     [0, 0, 0, 0, 0, 1,-1, 0, 0, 0, 0, 0],
                     [0, 0, 0, 0, 0, 1, 0,-1, 0, 0, 0, 0],
                     [0, 0, 0, 0, 0, 1, 0, 0,-1, 0, 0, 0],
                     
                     [0, 0, 0, 0, 0, 0, 1,-1, 0, 0, 0, 0],
+                    [0, 0, 0,-1, 0, 0, 1, 0, 0, 0, 0, 0],
 
+                    [0, 0, 0,-1, 0, 0, 0, 0, 1, 0, 0, 0],
                     [0, 0, 0, 0, 0, 0, 0,-1, 1, 0, 0, 0],
+
 
                     [0, 0, 0, 0, 0, 0, 0, 0, 0, 1,-1, 0],
                     [0, 0,-1, 0, 0, 0, 0, 0, 0, 1, 0, 0],
@@ -123,15 +132,17 @@ spec = do
 
                     [0, 0, 0,-1, 0, 0, 0, 0, 0, 0, 1, 0],
                     [0, 0, 0, 0, 0, 0, 0,-1, 0, 0, 1, 0],
-                    
+
                     [0, 0, 0,-1, 0, 0, 0, 0, 0, 0, 0, 1],
                     [0, 0, 0, 0,-1, 0, 0, 0, 0, 0, 0, 1],
                     [0, 0, 0, 0, 0, 0, 0,-1, 0, 0, 0, 1],
                     [0, 0, 0, 0, 0, 0, 0, 0,-1, 0, 0, 1],
                     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,-1, 1]]
         let (asIs, bsIs) = monoLattice (definedIdxs p)
+        S.fromList (V.toList asIs ) S.\\ S.fromList rows `shouldBe` S.empty
+        S.fromList rows  S.\\ S.fromList (V.toList asIs ) `shouldBe` S.empty
         S.fromList (V.toList asIs ) `shouldBe` S.fromList rows
-        bsIs `shouldBe` replicate 24 0
+        bsIs `shouldBe` replicate 32 0
     context "given length 2 annotations" $ do
       it "contains some examples" $ do
         let args = [("cr", treeT), ("bl", treeT), ("br", treeT)]

@@ -42,7 +42,7 @@
                 (let
                   (tick:defer (shift app))
                   (match
-                    (w{mono l2xy} const)
+                    (w{mono} const)
                     (w{l2xy mono} (let const (let const (w{mono} const))))
                   )
                 )
@@ -64,7 +64,7 @@
                 (let
                   (tick:defer (shift app))
                   (match
-                    (w{mono l2xy} const)
+                    (w{mono} const)
                     (w{l2xy mono} (let const (let const (w{mono} const))))
                   )
                 )

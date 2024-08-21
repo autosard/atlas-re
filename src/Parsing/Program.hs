@@ -19,7 +19,7 @@ import Data.Map(Map)
 import qualified Data.Set as S
 import Data.Ratio((%))
 
-import Prelude hiding (LT, EQ, GT)
+import Prelude hiding (LT, EQ, GT, LE)
 
 import Text.Megaparsec
 import Text.Megaparsec.Char ( letterChar, space1 )
@@ -245,6 +245,7 @@ operatorTable :: [[Operator Parser ParsedExpr]]
 operatorTable =
   [
     [
+      binaryApp (symbol' "<=") "LE",
       binaryApp (symbol' "<") "LT",
       binaryApp (symbol' "==" <|> symbol' "⩵") "EQ",
       binaryApp (symbol' ">") "GT"

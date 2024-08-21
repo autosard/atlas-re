@@ -65,7 +65,7 @@ spec = do
       it "returns the value of the function body considering the bound arguments" $ do
         let v = LitVal (LitNum 3)
         let env = M.fromList [("x", v)]
-        let funAnn = TypedFunAnn (initialPos "test.ml") ("test", "id") boolSc Nothing
+        let funAnn = TypedFunAnn (initialPos "test.ml") ("test", "id") boolSc Nothing Nothing
         let defs = M.fromList [("id", FunDef funAnn "id" ["x"] (VarAnn testAnn "x"))]
         let e = AppAnn testAnn "id" [VarAnn testAnn "x"] 
         let r = evalEval defs testState $ evalExpr env e

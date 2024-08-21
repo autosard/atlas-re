@@ -23,7 +23,7 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
-import Ast(TypedModule, TypedExpr)
+import Ast(TypedModule, TypedExpr, printProg)
 
 
 import Colog (cmap, fmtMessage, logTextStdout, logWarning,
@@ -67,6 +67,7 @@ run :: Options -> RunOptions -> App ()
 run Options{..} RunOptions{..} = do
   let (modName, funName) = fqn 
   (normalizedProg, contents) <- liftIO $ loadMod searchPath modName
+--  liftIO $ putStr (printProg normalizedProg)
   tactics <- case tacticsPath of
     Just path -> loadTactics (T.unpack modName) (fns normalizedProg) path
     Nothing -> return M.empty

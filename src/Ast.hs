@@ -14,6 +14,7 @@ import Data.Map(Map)
 import qualified Data.Map as M
 import Text.Megaparsec(SourcePos)
 import Data.List(intercalate)
+import Prelude hiding (break)
 
 import Primitive(Id)
 import Typing.Type (Type, splitProdType, splitFnType)
@@ -116,6 +117,7 @@ isCmp :: Expr a -> Bool
 isCmp (Const "EQ" _ ) = True
 isCmp (Const "LT" _ ) = True
 isCmp (Const "GT" _ ) = True
+isCmp (Const "LE" _ ) = True
 isCmp _ = False
 
 pattern PatWildcard :: XExprAnn a -> Pattern a
@@ -153,34 +155,39 @@ printPat (ConstPat _ id vars) = T.unpack id ++ " " ++(unwords . map printPatVar 
 printPat (Alias _ id) = T.unpack id
 printPat (WildcardPat _) = "_"
 
-printMatchArm :: MatchArm a -> String
-printMatchArm (MatchArmAnn _ pat e) = "| " ++ printPat pat ++ " -> " ++ printExpr e 
+printMatchArm :: Int -> MatchArm a -> String
+printMatchArm ident (MatchArmAnn _ pat e) = "| " ++ printPat pat ++ " -> " ++ printExpr ident e 
 
 printRat r = (show . numerator $ r) ++ "/" ++ (show . denominator $ r)
 
-printExpr :: Expr a -> String
-printExpr (Var id) = T.unpack id 
-printExpr (Lit l) = show l
-printExpr (Const "(,)" [x1, x2]) = "(" ++ printExpr x1 ++ ", " ++ printExpr x2 ++ ")"
-printExpr (Const id args) = T.unpack id ++ " " ++ unwords (map printExpr args)
-printExpr (Ite e1 e2 e3) = "(if " ++ printExpr e1 ++ " then "
-                           ++ printExpr e2 ++ " else " ++ printExpr e3 ++ ")"
-printExpr (Match e arms) = "(match " ++ printExpr e ++ "\n" ++ printedArms ++ ")"
-  where printedArms = intercalate "\n" . map printMatchArm $ arms
-printExpr (App id args) = "(" ++ T.unpack id ++ " "
-                          ++(unwords . map printExpr $ args) ++ ")" 
-printExpr (Let id e1 e2) = "(let " ++ T.unpack id ++ " = " ++ printExpr e1
-                           ++ " in \n" ++ printExpr e2
-printExpr (Tick c e) = "~" ++  frac c ++ printExpr e
+break :: Int -> String
+break ident = "\n" ++ replicate (2*ident) ' ' 
+
+printExpr :: Int -> Expr a -> String
+printExpr _ (Var id) = T.unpack id 
+printExpr _ (Lit l) = show l
+printExpr ident (Const "(,)" [x1, x2]) = "(" ++ printExpr ident x1 ++ ", " ++ printExpr ident x2 ++ ")"
+printExpr ident (Const id args) = T.unpack id ++ " " ++ unwords (map (printExpr ident) args)
+printExpr ident (Ite e1 e2 e3) = "if " ++ printExpr ident e1
+  ++ break (ident + 1) ++ "then " ++ printExpr (ident + 1) e2
+  ++ break (ident + 1) ++ "else " ++ printExpr (ident + 1) e3 
+printExpr ident (Match e arms) = "match " ++ printExpr ident e
+  ++ break  (ident + 1) ++ printedArms 
+  where printedArms = intercalate (break (ident + 1)) . map (printMatchArm (ident + 1)) $ arms
+printExpr ident (App id args) = T.unpack id ++ " "
+                          ++ (unwords . map (printExpr ident) $ args) 
+printExpr ident (Let id e1 e2) = "let " ++ T.unpack id ++ " = " ++ printExpr ident e1 ++ " in"
+                           ++ break (ident + 1) ++ printExpr (ident + 1) e2
+printExpr ident (Tick c e) = "~" ++  frac c ++ printExpr ident e
   where frac = maybe "" printRat 
-printExpr (Coin p) = "coin " ++ printRat p
+printExpr ident (Coin p) = "coin " ++ printRat p
 
 printFun :: FunDef a -> String
-printFun (Fn id args body) = T.unpack id ++ " " ++ printedArgs ++ " = " ++ printExpr body
+printFun (Fn id args body) = T.unpack id ++ " " ++ printedArgs ++ " = " ++ printExpr 0 body
   where printedArgs = unwords . map T.unpack $ args
 
 printProg :: Module a -> String
-printProg = intercalate "\n\n" . map printFun
+printProg mod = intercalate "\n\n" (map printFun mod) ++ "\n"
 
 class Annotated a b where
   getAnn :: a b -> XExprAnn b

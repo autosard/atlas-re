@@ -33,22 +33,26 @@ pAtomic = Rule Const [] <$ symbol "const"
 pNonAtomic :: Parser Tactic
 pNonAtomic = Rule Ite <$ symbol "ite" <*> count 2 pRule 
   <|> Rule Match <$ symbol "match" <*> many pRule
-  <|> Rule Let <$ symbol "let" <*> count 2 pRule 
+  <|> (do rule <- Let <$ symbol "let" <*> pRuleArgs pLetArg
+          Rule rule <$> count 2 pRule)
   <|> Rule TickNow <$ symbol "tick:now" <*> count 1 pRule
   <|> Rule TickDefer <$ symbol "tick:defer" <*> count 1 pRule
   <|> Rule WeakenVar <$ symbol "w:var" <*> count 1 pRule
-  <|> (do rule <- Weaken <$ symbol "w" <*> pWeakenArgs
+  <|> (do rule <- Weaken <$ symbol "w" <*> pRuleArgs pWeakenArg
           Rule rule <$> count 1 pRule)
   <|> Rule Shift <$ symbol "shift" <*> count 1 pRule
   <?> "rule"
+
+pLetArg :: Parser LetArg
+pLetArg = NegE <$ symbol "nege"
 
 pWeakenArg :: Parser WeakenArg
 pWeakenArg = Mono <$ symbol "mono"
   <|> L2xy <$ symbol "l2xy"
 
-pWeakenArgs :: Parser [WeakenArg]
-pWeakenArgs = do
-  args <- optional (pCurlyParens (many pWeakenArg))
+pRuleArgs :: Parser a -> Parser [a]
+pRuleArgs arg = do
+  args <- optional (pCurlyParens (many arg))
   case args of
     Just args -> return args
     Nothing -> return []

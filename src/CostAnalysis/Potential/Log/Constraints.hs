@@ -25,18 +25,18 @@ cConst :: RsrcAnn -> RsrcAnn -> [Constraint]
 cConst q q'
   -- leaf 
   | (null . _args $ q) && (length . _args $ q') == 1 =
-    eqSum (q!?[mix|2|]) [q'!?exp, q'!?[mix|2|]] 
-    ++ concat [eqSum (q![mix|c|]) [q'!?[mix|exp^a,b|]
-                            | a <- [0..c],
-                              let b = c - a,
-                              a + b == c]
+    concat [eqSum (q![mix|c|]) ([q'!?[mix|exp^a,b|]
+                                | a <- [0..c],
+                                  let b = c - a,
+                                  a + b == c] ++ addRank)
                         | idx <- mixes q,
                           let c = constFactor idx,
-                          c > 2]
+                          let addRank = [q'!?exp | c == 2],
+                          c >= 2]
     ++ concat [zero (q'!idx)
        | let qConsts = S.fromList $ (filter (>=2) . map constFactor) (mixes q),
          idx <- mixes q',
---         idx /= [mix|exp^1|],
+         idx /= [mix|exp^1|], -- TODO this should not be necessary
          idxSum idx `S.notMember` qConsts]
 
   -- node

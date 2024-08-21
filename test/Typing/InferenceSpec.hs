@@ -25,7 +25,7 @@ isTreeType _ = False
 
 testState = TiState 0 nullSubst []
 sp = initialPos "test.ml"
-pfann = ParsedFunAnn sp ("", "") Nothing Nothing
+pfann = ParsedFunAnn sp ("", "") Nothing Nothing Nothing
 
 spec :: Spec
 spec = do
