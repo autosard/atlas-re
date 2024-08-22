@@ -34,8 +34,8 @@ spec = do
       let e = ("e" :: Id)
       let should = concat [
             eqSum (q![mix|2|]) [q'![mix|2|], q'![mix|e^1,1|], q'!e],
-            zero (q'![mix|e^1,2|]),
-            zero (q'![mix|e^1|])]
+            zero (q'![mix|e^1,2|])]
+--            zero (q'![mix|e^1|])]
       S.fromList (cConst q q') `shouldBe` S.fromList should
     it "generates the correct constraints for the node case" $ do
       let [x1, x2] = ["x1", "x2"]
@@ -156,8 +156,8 @@ spec = do
             eq (r!x) (p'!e),
             [Eq (r![mix|2|]) (Sum [sub [p'![mix|2|], p![mix|2|]], q![mix|2|]])],
             eq (r![mix|t2^1|]) (q![mix|t2^1|]),
-            eq (r![mix|t2^1,1|]) (q![mix|t2^1,1|]),
-            eq (r![mix|t2^1,2|]) (q![mix|t2^1,2|]),
+            eq (r![mix|t2^1,1|]) (ps'!![mix|t2^1,1|]![mix|1|]),
+            eq (r![mix|t2^1,2|]) (ps'!![mix|t2^1,2|]![mix|2|]),
             eq (r![mix|x^1|]) (p'![mix|e^1|]),
             eq (r![mix|x^1,1|]) (p'![mix|e^1,1|]),
             eq (r![mix|x^1,2|]) (p'![mix|e^1,2|]),
@@ -182,50 +182,120 @@ spec = do
       let (ps, ps', cfCs) = cLetCf q ps_ ps'_ x ([t1], [t2]) bdes
       
       let cs = concat [
-            eq (q![mix|t1^1,t2^1|]) (sum [ps!![mix|t2^1,x^1|]![mix|t1^1|],
+            eq (q![mix|t2^1,1|]) (sum [ps!![mix|t2^1,1|]![mix|1|],
+                                        ps!![mix|t2^1,2|]![mix|1|],
+                                        ps!![mix|t2^1,x^1|]![mix|1|],
+                                        ps!![mix|t2^1,x^1,1|]![mix|1|],
+                                        ps!![mix|t2^1,x^1,2|]![mix|1|]]),
+            eq (q![mix|t2^1,2|]) (sum [ps!![mix|t2^1,1|]![mix|2|],
+                                        ps!![mix|t2^1,2|]![mix|2|],
+                                        ps!![mix|t2^1,x^1|]![mix|2|],
+                                        ps!![mix|t2^1,x^1,1|]![mix|2|],
+                                        ps!![mix|t2^1,x^1,2|]![mix|2|]]),
+            eq (q![mix|t1^1,t2^1|]) (sum [
+                                        ps!![mix|t2^1,1|]![mix|t1^1|],
+                                        ps!![mix|t2^1,2|]![mix|t1^1|],
+                                        ps!![mix|t2^1,x^1|]![mix|t1^1|],
                                         ps!![mix|t2^1,x^1,1|]![mix|t1^1|],
                                         ps!![mix|t2^1,x^1,2|]![mix|t1^1|]]),
-            eq (q![mix|t1^1,t2^1,1|]) (sum [ps!![mix|t2^1,x^1|]![mix|t1^1,1|],
+            eq (q![mix|t1^1,t2^1,1|]) (sum [
+                                        ps!![mix|t2^1,1|]![mix|t1^1,1|],
+                                        ps!![mix|t2^1,2|]![mix|t1^1,1|],
+                                          ps!![mix|t2^1,x^1|]![mix|t1^1,1|],
                                          ps!![mix|t2^1,x^1,1|]![mix|t1^1,1|],
                                          ps!![mix|t2^1,x^1,2|]![mix|t1^1,1|]]),
-            eq (q![mix|t1^1,t2^1,2|]) (sum [ps!![mix|t2^1,x^1|]![mix|t1^1,2|],
+            eq (q![mix|t1^1,t2^1,2|]) (sum [
+                                        ps!![mix|t2^1,1|]![mix|t1^1,2|],
+                                        ps!![mix|t2^1,2|]![mix|t1^1,2|],
+                                          ps!![mix|t2^1,x^1|]![mix|t1^1,2|],
                                          ps!![mix|t2^1,x^1,1|]![mix|t1^1,2|],
                                          ps!![mix|t2^1,x^1,2|]![mix|t1^1,2|]]),
-            le (ps'!![mix|t2^1,x^1|]![mix|e^1|]) (sum [ps!![mix|t2^1,x^1|]![mix|t1^1,1|],
+
+            le (ps'!![mix|t2^1,1|]![mix|1|]) (sum [ps!![mix|t2^1,1|]![mix|1|],
+                                                   ps!![mix|t2^1,1|]![mix|t1^1,1|],
+                                                   ps!![mix|t2^1,1|]![mix|2|],
+                                                   ps!![mix|t2^1,1|]![mix|t1^1,2|],
+                                                   ps!![mix|t2^1,1|]![mix|t1^1|]]),
+            zero (ps'!![mix|t2^1,1|]!?[mix|2|]),  
+            zero (ps'!![mix|t2^1,1|]!?[mix|e^1|]),
+            zero (ps'!![mix|t2^1,1|]!?[mix|e^1,1|]),
+            zero (ps'!![mix|t2^1,1|]!?[mix|e^1,2|]),
+            
+            le (ps'!![mix|t2^1,2|]![mix|2|]) (sum [ps!![mix|t2^1,2|]![mix|1|],
+                                                   ps!![mix|t2^1,2|]![mix|t1^1,1|],
+                                                   ps!![mix|t2^1,2|]![mix|2|],
+                                                   ps!![mix|t2^1,2|]![mix|t1^1,2|],
+                                                   ps!![mix|t2^1,2|]![mix|t1^1|]]),
+            zero (ps'!![mix|t2^1,2|]!?[mix|1|]),  
+            zero (ps'!![mix|t2^1,2|]!?[mix|e^1|]),
+            zero (ps'!![mix|t2^1,2|]!?[mix|e^1,1|]),
+            zero (ps'!![mix|t2^1,2|]!?[mix|e^1,2|]),
+            le (ps'!![mix|t2^1,x^1|]![mix|e^1|]) (sum [ps!![mix|t2^1,x^1|]![mix|1|],
+                                                       ps!![mix|t2^1,x^1|]![mix|t1^1,1|],
+                                                       ps!![mix|t2^1,x^1|]![mix|2|],
                                                        ps!![mix|t2^1,x^1|]![mix|t1^1,2|],
                                                        ps!![mix|t2^1,x^1|]![mix|t1^1|]]),
+            zero (ps'!![mix|t2^1,x^1|]!?[mix|1|]),  
             zero (ps'!![mix|t2^1,x^1|]!?[mix|2|]),
             zero (ps'!![mix|t2^1,x^1|]!?[mix|e^1,1|]),
             zero (ps'!![mix|t2^1,x^1|]!?[mix|e^1,2|]),
             
-            le (ps'!![mix|t2^1,x^1,1|]![mix|e^1,1|]) (sum [ps!![mix|t2^1,x^1,1|]![mix|t1^1,1|],
-                                                         ps!![mix|t2^1,x^1,1|]![mix|t1^1,2|],
+            le (ps'!![mix|t2^1,x^1,1|]![mix|e^1,1|]) (sum [ps!![mix|t2^1,x^1,1|]![mix|1|],
+                                                         ps!![mix|t2^1,x^1,1|]![mix|t1^1,1|],
+                                                         ps!![mix|t2^1,x^1,1|]![mix|2|],                                                                ps!![mix|t2^1,x^1,1|]![mix|t1^1,2|],
                                                          ps!![mix|t2^1,x^1,1|]![mix|t1^1|]]),
+            zero (ps'!![mix|t2^1,x^1|]!?[mix|1|]),                
             zero (ps'!![mix|t2^1,x^1,1|]!?[mix|2|]),
             zero (ps'!![mix|t2^1,x^1,1|]!?[mix|e^1|]),
             zero (ps'!![mix|t2^1,x^1,1|]!?[mix|e^1,2|]),
             
-            le (ps'!![mix|t2^1,x^1,2|]![mix|e^1,2|]) (sum [ps!![mix|t2^1,x^1,2|]![mix|t1^1,1|],
-                                                         ps!![mix|t2^1,x^1,2|]![mix|t1^1,2|],
+            le (ps'!![mix|t2^1,x^1,2|]![mix|e^1,2|]) (sum [
+                                                         ps!![mix|t2^1,x^1,2|]![mix|1|],
+                                                         ps!![mix|t2^1,x^1,2|]![mix|t1^1,1|],
+                                                         ps!![mix|t2^1,x^1,2|]![mix|2|],                                                                ps!![mix|t2^1,x^1,2|]![mix|t1^1,2|],
                                                          ps!![mix|t2^1,x^1,2|]![mix|t1^1|]]),
+            zero (ps'!![mix|t2^1,x^1|]!?[mix|1|]),                
             zero (ps'!![mix|t2^1,x^1,2|]!?[mix|2|]),
             zero (ps'!![mix|t2^1,x^1,2|]!?[mix|e^1,1|]),
             zero (ps'!![mix|t2^1,x^1,2|]!?[mix|e^1|]),
-            
+
+            impl (notZero (ps!![mix|t2^1,1|]![mix|1|])) (le (ps'!![mix|t2^1,1|]![mix|1|]) (ps!![mix|t2^1,1|]![mix|1|])),
+            impl (notZero (ps!![mix|t2^1,1|]![mix|2|])) (le (ps'!![mix|t2^1,1|]![mix|1|]) (ps!![mix|t2^1,1|]![mix|2|])),
+            impl (notZero (ps!![mix|t2^1,1|]![mix|t1^1|])) (le (ps'!![mix|t2^1,1|]![mix|1|]) (ps!![mix|t2^1,1|]![mix|t1^1|])),
+            impl (notZero (ps!![mix|t2^1,1|]![mix|t1^1,1|])) (le (ps'!![mix|t2^1,1|]![mix|1|]) (ps!![mix|t2^1,1|]![mix|t1^1,1|])),
+            impl (notZero (ps!![mix|t2^1,1|]![mix|t1^1,2|])) (le (ps'!![mix|t2^1,1|]![mix|1|]) (ps!![mix|t2^1,1|]![mix|t1^1,2|])),
+
+            impl (notZero (ps!![mix|t2^1,2|]![mix|1|])) (le (ps'!![mix|t2^1,2|]![mix|2|]) (ps!![mix|t2^1,2|]![mix|1|])),
+            impl (notZero (ps!![mix|t2^1,2|]![mix|2|])) (le (ps'!![mix|t2^1,2|]![mix|2|]) (ps!![mix|t2^1,2|]![mix|2|])),
+            impl (notZero (ps!![mix|t2^1,2|]![mix|t1^1|])) (le (ps'!![mix|t2^1,2|]![mix|2|]) (ps!![mix|t2^1,2|]![mix|t1^1|])),
+            impl (notZero (ps!![mix|t2^1,2|]![mix|t1^1,1|])) (le (ps'!![mix|t2^1,2|]![mix|2|]) (ps!![mix|t2^1,2|]![mix|t1^1,1|])),
+            impl (notZero (ps!![mix|t2^1,2|]![mix|t1^1,2|])) (le (ps'!![mix|t2^1,2|]![mix|2|]) (ps!![mix|t2^1,2|]![mix|t1^1,2|])),
+
+            impl (notZero (ps!![mix|t2^1,x^1|]![mix|1|])) (le (ps'!![mix|t2^1,x^1|]![mix|e^1|]) (ps!![mix|t2^1,x^1|]![mix|1|])),
+            impl (notZero (ps!![mix|t2^1,x^1|]![mix|2|])) (le (ps'!![mix|t2^1,x^1|]![mix|e^1|]) (ps!![mix|t2^1,x^1|]![mix|2|])),
             impl (notZero (ps!![mix|t2^1,x^1|]![mix|t1^1|])) (le (ps'!![mix|t2^1,x^1|]![mix|e^1|]) (ps!![mix|t2^1,x^1|]![mix|t1^1|])),
             impl (notZero (ps!![mix|t2^1,x^1|]![mix|t1^1,1|])) (le (ps'!![mix|t2^1,x^1|]![mix|e^1|]) (ps!![mix|t2^1,x^1|]![mix|t1^1,1|])),
             impl (notZero (ps!![mix|t2^1,x^1|]![mix|t1^1,2|])) (le (ps'!![mix|t2^1,x^1|]![mix|e^1|]) (ps!![mix|t2^1,x^1|]![mix|t1^1,2|])),
-            
+
+            impl (notZero (ps!![mix|t2^1,x^1,1|]![mix|1|])) (le (ps'!![mix|t2^1,x^1,1|]![mix|e^1,1|]) (ps!![mix|t2^1,x^1,1|]![mix|1|])),
+            impl (notZero (ps!![mix|t2^1,x^1,1|]![mix|2|])) (le (ps'!![mix|t2^1,x^1,1|]![mix|e^1,1|]) (ps!![mix|t2^1,x^1,1|]![mix|2|])),
             impl (notZero (ps!![mix|t2^1,x^1,1|]![mix|t1^1|])) (le (ps'!![mix|t2^1,x^1,1|]![mix|e^1,1|]) (ps!![mix|t2^1,x^1,1|]![mix|t1^1|])),
             impl (notZero (ps!![mix|t2^1,x^1,1|]![mix|t1^1,1|])) (le (ps'!![mix|t2^1,x^1,1|]![mix|e^1,1|]) (ps!![mix|t2^1,x^1,1|]![mix|t1^1,1|])),
             impl (notZero (ps!![mix|t2^1,x^1,1|]![mix|t1^1,2|])) (le (ps'!![mix|t2^1,x^1,1|]![mix|e^1,1|]) (ps!![mix|t2^1,x^1,1|]![mix|t1^1,2|])),
 
+            impl (notZero (ps!![mix|t2^1,x^1,2|]![mix|1|])) (le (ps'!![mix|t2^1,x^1,2|]![mix|e^1,2|]) (ps!![mix|t2^1,x^1,2|]![mix|1|])),
+            impl (notZero (ps!![mix|t2^1,x^1,2|]![mix|2|])) (le (ps'!![mix|t2^1,x^1,2|]![mix|e^1,2|]) (ps!![mix|t2^1,x^1,2|]![mix|2|])),
             impl (notZero (ps!![mix|t2^1,x^1,2|]![mix|t1^1|])) (le (ps'!![mix|t2^1,x^1,2|]![mix|e^1,2|]) (ps!![mix|t2^1,x^1,2|]![mix|t1^1|])),
             impl (notZero (ps!![mix|t2^1,x^1,2|]![mix|t1^1,1|])) (le (ps'!![mix|t2^1,x^1,2|]![mix|e^1,2|]) (ps!![mix|t2^1,x^1,2|]![mix|t1^1,1|])),
             impl (notZero (ps!![mix|t2^1,x^1,2|]![mix|t1^1,2|])) (le (ps'!![mix|t2^1,x^1,2|]![mix|e^1,2|]) (ps!![mix|t2^1,x^1,2|]![mix|t1^1,2|]))
             ]
             
-      S.fromList cfCs `shouldBe` S.fromList cs
+
+      let setIs = S.fromList cfCs
+      let setShould = S.fromList cs
+      setIs S.\\ setShould `shouldBe` S.empty
+      --setShould S.\\ setIs `shouldBe` S.empty
+      setIs `shouldBe` setShould
   describe "cWeakenVar" $ do
     it "generates the correct constraints" $ do
       let (x1, x2) = ("x1", "x2")
@@ -237,4 +307,6 @@ spec = do
                        eq (r![mix|x2^1|]) (q![mix|x2^1|]),
                        eq (r![mix|x2^1,1|]) (q![mix|x2^1,1|]),
                        eq (r![mix|x2^1,2|]) (q![mix|x2^1,2|])]
-      S.fromList isCs `shouldBe` S.fromList cs
+      let setIs = S.fromList isCs
+      let setShould = S.fromList cs
+      setIs `shouldBe` setShould

@@ -70,12 +70,12 @@ spec = do
                     Eq (q![mix|x2^1|]) (p![mix|x2^1|])]
       cs `shouldBe` should
   describe "forAllCombinations" $ do
-    it "generates the correct constraints" $ do
+    it "generates all requried combinations" $ do
       let (x1, x2, x3) = ("x1", "x2", "x3")
       let vars = [(x1, treeT), (x2, treeT)]
       let q = defaultAnn pot 0 "Q" "" vars
-      let should = [[mix|x2^1,x3^1|], [mix|x2^1,x3^1,1|], [mix|x2^1,x3^1,2|]]
-      forAllCombinations q [x2] (_aRange, _bRange) x3 `shouldBe` should
+      let should = [[mix|x2^1,x3^1|], [mix|x2^1,x3^1,1|], [mix|x2^1,x3^1,2|], [mix|x2^1,x3^1|], [mix|x2^1,1|], [mix|x2^1,2|]]
+      S.fromList (forAllCombinations q [x2] (_aRange, _bRange) x3) `shouldBe` S.fromList should
       
                              
                                  
