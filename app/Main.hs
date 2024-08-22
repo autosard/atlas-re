@@ -23,7 +23,7 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
-import Ast(TypedModule, TypedExpr, printProg)
+import Ast(TypedModule, TypedExpr, printProg, containsFn)
 
 
 import Colog (cmap, fmtMessage, logTextStdout, logWarning,
@@ -53,7 +53,7 @@ import Module (loadSimple)
 import SourceError (printSrcError)
 import CostAnalysis.Potential (printBound)
 import CostAnalysis.Constraint (Constraint)
-import Control.Monad (when)
+import Control.Monad (when, unless)
 
 type App a = LoggerT (Msg Severity) IO a
 
@@ -67,7 +67,9 @@ run :: Options -> RunOptions -> App ()
 run Options{..} RunOptions{..} = do
   let (modName, funName) = fqn 
   (normalizedProg, contents) <- liftIO $ loadMod searchPath modName
---  liftIO $ putStr (printProg normalizedProg)
+  unless (containsFn funName normalizedProg) $ do
+    logError $ "Module does not define the requested function '" `T.append` funName `T.append` "'."
+    liftIO exitFailure
   tactics <- case tacticsPath of
     Just path -> loadTactics (T.unpack modName) (fns normalizedProg) path
     Nothing -> return M.empty

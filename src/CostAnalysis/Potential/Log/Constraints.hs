@@ -5,7 +5,6 @@ module CostAnalysis.Potential.Log.Constraints where
 import Prelude hiding (exp, (!!), sum)
 import qualified Data.List as L
 import qualified Data.Set as S
-import Data.Set(Set)
 import Lens.Micro.Platform
 
 import Primitive(Id)

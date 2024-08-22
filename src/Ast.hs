@@ -133,7 +133,9 @@ pattern MatchArm p e <- MatchArmAnn _ p e
 pattern Fn :: Id -> [Id] -> Expr a -> FunDef a
 pattern Fn id args e <- FunDef _ id args e
 
-
+containsFn :: Text -> Module a -> Bool
+containsFn fn = any matches
+  where matches (FunDef _ id _ _) = id == fn
 
 printExprHead :: Expr a -> String
 printExprHead (Var id) = T.unpack id 
