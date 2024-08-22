@@ -3,6 +3,7 @@
 
 module CostAnalysis.Potential.Log.Weakening where
 
+import Prelude hiding (subtract)
 import qualified Data.Vector as V
 import Data.Set(Set)
 import Data.Maybe(catMaybes)
@@ -10,7 +11,7 @@ import qualified Data.Set as S
 import qualified Data.List as L
 import Data.Containers.ListUtils
 
-import Primitive(Id)
+import Primitive(Id, infinity)
 import CostAnalysis.Rules(WeakenArg(..))
 import CostAnalysis.Potential(ExpertKnowledge)
 import CostAnalysis.Coeff
@@ -29,17 +30,17 @@ merge ks = let (vs1, vs2) = unzip ks in (V.concat vs1, concat vs2)
 genExpertKnowledge :: Set WeakenArg -> [Id] -> Set CoeffIdx -> ExpertKnowledge
 genExpertKnowledge wArgs args idxs = merge $ map select wArgs' 
   where wArgs' = S.toList $ S.intersection wArgs supportedArgs
-        select Mono = monoLattice idxs
+        select Mono = monoLattice args idxs
         select L2xy = logLemma args idxs
 
-monoLattice :: Set CoeffIdx -> ExpertKnowledge
-monoLattice idxs = merge . catMaybes $
+monoLattice :: [Id] -> Set CoeffIdx -> ExpertKnowledge
+monoLattice args idxs = merge . catMaybes $
   [ compare idxP idxQ
   | idxP <- S.toList idxs,
     idxQ <- S.toList idxs,
     idxP /= idxQ]
   where compare :: CoeffIdx -> CoeffIdx -> Maybe ExpertKnowledge
-        compare (Mixed f1) (Mixed f2) = if monoLe f1 f2 then
+        compare (Mixed f1) (Mixed f2) = if monoLe args (Mixed f1) (Mixed f2) then
           let i = S.findIndex (Mixed f1) idxs
               j = S.findIndex (Mixed f2) idxs in
             Just (V.singleton $ V.fromList [if k == i then 1 else
@@ -49,41 +50,16 @@ monoLattice idxs = merge . catMaybes $
         compare _ _ = Nothing
 
 
+-- \sum a_i * |x_i| + a_{n+1} <= \sum b_i * |y_i| b_{n+1}.
+-- We know that arguments are trees, so we assume |x_i|,|y_i| >= 1. 
+monoLe :: [Id] -> CoeffIdx -> CoeffIdx -> Bool
+monoLe vars i j = sum (i `subtract` j) <= 0
+  where subtract i j = let cD = fromIntegral $ constFactor i - constFactor j in
+          cD : map (subFac i j) vars
+        subFac i j x = let a = facForVar i x
+                           b = facForVar j x in
+                         if a - b <= 0 then fromIntegral $ a - b else infinity
 
--- monoLe' :: CoeffIdx -> CoeffIdx -> Bool
--- monoLe' =
-
-monoLePre :: (Set Factor, Set Factor) -> (Set Factor, Set Factor)
-monoLePre (s1, s2) = go (S.toList s1) s2 S.empty S.empty
-  where go ((Arg x a):xs) ys xs' ys' =
-          let b = facForVar (Mixed ys) x 
-              ys'' = S.delete (Arg x b) ys in
-            if b - a > 0 then go xs ys'' xs' (S.insert (Arg x (b - a)) ys') else
-              if b - a < 0 then go xs ys'' (S.insert (Arg x (a - b)) xs') ys' else
-                go xs ys'' xs' ys'
-        go ((Const c):xs) ys xs' ys' =
-          let d = constFactor (Mixed ys) 
-              ys'' = S.delete (Const d) ys in
-            if d - c > 0 then go xs ys'' xs' (S.insert (Const (d - c)) ys') else
-              if d - c < 0 then go xs ys'' (S.insert (Const (c - d)) xs') ys' else
-                go xs ys'' xs' ys'
-        go [] ys xs' ys' = (xs', ys' `S.union` ys)
-
-  
-monoLe :: Set Factor -> Set Factor -> Bool
-monoLe s1 s2 = go (S.toAscList s1') (S.toAscList s2')
-  where (s1', s2') = monoLePre (s1, s2)
-        go :: [Factor] -> [Factor] -> Bool
-        go [] ys = True
-        go xs [] = False
-        go ((Arg x a):xs) ((Const c):ys) = go (Arg x a:xs) ys
-        go ((Arg x a):xs) ((Arg y b):ys) | x == y = a <= b && go xs ys
-                                         | otherwise = go (Arg x a:xs) ys
-        go ((Const c):xs) ((Const d):ys) | c >= d = if c - d /= 0 then go (Const (c - d):xs) ys else go xs ys
-                                         | otherwise = if d - c /= 0 then go xs (Const (d - c):ys) else go xs ys
-          -- c <= d && go xs ys
-        go ((Const c):xs) ((Arg y b):ys) | c >= b = if c - b /= 0 then go (Const (c - b):xs) ys else go xs ys
-                                         | otherwise = if b - c /= 0 then go xs (Arg y (b - c):ys) else go xs ys
 
 logLemma :: [Id] -> Set CoeffIdx -> ExpertKnowledge
 logLemma args idxs = merge $ [(V.singleton (row x y xy), [0])
