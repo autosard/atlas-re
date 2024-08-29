@@ -58,7 +58,7 @@ nmMatchArm (MatchArmAnn ann pat e) = do
 
 type HoleExpr = TypedExpr -> TypedExpr
 
-srcForBind :: TypedExpr -> TypedExprSrc
+srcForBind :: TypedExpr -> ExprSrc
 srcForBind e = case (teSrc . getAnn) e of
   (Loc pos) -> DerivedFrom pos
   (DerivedFrom pos) -> DerivedFrom pos

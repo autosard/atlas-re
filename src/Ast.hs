@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Ast where
 
@@ -12,6 +13,8 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Map(Map)
 import qualified Data.Map as M
+import Data.Set(Set)
+import qualified Data.Set as S
 import Text.Megaparsec(SourcePos)
 import Data.List(intercalate)
 import Prelude hiding (break)
@@ -44,6 +47,9 @@ data Syntax a
    | SynPatVar (PatternVar a)
 
 data MatchArm a = MatchArmAnn (XExprAnn a) (Pattern a) (Expr a)
+
+armExpr :: MatchArm a -> Expr a
+armExpr (MatchArmAnn _ _ e) = e
 
 data PatternVar a = Id (XExprAnn a) Id
   | WildcardVar (XExprAnn a)
@@ -157,39 +163,48 @@ printPat (ConstPat _ id vars) = T.unpack id ++ " " ++(unwords . map printPatVar 
 printPat (Alias _ id) = T.unpack id
 printPat (WildcardPat _) = "_"
 
-printMatchArm :: Int -> MatchArm a -> String
-printMatchArm ident (MatchArmAnn _ pat e) = "| " ++ printPat pat ++ " -> " ++ printExpr ident e 
+printMatchArm :: (XExprAnn a -> String) -> Int -> MatchArm a -> String
+printMatchArm printAnn ident (MatchArmAnn _ pat e) = "| " ++ printPat pat ++ " -> " ++ printExpr printAnn ident e 
 
 printRat r = (show . numerator $ r) ++ "/" ++ (show . denominator $ r)
 
 break :: Int -> String
 break ident = "\n" ++ replicate (2*ident) ' ' 
 
-printExpr :: Int -> Expr a -> String
-printExpr _ (Var id) = T.unpack id 
-printExpr _ (Lit l) = show l
-printExpr ident (Const "(,)" [x1, x2]) = "(" ++ printExpr ident x1 ++ ", " ++ printExpr ident x2 ++ ")"
-printExpr ident (Const id args) = T.unpack id ++ " " ++ unwords (map (printExpr ident) args)
-printExpr ident (Ite e1 e2 e3) = "if " ++ printExpr ident e1
-  ++ break (ident + 1) ++ "then " ++ printExpr (ident + 1) e2
-  ++ break (ident + 1) ++ "else " ++ printExpr (ident + 1) e3 
-printExpr ident (Match e arms) = "match " ++ printExpr ident e
+printExpr :: (XExprAnn a -> String) -> Int -> Expr a -> String
+printExpr printAnn _ (VarAnn ann id) = T.unpack id ++ printAnn ann
+printExpr printAnn _ (LitAnn ann l) = show l ++ printAnn ann
+printExpr printAnn ident (ConstAnn ann "(,)" [x1, x2]) = "(" ++ printExpr printAnn ident x1 ++ ", " ++ printExpr printAnn ident x2 ++ ")" ++ printAnn ann
+printExpr printAnn ident (ConstAnn ann id args) = T.unpack id ++ " " ++ unwords (map (printExpr printAnn ident) args) ++ printAnn ann
+printExpr printAnn ident (IteAnn ann e1 e2 e3) = "if " ++ printExpr printAnn ident e1
+  ++ printAnn ann 
+  ++ break (ident + 1) ++ "then " ++ printExpr printAnn (ident + 1) e2
+  ++ break (ident + 1) ++ "else " ++ printExpr printAnn (ident + 1) e3 
+printExpr printAnn ident (MatchAnn ann e arms) = "match "
+  ++ printExpr printAnn ident e ++ printAnn ann
   ++ break  (ident + 1) ++ printedArms 
-  where printedArms = intercalate (break (ident + 1)) . map (printMatchArm (ident + 1)) $ arms
-printExpr ident (App id args) = T.unpack id ++ " "
-                          ++ (unwords . map (printExpr ident) $ args) 
-printExpr ident (Let id e1 e2) = "let " ++ T.unpack id ++ " = " ++ printExpr ident e1 ++ " in"
-                           ++ break (ident + 1) ++ printExpr (ident + 1) e2
-printExpr ident (Tick c e) = "~" ++  frac c ++ printExpr ident e
+  where printedArms = intercalate (break (ident + 1)) . map (printMatchArm printAnn (ident + 1)) $ arms
+printExpr printAnn ident (AppAnn ann id args) = T.unpack id ++ " "
+                          ++ (unwords . map (printExpr printAnn ident) $ args) ++ printAnn ann
+printExpr printAnn ident (LetAnn ann id e1 e2) = "let " ++ T.unpack id ++ " = " ++ printExpr printAnn ident e1 ++ " in" ++ printAnn ann
+                           ++ break (ident + 1) ++ printExpr printAnn (ident + 1) e2
+printExpr printAnn ident (TickAnn ann c e) = "~" ++  frac c ++ printExpr printAnn ident e ++ printAnn ann
   where frac = maybe "" printRat 
-printExpr ident (Coin p) = "coin " ++ printRat p
+printExpr printAnn ident (CoinAnn ann p) = "coin " ++ printRat p ++ printAnn ann
 
-printFun :: FunDef a -> String
-printFun (Fn id args body) = T.unpack id ++ " " ++ printedArgs ++ " = " ++ printExpr 0 body
+printFun :: (XExprAnn a -> String) -> FunDef a -> String
+printFun printExprAnn (Fn id args body) = T.unpack id ++ " " ++ printedArgs ++ " = " ++ printExpr printExprAnn 0 body
   where printedArgs = unwords . map T.unpack $ args
 
+printFuns :: (XExprAnn a -> String) -> Module a -> String
+printFuns printExprAnn fns = intercalate "\n\n" (map (printFun printExprAnn) fns) ++ "\n"
+
 printProg :: Module a -> String
-printProg mod = intercalate "\n\n" (map printFun mod) ++ "\n"
+printProg = printFuns (const "")
+
+printProgPositioned :: PositionedModule -> String
+printProgPositioned = printFuns printCtx
+  where printCtx (PositionedExprAnn {..}) = " " ++ paren (intercalate "," (map show (S.toList peCtx)))
 
 class Annotated a b where
   getAnn :: a b -> XExprAnn b
@@ -302,11 +317,11 @@ data TypedFunAnn = TypedFunAnn {
   tfRsrcWithoutCost :: Maybe (Map CoeffIdx Rational, Map CoeffIdx Rational)}
   deriving (Eq, Show)
 
-data TypedExprSrc = Loc SourcePos | DerivedFrom SourcePos
+data ExprSrc = Loc SourcePos | DerivedFrom SourcePos
   deriving (Eq, Show)
 
 data TypedExprAnn = TypedExprAnn {
-  teSrc :: TypedExprSrc,
+  teSrc :: ExprSrc,
   teType :: Type}
   deriving (Eq, Show)
   
@@ -314,15 +329,22 @@ data Typed
 type instance XExprAnn Typed = TypedExprAnn
 type instance XFunAnn Typed = TypedFunAnn
 
-type Coefficient = Rational
+class HasType a where
+  type_ :: a -> Type
 
-getType :: Annotated a Typed => a Typed -> Type
-getType = teType . getAnn
+getType :: (HasType (XExprAnn b), Annotated a b) => a b -> Type
+getType = type_ . getAnn 
+
+instance HasType TypedExprAnn where
+  type_ = teType
+  
+-- getType :: Annotated a Typed => a Typed -> Type
+-- getType = teType . getAnn
 
 extendWithType :: Type -> XExprAnn Parsed -> XExprAnn Typed
 extendWithType t pos = TypedExprAnn (Loc pos) t
 
-ctxFromFn :: FunDef Typed -> (Map Id Type, (Id, Type))
+ctxFromFn :: FunDef Positioned -> (Map Id Type, (Id, Type))
 ctxFromFn (FunDef ann _ args _) =
   let (tFrom, tTo) = splitFnType . toType . tfType $ ann
       tsFrom = splitProdType tFrom
@@ -332,6 +354,48 @@ ctxFromFn (FunDef ann _ args _) =
 instance Types TypedExpr where
   apply s = mapAnn (\ann -> ann{teType = apply s (teType ann) })
   tv e = tv (getType e)
+
+-- context
+type PositionedModule = Module Positioned
+type PositionedFunDef = FunDef Positioned
+type PositionedExpr = Expr Positioned
+type PositionedMatchArm = MatchArm Positioned
+type PositionedPattern = Pattern Positioned
+type PositionedPatternVar = PatternVar Positioned
+
+deriving instance Show PositionedPatternVar
+deriving instance Eq PositionedPatternVar
+deriving instance Show PositionedPattern
+deriving instance Eq PositionedPattern
+deriving instance Show PositionedMatchArm
+deriving instance Eq PositionedMatchArm
+deriving instance Show PositionedExpr
+deriving instance Eq PositionedExpr
+deriving instance Show PositionedFunDef
+
+data ExprCtx = PseudoLeaf
+  | BindsAppOrTick
+  | BindsAppOrTickRec
+  | FirstAfterApp
+  | OutermostLet
+  | FirstAfterMatch
+  deriving (Eq, Ord, Show)
+
+data PositionedExprAnn = PositionedExprAnn {
+  peSrc :: ExprSrc,
+  peType :: Type,
+  peCtx :: Set ExprCtx}
+  deriving (Eq, Show)
+
+instance HasType PositionedExprAnn where
+  type_ = peType
+
+data Positioned
+type instance XFunAnn Positioned = TypedFunAnn
+type instance XExprAnn Positioned = PositionedExprAnn
+
+extendWithCtx :: Set ExprCtx -> XExprAnn Typed -> XExprAnn Positioned
+extendWithCtx ctx (TypedExprAnn {..}) = PositionedExprAnn teSrc teType ctx
 
 data Val = ConstVal !Id ![Val] | LitVal !Literal
   deriving Eq

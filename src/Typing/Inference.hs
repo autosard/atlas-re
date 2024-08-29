@@ -3,6 +3,7 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Typing.Inference where
 

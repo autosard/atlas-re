@@ -14,7 +14,7 @@ import Data.Text(unpack)
 import Text.Megaparsec
 
 
-data WeakenArg = Mono | L2xy
+data WeakenArg = Mono | L2xy | Neg
   deriving (Eq, Ord, Show)
 
 data LetArg = NegE
@@ -36,9 +36,9 @@ data Rule
   deriving(Eq, Show)
 
 data RuleApp
-  = ExprRuleApp Rule Bool RsrcAnn RsrcAnn [Constraint] TypedExpr
-  | FunRuleApp TypedFunDef
-  | ProgRuleApp TypedModule
+  = ExprRuleApp Rule Bool RsrcAnn RsrcAnn [Constraint] PositionedExpr
+  | FunRuleApp PositionedFunDef
+  | ProgRuleApp PositionedModule
 
 printRuleApp :: Bool -> Maybe (Set Constraint, String -> String) -> RuleApp -> String
 printRuleApp showCs integrateCore (ExprRuleApp rule cf q q' cs e) =
@@ -56,7 +56,7 @@ printRuleApp showCs integrateCore (ExprRuleApp rule cf q q' cs e) =
         unsat cs core = S.toList (S.fromList cs `S.intersection` core)
         printQ q = "q" ++ show (q^.annId) ++ "(" ++ intercalate "," (map (unpack . fst) (q^.args)) ++ ")"
         printCf = if cf then " (cf)" else ""
-        srcPos = case teSrc $ getAnn e of
+        srcPos = case peSrc $ getAnn e of
           Loc pos -> pos
           DerivedFrom pos -> pos
         printPos pos = show (unPos . sourceLine $ pos) ++ ","  ++ show (unPos $ sourceColumn pos)

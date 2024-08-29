@@ -89,11 +89,12 @@ emptyAnn :: Potential -> Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn
 emptyAnn pot id label comment args = RsrcAnn id args' label comment S.empty
   where args' = filter (\(x, t) -> matchesTypes t (types pot)) args
 
-enrichWithDefaults :: Potential -> Int -> Text -> Text -> RsrcAnn -> RsrcAnn
-enrichWithDefaults pot id label comment origin =
+enrichWithDefaults :: Potential -> Bool -> Int -> Text -> Text -> RsrcAnn -> RsrcAnn
+enrichWithDefaults pot neg id label comment origin =
   RsrcAnn id args_ label comment ((origin^.coeffs) `S.union` defaultCoeffs)
   where args_ = origin^.args
-        defaultCoeffs = defaultAnn pot id "" "" args_ ^.coeffs
+        annGen = if neg then defaultNegAnn else defaultAnn
+        defaultCoeffs = annGen pot id "" "" args_ ^.coeffs
 
 
 eqExceptConst :: Potential -> RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])

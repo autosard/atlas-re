@@ -16,6 +16,7 @@ import Data.Tree(Tree)
 import qualified Data.Set as S
 import qualified Data.Tree as T
 
+
 import Primitive(Id)
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Potential hiding (rsrcAnn, emptyAnn)
@@ -33,8 +34,7 @@ import Data.List(intercalate)
 data ProofState = ProofState {
   _sig :: RsrcSignature,
   _annIdGen :: Int,
-  _varIdGen :: Int,
-  _currentFn :: Maybe TypedFunDef
+  _varIdGen :: Int
   }
   deriving (Show)
 
@@ -51,14 +51,14 @@ type ProveMonad a = ExceptT SourceError (RWS ProofEnv [Constraint] ProofState) a
 
 type Derivation = Tree RuleApp
 
-conclude :: Rule -> Bool -> RsrcAnn -> RsrcAnn -> [Constraint] -> TypedExpr -> [Derivation] -> ProveMonad Derivation
+conclude :: Rule -> Bool -> RsrcAnn -> RsrcAnn -> [Constraint] -> PositionedExpr -> [Derivation] -> ProveMonad Derivation
 conclude rule cf q q' cs e derivs = do
   tell cs
   return $ T.Node (ExprRuleApp rule cf q q' cs e) derivs
 
-errorFrom :: Syntax Typed -> String -> ProveMonad a
+errorFrom :: Syntax Positioned -> String -> ProveMonad a
 errorFrom e msg = throwError $ SourceError loc msg
-  where loc = case (teSrc . getAnn) e of
+  where loc = case (peSrc . getAnn) e of
           (Loc pos) -> pos
           (DerivedFrom pos) -> pos
 
@@ -98,11 +98,11 @@ fromAnn label comment ann = do
   id <- genAnnId
   return $ R.fromAnn id label comment ann
 
-enrichWithDefaults :: Text -> Text -> RsrcAnn -> ProveMonad RsrcAnn
-enrichWithDefaults label comment ann = do
+enrichWithDefaults :: Bool -> Text -> Text -> RsrcAnn -> ProveMonad RsrcAnn
+enrichWithDefaults neg label comment ann = do
   pot <- view potential
   id <- genAnnId
-  return $ P.enrichWithDefaults pot id label comment ann
+  return $ P.enrichWithDefaults pot neg id label comment ann
   
 defaultAnn :: Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn
 defaultAnn = withPotAndId P.defaultAnn

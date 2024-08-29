@@ -6,7 +6,6 @@
 module CostAnalysis.Solving where
 
 import Prelude hiding (sum)
-import Primitive(Id)
 import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.Optimization

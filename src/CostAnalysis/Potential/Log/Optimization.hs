@@ -3,7 +3,6 @@
 module CostAnalysis.Potential.Log.Optimization(cOptimize) where
 
 import Prelude hiding (sum)
-import qualified Data.Set as S
 import Primitive(Id)
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential.Log.Base
@@ -88,12 +87,12 @@ cOptimize :: Args ->
 cOptimize potArgs q q' = do
   target <- freshVar
   (subTargets, cs) <- unzip <$> sequence [
---    rankDifference q q',
+    rankDifference q q',
 --        weightedAbs q,
     absRank q,
     weightedNonRankDifference potArgs q q',
-    constantDifference q q']
---    absNonRank q]
+    constantDifference q q',
+    absNonRank q]
   (weightedSubTargets, csWeighted) <- bindToVars (\var (target, w) -> eq var $ prod [target, ConstTerm w]) $
     zip subTargets [179969, 16127, 997, 97, 2] --[100,100,100]--[16127, 997, 97, 2] --[179969, 16127, 997, 97, 2]
   return (target,

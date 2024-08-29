@@ -140,10 +140,10 @@ pFunResourceAnn = (,) <$> pResourceAnn <* pArrow <*> pResourceAnn
 pResourceAnn :: Parser (Map Coeff.CoeffIdx Rational)
 pResourceAnn = M.fromList <$> pCoefficients
 
-pCoefficients :: Parser [(Coeff.CoeffIdx, Coefficient)]
+pCoefficients :: Parser [(Coeff.CoeffIdx, Rational)]
 pCoefficients = pSqParens $ sepBy pCoefficient (symbol ",")
 
-pCoefficient :: Parser (Coeff.CoeffIdx, Coefficient)
+pCoefficient :: Parser (Coeff.CoeffIdx, Rational)
 pCoefficient = do
   index <- pCoeffIdx
   void pMapsTo

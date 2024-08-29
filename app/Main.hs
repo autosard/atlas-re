@@ -23,7 +23,7 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
-import Ast(TypedModule, TypedExpr, printProg, containsFn)
+import Ast(TypedModule, TypedExpr, containsFn, printProgPositioned)
 
 
 import Colog (cmap, fmtMessage, logTextStdout, logWarning,
@@ -54,6 +54,7 @@ import SourceError (printSrcError)
 import CostAnalysis.Potential (printBound)
 import CostAnalysis.Constraint (Constraint)
 import Control.Monad (when, unless)
+import AstContext (contextualizeMod)
 
 type App a = LoggerT (Msg Severity) IO a
 
@@ -67,9 +68,11 @@ run :: Options -> RunOptions -> App ()
 run Options{..} RunOptions{..} = do
   let (modName, funName) = fqn 
   (normalizedProg, contents) <- liftIO $ loadMod searchPath modName
-  unless (containsFn funName normalizedProg) $ do
+  let positionedProg = contextualizeMod normalizedProg
+  unless (containsFn funName positionedProg) $ do
     logError $ "Module does not define the requested function '" `T.append` funName `T.append` "'."
     liftIO exitFailure
+--  liftIO $ putStr (printProgPositioned positionedProg)
   tactics <- case tacticsPath of
     Just path -> loadTactics (T.unpack modName) (fns normalizedProg) path
     Nothing -> return M.empty
@@ -77,7 +80,7 @@ run Options{..} RunOptions{..} = do
   let _bRange = [0,1,2]
   let args = Args _aRange _bRange 
   let pot = logPot args
-  let (varIdGen, proofResult) = runProof switchIgnoreAnns normalizedProg pot tactics
+  let (varIdGen, proofResult) = runProof switchIgnoreAnns positionedProg pot tactics
   (deriv, cs, sig) <- liftIO $ case proofResult of
         Left srcErr -> die $ printSrcError srcErr contents
         Right v -> return v

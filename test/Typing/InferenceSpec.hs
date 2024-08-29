@@ -160,7 +160,8 @@ spec = do
         let arm = MatchArmAnn sp p e
         let (r, state) = runTI testState (tiMatchArm ctx arm)
         let s = subst state
-        let isCorrect s (MatchArm pat e) = apply s (getType pat) == apply s (getType e)
+        let isCorrect :: Subst -> TypedMatchArm -> Bool
+            isCorrect s (MatchArm pat e) = apply s (getType pat) == apply s (getType e)
         r `shouldSatisfy` either (const False) (isCorrect s)
 
 
