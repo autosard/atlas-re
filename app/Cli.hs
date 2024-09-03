@@ -40,7 +40,8 @@ data RunOptions = RunOptions {
   tacticsPath :: Maybe FilePath,
   switchPrintDeriv :: Bool,
   switchIgnoreAnns :: Bool,
-  switchHideConstraints :: Bool}
+  switchHideConstraints :: Bool,
+  switchHtmlOutput :: Bool}
 
 runOptionsP :: Parser RunOptions
 runOptionsP = do
@@ -58,6 +59,9 @@ runOptionsP = do
   switchHideConstraints <- switch
     (long "hide-constraints"
     <> help "When active, only the derivation tree is printed without constraints.")
+  switchHtmlOutput <- switch
+    (long "html-output"
+    <> help "When active, a html representation, potentially including the unsat-core is produced.")  
   fqn <- argument (eitherReader parseFqn) (metavar "FQN")
   return RunOptions{..}
 

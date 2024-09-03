@@ -59,6 +59,6 @@ printRuleApp showCs integrateCore (ExprRuleApp rule cf q q' cs e) =
         srcPos = case peSrc $ getAnn e of
           Loc pos -> pos
           DerivedFrom pos -> pos
-        printPos pos = show (unPos . sourceLine $ pos) ++ ","  ++ show (unPos $ sourceColumn pos)
+          
 printRuleApp _ _ (FunRuleApp (Fn name _ _)) = "Fun: " ++ unpack name
 printRuleApp _ _ (ProgRuleApp _) = "Prog" 

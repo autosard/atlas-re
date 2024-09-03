@@ -16,14 +16,17 @@ import System.Exit
 import Data.Text(Text)
 import System.FilePath
 import qualified Data.Text.IO as TextIO
+import qualified Data.Text.Lazy.IO as TextLazyIO
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as LT
 import Data.Maybe(fromMaybe, catMaybes)
 import System.Directory
 import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
-import Ast(TypedModule, TypedExpr, containsFn, printProgPositioned)
+import Ast(TypedModule, TypedExpr, containsFn, printProg)
+import CostAnalysis.PrettyProof(renderProof, css, js)
 
 
 import Colog (cmap, fmtMessage, logTextStdout, logWarning,
@@ -72,7 +75,7 @@ run Options{..} RunOptions{..} = do
   unless (containsFn funName positionedProg) $ do
     logError $ "Module does not define the requested function '" `T.append` funName `T.append` "'."
     liftIO exitFailure
---  liftIO $ putStr (printProgPositioned positionedProg)
+--  liftIO $ putStr (printProg positionedProg)
   tactics <- case tacticsPath of
     Just path -> loadTactics (T.unpack modName) (fns normalizedProg) path
     Nothing -> return M.empty
@@ -94,11 +97,24 @@ run Options{..} RunOptions{..} = do
   case solution of
     (Left core) -> let core' = S.fromList core in do
       logError $ "solver returned unsat. See unsat-core for details."
-      liftIO $ printDeriv True (Just core') deriv
-    (Right coeffs) -> let target = withCost $ sig M.! funName in do
-      --liftIO $ print solution 
-      liftIO $ putStr (printBound pot target coeffs)
+      if switchHtmlOutput then
+        liftIO $ writeHtmlProof "./out" (renderProof (Just core') deriv)
+      else 
+        liftIO $ printDeriv True (Just core') deriv
       
+    (Right coeffs) -> let target = withCost $ sig M.! funName in do
+      when switchHtmlOutput $
+         liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv)
+      liftIO $ putStr (printBound pot target coeffs)
+
+writeHtmlProof :: FilePath -> LT.Text -> IO ()
+writeHtmlProof path html = do
+  path <- liftIO $ makeAbsolute path
+  liftIO $ createDirectoryIfMissing False path
+  liftIO $ TextLazyIO.writeFile (path </> "index.html") html
+  liftIO $ TextLazyIO.writeFile (path </> "style.css") css
+  liftIO $ TextLazyIO.writeFile (path </> "proof.js") js
+  liftIO $ putStrLn $ "Saved proof to \"file://" ++ path </> "index.html" ++ "\""
 
 printDeriv :: Bool -> Maybe (Set Constraint) -> Derivation -> IO ()
 printDeriv showCs unsatCore deriv = putStr (drawTree deriv')

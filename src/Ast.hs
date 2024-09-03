@@ -15,7 +15,7 @@ import Data.Map(Map)
 import qualified Data.Map as M
 import Data.Set(Set)
 import qualified Data.Set as S
-import Text.Megaparsec(SourcePos)
+import Text.Megaparsec(SourcePos, unPos, sourceLine, sourceColumn)
 import Data.List(intercalate)
 import Prelude hiding (break)
 
@@ -27,6 +27,8 @@ import Data.Ratio(numerator, denominator)
 import CostAnalysis.Coeff(CoeffIdx)
     
 type Fqn = (Text, Text)
+
+printFqn (mod, fn) = T.unpack mod ++ "." ++ T.unpack fn
 
 type Number = Int
 
@@ -175,7 +177,7 @@ printExpr :: (XExprAnn a -> String) -> Int -> Expr a -> String
 printExpr printAnn _ (VarAnn ann id) = T.unpack id ++ printAnn ann
 printExpr printAnn _ (LitAnn ann l) = show l ++ printAnn ann
 printExpr printAnn ident (ConstAnn ann "(,)" [x1, x2]) = "(" ++ printExpr printAnn ident x1 ++ ", " ++ printExpr printAnn ident x2 ++ ")" ++ printAnn ann
-printExpr printAnn ident (ConstAnn ann id args) = T.unpack id ++ " " ++ unwords (map (printExpr printAnn ident) args) ++ printAnn ann
+printExpr printAnn ident (ConstAnn ann id args) = paren $ T.unpack id ++ " " ++ unwords (map (printExpr printAnn ident) args) ++ printAnn ann
 printExpr printAnn ident (IteAnn ann e1 e2 e3) = "if " ++ printExpr printAnn ident e1
   ++ printAnn ann 
   ++ break (ident + 1) ++ "then " ++ printExpr printAnn (ident + 1) e2
@@ -184,7 +186,7 @@ printExpr printAnn ident (MatchAnn ann e arms) = "match "
   ++ printExpr printAnn ident e ++ printAnn ann
   ++ break  (ident + 1) ++ printedArms 
   where printedArms = intercalate (break (ident + 1)) . map (printMatchArm printAnn (ident + 1)) $ arms
-printExpr printAnn ident (AppAnn ann id args) = T.unpack id ++ " "
+printExpr printAnn ident (AppAnn ann id args) = paren $ T.unpack id ++ " "
                           ++ (unwords . map (printExpr printAnn ident) $ args) ++ printAnn ann
 printExpr printAnn ident (LetAnn ann id e1 e2) = "let " ++ T.unpack id ++ " = " ++ printExpr printAnn ident e1 ++ " in" ++ printAnn ann
                            ++ break (ident + 1) ++ printExpr printAnn (ident + 1) e2
@@ -408,3 +410,5 @@ instance Show Val where
   show (ConstVal id args) = paren $ T.unpack id ++ " " ++ unwords (map show args)
   show (LitVal (LitNum n)) = show n
 
+printPos :: SourcePos -> String
+printPos pos = show (unPos . sourceLine $ pos) ++ ","  ++ show (unPos $ sourceColumn pos)
