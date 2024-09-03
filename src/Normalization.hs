@@ -49,6 +49,9 @@ nmExpr const@(ConstAnn ann id args) = do
   normedArgs <- mapM nmExpr args
   (hole, args') <- nmBinds (getType const) normedArgs
   return $ hole (ConstAnn ann id args')
+nmExpr (TickAnn ann c e) = do
+  e' <- nmExpr e
+  return $ TickAnn ann c e'
 nmExpr e = return e
 
 nmMatchArm :: TypedMatchArm -> Norm TypedMatchArm

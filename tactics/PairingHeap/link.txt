@@ -1,10 +1,11 @@
 (match (* h *)
-  (w{l2xy size} leaf)
-  (w{l2xy size} (match
-    (w{l2xy size} (let:tree:cf (w{l2xy size} leaf) (w{size l2xy} node)))
+  (w{l2xy mono} const)
+  (w{l2xy mono} (match
+    (w{l2xy mono} (let (w{l2xy mono} const) (w{mono l2xy} const)))
+    (let cmp
     (ite
-      (w{l2xy size} (let:tree:cf (w{size l2xy} node) (w{size l2xy} node)))
-      (w{l2xy size} (let:tree:cf (w{size l2xy} node) (w{size l2xy} node)))
-    )
+      (w{l2xy mono} (let (w{mono l2xy} const) (w{mono l2xy} const)))
+      (w{l2xy mono} (let (w{mono l2xy} const) (w{mono l2xy} const)))
+    ))
   ))
 )
