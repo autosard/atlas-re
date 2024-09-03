@@ -1,49 +1,49 @@
 (match
   (w{mono}
-    leaf
+    const
   )
-  (ite
+  (let cmp (ite
     (w{mono}
-      node
+      const
     )
-    (ite
+    (let cmp (ite
       (match
         (w{mono}
-          (let:tree:cf
-            leaf
-            (let:tree:cf
-              leaf
-              (let:tree:cf
-                node
+          (let
+            const
+            (let
+              const
+              (let
+                const
                 (w{mono}
-                  node
+                  const
                 )
               )
             )
           )
         )
-        (ite
+        (let cmp (ite
           (w{mono}
-            (let:tree:cf
-              node
+            (let
+              const
               (w{mono}
-                node
+                const
               )
             )
           )
-          (ite
+          (let cmp (ite
             (match
               (w{mono}
-                (let:tree:cf
-                  leaf
-                  (let:tree:cf
-                    leaf
-                    (let:tree:cf
-                      node
-                      (let:tree:cf
-                        node
+                (let
+                  const
+                  (let
+                    const
+                    (let
+                      const
+                      (let
+                        const
                         (w{mono}
-                          node
+                          const
                         )
                       )
                     )
@@ -51,7 +51,7 @@
                 )
               )
               (w{l2xy mono}
-                (let:tree:cf{nege}
+                (let{nege}
                   (tick:defer
                     (shift
                       app
@@ -61,7 +61,7 @@
                     (w{mono}
                       (w:var
                         (w:var
-                          leaf
+                          const
                         )
                       )
                     )
@@ -69,24 +69,24 @@
                       (ite
                         (w{mono}
                           (tick:defer
-                            (let:tree:cf
-                              node
-                              (let:tree:cf
-                                node
+                            (let
+                              const
+                              (let
+                                const
                                 (w{mono}
-                                  node
+                                  const
                                 )
                               )
                             )
                           )
                         )
                         (w{mono}
-                          (let:tree:cf
-                            node
-                            (let:tree:cf
-                              node
+                          (let
+                            const
+                            (let
+                              const
                               (w{mono}
-                                node
+                                const
                               )
                             )
                           )
@@ -99,16 +99,16 @@
             )
             (match
               (w{mono}
-                (let:tree:cf
-                  leaf
-                  (let:tree:cf
-                    leaf
-                    (let:tree:cf
-                      node
-                      (let:tree:cf
-                        node
+                (let
+                  const
+                  (let
+                    const
+                    (let
+                      const
+                      (let
+                        const
                         (w{mono}
-                          node
+                          const
                         )
                       )
                     )
@@ -116,7 +116,7 @@
                 )
               )
               (w{l2xy mono}
-                (let:tree:cf{nege}
+                (let{nege}
                   (tick:defer
                     (shift
                       app
@@ -126,7 +126,7 @@
                     (w{mono}
                       (w:var
                         (w:var
-                          leaf
+                          const
                         )
                       )
                     )
@@ -134,24 +134,24 @@
                       (ite
                         (w{mono}
                           (tick:defer
-                            (let:tree:cf
-                              node
-                              (let:tree:cf
-                                node
+                            (let
+                              const
+                              (let
+                                const
                                 (w{mono}
-                                  node
+                                  const
                                 )
                               )
                             )
                           )
                         )
                         (w{mono}
-                          (let:tree:cf
-                            node
-                            (let:tree:cf
-                              node
+                          (let
+                            const
+                            (let
+                              const
                               (w{mono}
-                                node
+                                const
                               )
                             )
                           )
@@ -162,46 +162,46 @@
                 )
               )
             )
-          )
-        )
+          ))
+        ))
       )
       (match
         (w{mono}
-          (let:tree:cf
-            leaf
-            (let:tree:cf
-              leaf
-              (let:tree:cf
-                node
+          (let
+            const
+            (let
+              const
+              (let
+                const
                 (w{mono}
-                  node
+                  const
                 )
               )
             )
           )
         )
-        (ite
+        (let cmp (ite
           (w{mono}
-            (let:tree:cf
-              node
+            (let
+              const
               (w{mono}
-                node
+                const
               )
             )
           )
-          (ite
+          (let cmp (ite
             (match
               (w{mono}
-                (let:tree:cf
-                  leaf
-                  (let:tree:cf
-                    leaf
-                    (let:tree:cf
-                      node
-                      (let:tree:cf
-                        node
+                (let
+                  const
+                  (let
+                    const
+                    (let
+                      const
+                      (let
+                        const
                         (w{mono}
-                          node
+                          const
                         )
                       )
                     )
@@ -209,7 +209,7 @@
                 )
               )
               (w{l2xy mono}
-                (let:tree:cf{nege}
+                (let{nege}
                   (tick:defer
                     (shift
                       app
@@ -219,7 +219,7 @@
                     (w{mono}
                       (w:var
                         (w:var
-                          leaf
+                          const
                         )
                       )
                     )
@@ -227,24 +227,24 @@
                       (ite
                         (w{mono}
                           (tick:defer
-                            (let:tree:cf
-                              node
-                              (let:tree:cf
-                                node
+                            (let
+                              const
+                              (let
+                                const
                                 (w{mono}
-                                  node
+                                  const
                                 )
                               )
                             )
                           )
                         )
                         (w{mono}
-                          (let:tree:cf
-                            node
-                            (let:tree:cf
-                              node
+                          (let
+                            const
+                            (let
+                              const
                               (w{mono}
-                                node
+                                const
                               )
                             )
                           )
@@ -257,16 +257,16 @@
             )
             (match
               (w{mono}
-                (let:tree:cf
-                  node
-                  (let:tree:cf
-                    leaf
-                    (let:tree:cf
-                      leaf
-                      (let:tree:cf
-                        node
+                (let
+                  const
+                  (let
+                    const
+                    (let
+                      const
+                      (let
+                        const
                         (w{mono}
-                          node
+                          const
                         )
                       )
                     )
@@ -274,7 +274,7 @@
                 )
               )
               (w{l2xy mono}
-                (let:tree:cf{nege}
+                (let{nege}
                   (tick:defer
                     (shift
                       app
@@ -284,7 +284,7 @@
                     (w{mono}
                       (w:var
                         (w:var
-                          leaf
+                          const
                         )
                       )
                     )
@@ -292,24 +292,24 @@
                       (ite
                         (w{mono}
                           (tick:defer
-                            (let:tree:cf
-                              node
-                              (let:tree:cf
-                                node
+                            (let
+                              const
+                              (let
+                                const
                                 (w{mono}
-                                  node
+                                  const
                                 )
                               )
                             )
                           )
                         )
                         (w{mono}
-                          (let:tree:cf
-                            node
-                            (let:tree:cf
-                              node
+                          (let
+                            const
+                            (let
+                              const
                               (w{mono}
-                                node
+                                const
                               )
                             )
                           )
@@ -320,9 +320,9 @@
                 )
               )
             )
-          )
-        )
+          ))
+        ))
       )
-    )
-  )
+    ))
+  ))
 )

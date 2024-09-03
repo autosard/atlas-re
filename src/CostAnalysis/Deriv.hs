@@ -80,7 +80,6 @@ proveCmp _ cf _ e q q' = do
 
 proveVar :: Prove PositionedExpr Derivation
 proveVar _ cf ctx e@(Var id) q q' = do
-  --when (length ctx /= 1) $ errorFrom (SynExpr e) "(var) applied to non-singleton context."
   when (M.notMember id ctx) $ errorFrom (SynExpr e) $ "(var) applied for variable '" ++ Text.unpack id ++ "' that is not in the context."
   let cs = annLikeUnify q q'
   conclude R.Var cf q q' cs e []
@@ -99,6 +98,16 @@ proveIte tactic cf ctx e@(Ite (Var x) e1 e2) q q' = do
   deriv1 <- proveExpr t1 cf ctx' e1 q q'
   deriv2 <- proveExpr t2 cf ctx' e2 q q'
   conclude R.Ite cf q q' [] e [deriv1, deriv2]
+proveIte tactic cf ctx e@(Ite (Coin p) e1 e2) q q' = do
+  let [t1, t2] = subTactics 2 tactic
+  q1 <- enrichWithDefaults False "Q1" "" q
+  q2 <- enrichWithDefaults False "Q2" "" q
+  let cs = annLikeEq q (annLikeAdd
+                            (annScalarMul q1 (ConstTerm p))
+                            (annScalarMul q2 (ConstTerm (1-p))))
+  deriv1 <- proveExpr t1 cf ctx e1 q1 q'
+  deriv2 <- proveExpr t2 cf ctx e2 q2 q'
+  conclude R.Ite cf q q' cs e [deriv1, deriv2]
 
 proveMatchArm :: Id -> Prove PositionedMatchArm ([Constraint], Derivation)
 proveMatchArm matchVar tactic cf ctx
@@ -335,9 +344,9 @@ genTactic e@(Var {}) = autoWeaken e (Rule R.Var [])
 genTactic e@(Const {}) | isCmp e = Rule R.Cmp []
 genTactic e@(Const {}) = autoWeaken e (Rule R.Const [])
 genTactic (Match _ arms) = Rule R.Match $ map (genTactic . armExpr) arms
-genTactic (Ite _ e2 e3) = let t1 = genTactic e2
-                              t2 = genTactic e3 in
-  Rule R.Ite [t1, t2]
+genTactic e@(Ite _ e2 e3) = let t1 = genTactic e2
+                                t2 = genTactic e3 in
+  autoWeaken e $ Rule R.Ite [t1, t2]
 genTactic (App {}) = Rule R.App []
 genTactic e@(Let _ binding body) = let t1 = genTactic binding
                                        t2 = genTactic body
@@ -357,7 +366,8 @@ wArgsForExpr e = S.toList $ foldr checkCtx S.empty
     ([BindsAppOrTickRec], [R.Neg]),
     ([BindsAppOrTick], [R.Mono, R.L2xy]),
     ([FirstAfterApp, OutermostLet], [R.L2xy, R.Mono]),
-    ([FirstAfterMatch], [R.Mono])]
+    ([FirstAfterMatch], [R.Mono]),
+    ([IteCoin], [R.L2xy])]
   where ctx = peCtx $ getAnn e
         checkCtx (flags, impliedArgs) wArgs = if all (`S.member` ctx) flags then
           S.union wArgs (S.fromList impliedArgs) else wArgs

@@ -22,8 +22,9 @@ contextualizeExpr' fn ctx (VarAnn ann id) = VarAnn (extendWithCtx (S.delete Oute
 contextualizeExpr' fn ctx (LitAnn ann l) = LitAnn (extendWithCtx (S.delete OutermostLet ctx) ann) l
 contextualizeExpr' fn ctx (ConstAnn ann id args) = ConstAnn (extendWithCtx ctx ann) id args'
   where args' = map (contextualizeExpr' fn ctx) args
-contextualizeExpr' fn ctx (IteAnn ann e1 e2 e3) = IteAnn (extendWithCtx S.empty ann) e1' e2' e3'
-  where ctx' = S.insert FirstAfterMatch ctx
+contextualizeExpr' fn ctx (IteAnn ann e1 e2 e3) = IteAnn (extendWithCtx coinCtx ann) e1' e2' e3'
+  where coinCtx = if isCoin e1 then S.singleton IteCoin else S.empty
+        ctx' = S.insert FirstAfterMatch ctx
         e1' = contextualizeExpr' fn ctx' e1
         e2' = contextualizeExpr' fn ctx' e2
         e3' = contextualizeExpr' fn ctx' e3
@@ -53,12 +54,16 @@ contextualizeExpr' fn ctx (TickAnn ann c e) = TickAnn (extendWithCtx S.empty ann
   where e' = contextualizeExpr' fn ctx e
 contextualizeExpr' fn ctx (CoinAnn ann p) = CoinAnn (extendWithCtx S.empty ann) p 
 
-nestedConst :: TypedExpr -> TypedExpr -> Bool
+isCoin :: Expr a -> Bool
+isCoin (Coin _) = True
+isCoin _ = False
+
+nestedConst :: Expr a -> Expr a -> Bool
 nestedConst (Const {}) (Const {}) = True
 nestedConst (Const {}) (Let _ e1 e2) = nestedConst e1 e2
 nestedConst _ _ = False
 
-appOrTick :: TypedExpr -> Bool                                                 
+appOrTick :: Expr a -> Bool                                                 
 appOrTick (Tick {}) = True
 appOrTick (App {}) = True
 appOrTick _ = False

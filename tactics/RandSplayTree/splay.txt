@@ -1,24 +1,26 @@
 (match
-  (w leaf)
-  (ite
-    (w{mono} node)
+  (w{mono} const)
+  (let cmp (ite
+    (w{mono} const)
+    (let cmp
     (ite
       (match
-        (let leaf (w{mono} node))
+        (let const (w{mono} const))
+	(let cmp
         (ite
-          (let node (w{mono} node))
-          (ite
+          (let const (w{mono} const))
+          (let cmp (ite
             (match
-              (w{mono} (let leaf (let node (w{mono} node))))
+              (w{mono} (let const (let const (w{mono} const))))
               (w{l2xy mono}
                 (let
                   (tick:defer (shift app))
                   (match
-                    (w{mono} leaf)
+                    (w{mono} const)
                     (w{l2xy}
                       (ite
-                        (w{mono} (tick:defer (let node (let node node))))
-                        (w{mono}       (let node (let node node)))
+                        (w{mono} (tick:defer (let const (let const const))))
+                        (w{mono}       (let const (let const const)))
                       )
                     )
                   )
@@ -26,41 +28,41 @@
               )
             )
             (match
-              (w{mono} (let leaf (let node (w{mono} node))))
+              (w{mono} (let const (let const (w{mono} const))))
               (w{l2xy mono}
                 (let
                   (tick:defer (shift app))
                   (match
-                    (w{mono} leaf)
+                    (w{mono} const)
                     (w{l2xy}
                       (ite
-                        (w{mono} (tick:defer (let node (let node node))))
-                        (w{mono}       (let node (let node node)))
+                        (w{mono} (tick:defer (let const (let const const))))
+                        (w{mono}       (let const (let const const)))
                       )
                     )
                   )
                 )
               )
             )
-          )
-        )
+          ))
+        ))
       )
       (match
-        (let leaf (w{mono} node))
-        (ite
-          (let node (w{mono} node))
-          (ite
+        (let const (w{mono} const))
+        (let cmp (ite
+          (let const (w{mono} const))
+          (let cmp (ite
             (match
-              (w{mono} (let leaf (let node (w{mono} node))))
+              (w{mono} (let const (let const (w{mono} const))))
               (w{l2xy mono}
                 (let
                   (tick:defer (shift app))
                   (match
-                    (w{mono} leaf)
+                    (w{mono} const)
                     (w{l2xy}
                       (ite
-                        (w{mono} (tick:defer (let node (let node node))))
-                        (w{mono}       (let node (let node node)))
+                        (w{mono} (tick:defer (let const (let const const))))
+                        (w{mono}       (let const (let const const)))
                       )
                     )
                   )
@@ -68,24 +70,24 @@
               )
             )
             (match
-              (w{mono} (let node (let leaf (w{mono} node))))
+              (w{mono} (let const (let const (w{mono} const))))
               (w{l2xy mono}
                 (let
                   (tick:defer (shift app))
-                  (match (w{mono} leaf)
+                  (match (w{mono} const)
                     (w{l2xy}
                       (ite
-                        (w{mono} (tick:defer (let node (let node node))))
-                        (w{mono}       (let node (let node node)))
+                        (w{mono} (tick:defer (let const (let const const))))
+                        (w{mono}       (let const (let const const)))
                       )
                     )
                   )
                 )
               )
             )
-          )
-        )
+          ))
+        ))
       )
-    )
-  )
+    ))
+  ))
 )

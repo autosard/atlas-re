@@ -122,6 +122,13 @@ annAdd q op | annVars q == opArgs op = PointWiseOp (annVars q) $
              | idx <- S.toList $ (q^.coeffs) `S.union` definedIdxs op]
             | otherwise = error "point wise operation not valid for annotation likes with different arguments."
 
+annLikeAdd :: (AnnLike a, AnnLike b) => a -> b -> PointWiseOp
+annLikeAdd q p | argVars q == argVars p = PointWiseOp (argVars q) $
+             M.fromList [(idx, sum [q!?idx, p!?idx])
+                        | idx <- S.toList $ definedIdxs q `S.union` definedIdxs p]
+               | otherwise = error "point wise operation not valid for annotation likes with different arguments."
+
+
 annLikeEq :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
 annLikeEq q op = concat [eq (q!?idx) (op!?idx)
              | idx <- S.toList $ definedIdxs q `S.union` definedIdxs op]
