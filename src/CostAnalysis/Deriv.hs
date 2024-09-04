@@ -409,8 +409,9 @@ setRightSidesEqual (ann:anns) = concat [annEq (snd . withCost $ ann) (snd . with
 proveModule :: PositionedModule -> Bool -> ProveMonad Derivation
 proveModule mod ignoreAnns = do
   s <- use sig
-  funAnns <- mapM (\f@(Fn name _ _) -> (name,) <$> genFunRsrcAnn f) mod
+  let fns = map (defs mod M.!) $ concat (mutRecGroups mod)
+  funAnns <- mapM (\f@(Fn name _ _) -> (name,) <$> genFunRsrcAnn f) fns
   tell $ setRightSidesEqual (map snd funAnns)
   sig .= s `M.union` M.fromList funAnns
-  derivs <- mapM (uncurry (proveFunWithAnn ignoreAnns)) $ zipWith (\x y -> (x, snd y)) mod funAnns
+  derivs <- mapM (uncurry (proveFunWithAnn ignoreAnns)) $ zipWith (\x y -> (x, snd y)) fns funAnns
   return $ T.Node (R.ProgRuleApp mod) derivs

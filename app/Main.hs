@@ -25,7 +25,7 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
-import Ast(TypedModule, TypedExpr, containsFn, printProg)
+import Ast(TypedModule, TypedExpr, containsFn, printProg, Fqn, defs)
 import CostAnalysis.PrettyProof(renderProof, css, js)
 
 
@@ -40,7 +40,6 @@ import Normalization(normalizeMod, normalizeExpr)
 import Parsing.Program(parseExpr, parseModule)
 import Parsing.Tactic
 import Eval(evalWithModule)
-import StaticAnalysis(fns)
 import Primitive(Id)
 import CostAnalysis.Tactic 
 import CostAnalysis.Potential.Log
@@ -52,7 +51,7 @@ import CostAnalysis.Rules
 import Cli(Options(..), RunOptions(..), EvalOptions(..), Command(..), cliP)
 
 import System.Random (getStdGen)
-import Module (loadSimple)
+import Module (load, loadLazy)
 import SourceError (printSrcError)
 import CostAnalysis.Potential (printBound)
 import CostAnalysis.Constraint (Constraint)
@@ -70,14 +69,14 @@ app options = do
 run :: Options -> RunOptions -> App ()
 run Options{..} RunOptions{..} = do
   let (modName, funName) = fqn 
-  (normalizedProg, contents) <- liftIO $ loadMod searchPath modName
+  (normalizedProg, contents) <- liftIO $ loadMod searchPath (Right fqn)
   let positionedProg = contextualizeMod normalizedProg
   unless (containsFn funName positionedProg) $ do
     logError $ "Module does not define the requested function '" `T.append` funName `T.append` "'."
     liftIO exitFailure
 --  liftIO $ putStr (printProg positionedProg)
   tactics <- case tacticsPath of
-    Just path -> loadTactics (T.unpack modName) (fns normalizedProg) path
+    Just path -> loadTactics (T.unpack modName) (M.keys (defs normalizedProg)) path
     Nothing -> return M.empty
   let _aRange = [0,1]
   let _bRange = [0,1,2]
@@ -128,7 +127,7 @@ red s = setSGRCode [SetColor Foreground Vivid Red] ++ s ++ setSGRCode [Reset]
 
 eval :: Options -> EvalOptions -> App ()
 eval Options{..} EvalOptions{..} = do
-  (mod, _) <- liftIO $ loadMod searchPath modName
+  (mod, _) <- liftIO $ loadMod searchPath (Left modName)
   expr' <- liftIO $ loadExpr expr mod
   rng <- liftIO getStdGen
   let val = evalWithModule mod expr' rng
@@ -156,12 +155,13 @@ loadTactics modName fns path = M.fromList . catMaybes <$> mapM loadOne fns
             logWarning $ "No tactic file for function '" `T.append` fn `T.append` "' found."
             return Nothing
 
-loadMod :: Maybe FilePath -> Text -> IO (TypedModule, Text)
-loadMod pathSearch modName = do
+loadMod :: Maybe FilePath -> (Either Text Fqn) -> IO (TypedModule, Text)
+loadMod pathSearch modOrFqn = do
   searchPathfromEnv <- lookupEnv "ATLAS_SEARCH"
   let path = (`fromMaybe` pathSearch) . (`fromMaybe` searchPathfromEnv) $ "."
-  (fileName, contents) <- loadSimple path modName
-  let parsedMod = parseModule fileName modName contents
+  (parsedMod, contents) <- case modOrFqn of
+    Left moduleName -> load path moduleName
+    Right fqn -> loadLazy path fqn
   typedMod <- case inferModule parsedMod of
         Left srcErr -> die $ printSrcError srcErr contents
         Right mod -> return mod

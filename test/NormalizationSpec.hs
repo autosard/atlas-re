@@ -9,6 +9,9 @@ import Ast
 import Normalization
 import Typing.Type
 
+import Debug.Trace (trace)
+traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
+
 sp = initialPos "test.ml"
 testAnn :: Type -> TypedExprAnn
 testAnn = TypedExprAnn (Loc sp)
@@ -40,8 +43,7 @@ spec = do
               VarAnn (testAnn tTreeNum) "l",
               VarAnn (testAnn tNum) "b",
               VarAnn (testAnnDerived tTreeNum) "?0"]
-        let result = LetAnn
-                     (testAnnDerived tNum) "?1" a1
+        let should = LetAnn (testAnnDerived tNum) "?1" a1
                       (LetAnn (testAnnDerived tNum) "?0" (ConstAnn (testAnn tTreeNum) "leaf" [])
                        (LetAnn (testAnnDerived tNum) "?2" a2'
                         (LetAnn (testAnnDerived tNum) "?3" a3
@@ -50,7 +52,8 @@ spec = do
                              VarAnn (testAnnDerived tTreeNum) "?2",
                              VarAnn (testAnnDerived tNum) "?3",
                              VarAnn (testAnn tNum) "x"]))))
-        runNorm (nmExpr e) `shouldBe` result
+        let is = runNorm (nmExpr e)
+        trace (printExprPlain is) is `shouldBe` trace (printExprPlain should) should
     context "given nested node constructor" $ do
       it "correctly creates a nested let binding" $ do
          let e = ConstAnn (testAnn tTreeNum) "node" [

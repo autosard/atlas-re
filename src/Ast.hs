@@ -32,7 +32,25 @@ printFqn (mod, fn) = T.unpack mod ++ "." ++ T.unpack fn
 
 type Number = Int
 
-type Module a = [FunDef a]
+data Module a = Module {
+  name :: Text,
+  mutRecGroups :: [[Id]],
+  defs :: Map Id (FunDef a)
+} 
+
+fns :: Module a -> [FunDef a]
+fns = M.elems . defs
+
+modMap :: (FunDef a -> FunDef b) -> Module a -> Module b
+modMap f (Module name mutRecBindings defs) = Module name mutRecBindings (M.map f defs)
+
+modMapM :: Monad m => (FunDef a -> m (FunDef b)) -> Module a -> m (Module b)
+modMapM f (Module name mutRecGroups defs) = Module name mutRecGroups <$> mapM f defs
+
+modReplaceDefs :: Module b -> [FunDef a] -> Module a
+modReplaceDefs (Module name mutRecGroups _) defs = Module name mutRecGroups $
+  M.fromList $ zip (map fnId defs) defs
+  where fnId (Fn id _ _) = id
 
 data FunDef a = FunDef (XFunAnn a) Id [Id] (Expr a)
 
@@ -142,7 +160,7 @@ pattern Fn :: Id -> [Id] -> Expr a -> FunDef a
 pattern Fn id args e <- FunDef _ id args e
 
 containsFn :: Text -> Module a -> Bool
-containsFn fn = any matches
+containsFn fn = any matches . fns
   where matches (FunDef _ id _ _) = id == fn
 
 printExprHead :: Expr a -> String
@@ -173,6 +191,9 @@ printRat r = (show . numerator $ r) ++ "/" ++ (show . denominator $ r)
 break :: Int -> String
 break ident = "\n" ++ replicate (2*ident) ' ' 
 
+printExprPlain :: Expr a -> String
+printExprPlain = printExpr (const "") 0 
+
 printExpr :: (XExprAnn a -> String) -> Int -> Expr a -> String
 printExpr printAnn _ (VarAnn ann id) = T.unpack id ++ printAnn ann
 printExpr printAnn _ (LitAnn ann l) = show l ++ printAnn ann
@@ -199,7 +220,7 @@ printFun printExprAnn (Fn id args body) = T.unpack id ++ " " ++ printedArgs ++ "
   where printedArgs = unwords . map T.unpack $ args
 
 printFuns :: (XExprAnn a -> String) -> Module a -> String
-printFuns printExprAnn fns = intercalate "\n\n" (map (printFun printExprAnn) fns) ++ "\n"
+printFuns printExprAnn mod = intercalate "\n\n" (map (printFun printExprAnn) (fns mod)) ++ "\n"
 
 printProg :: Module a -> String
 printProg = printFuns (const "")
@@ -374,6 +395,7 @@ deriving instance Eq PositionedMatchArm
 deriving instance Show PositionedExpr
 deriving instance Eq PositionedExpr
 deriving instance Show PositionedFunDef
+deriving instance Show PositionedModule
 
 data ExprCtx = PseudoLeaf
   | BindsAppOrTick

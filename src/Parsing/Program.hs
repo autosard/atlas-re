@@ -57,7 +57,7 @@ quantifyTypeVar id = do
 type Parser = ParsecT Void Text (RWS ParserContext () ParserState)
 
 
-pModule :: Parser ParsedModule
+pModule :: Parser [ParsedFunDef]
 pModule = sc *> manyTill pFunc eof
 
 type FunRsrcAnn = (Map Coeff.CoeffIdx Rational, Map Coeff.CoeffIdx Rational)
@@ -300,6 +300,8 @@ sc = L.space
 
 initState = ParserState 0 M.empty
 
+
+parseModule :: String -> Text -> Text -> [ParsedFunDef]
 parseModule fileName moduleName contents = case fst $ evalRWS rws initEnv initState of
   Left errs -> error $ errorBundlePretty errs
   Right prog -> prog

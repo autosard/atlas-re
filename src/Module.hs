@@ -14,11 +14,13 @@ import qualified Data.Text as T
 import Data.Text(Text)
 import Data.List(uncons)
 import Data.Maybe(fromMaybe)
+import Data.Foldable(toList)
 
 import Control.Monad.State
 import Control.Monad.Extra
 
-import Ast(ParsedFunDef , Fqn, funAnn, pfFqn)
+import Primitive(Id)
+import Ast
 import StaticAnalysis(calledFunctions)
 import qualified Parsing.Program(parseModule)
 import qualified System.FilePath.Glob as Glob
@@ -27,61 +29,69 @@ import Data.Tree
 
 extension = ".ml"
 
-data Program = Program {
-  progFunDefs :: Map Fqn ParsedFunDef,
-  progRoots :: [Fqn],
-  progCallGraphSCC :: [G.Tree G.Vertex],
-  progVertexFqnMap :: G.Vertex -> (Fqn, Fqn, [Fqn]),
-  progFqnVertexMap :: Fqn -> Maybe G.Vertex
-  }
-
 data LoaderState = LoaderState {
-  roots :: [Fqn],
   dependents :: Map Fqn (Set Fqn), -- depedency fqdn -> [dependent fqdn]
   loadedDefinitions :: Map Fqn ParsedFunDef,
-  loadedModules :: Set Text,
   processedDefinitions :: Set Fqn,
   todo :: [Fqn]
                                }
 
-load :: FilePath -> [Fqn] -> IO Program
-load loadPath rootFqns = do
-  evalStateT (buildProgram loadPath) $ LoaderState rootFqns M.empty M.empty S.empty S.empty rootFqns
+loadLazy :: FilePath -> Fqn -> IO (ParsedModule, Text)
+loadLazy loadPath rootFqn = do
+  let moduleName = fst rootFqn
+  moduleFile <- findModule loadPath (T.unpack moduleName)
+  contents <- TextIO.readFile moduleFile
+  let parsedDefs = Parsing.Program.parseModule moduleFile moduleName contents
+  parsedMod <- evalStateT (buildModule loadPath moduleName) $
+    LoaderState
+    M.empty
+    (M.fromList $ zip (map (pfFqn . funAnn) parsedDefs) parsedDefs)
+    S.empty
+    [rootFqn]
+  return (parsedMod, contents)
+
+load :: FilePath -> Text -> IO (ParsedModule, Text)
+load loadPath moduleName = do
+  moduleFile <- findModule loadPath (T.unpack moduleName)
+  contents <- TextIO.readFile moduleFile
+  let parsedDefs = Parsing.Program.parseModule moduleFile moduleName contents
+  parsedDefs <- Parsing.Program.parseModule moduleFile moduleName <$> TextIO.readFile moduleFile
+  let defsWithFqn = M.fromList $ zip (map (pfFqn . funAnn) parsedDefs) parsedDefs
+  parsedMod <- evalStateT (buildModule loadPath moduleName) $
+    LoaderState
+    M.empty
+    defsWithFqn
+    S.empty
+    (M.keys defsWithFqn)
+  return (parsedMod, contents)
 
 
-buildProgram :: FilePath -> StateT LoaderState IO Program
-buildProgram loadPath = do
+buildModule :: FilePath -> Text -> StateT LoaderState IO ParsedModule
+buildModule loadPath modName = do
   fqn@(moduleName, definitionName) <- popTodo
-
-  loaded <- isLoaded moduleName
-  unless loaded (
-    do
-      moduleFile <- liftIO $ findModule loadPath (T.unpack moduleName)
-      parsedModule <- liftIO (Parsing.Program.parseModule moduleFile moduleName <$> TextIO.readFile moduleFile)
-      storeDefinitions parsedModule
-      markAsLoaded moduleName
-    )
-
   def <- retrieveDefinition fqn
   addVertex fqn
   let dependencies = calledFunctions def moduleName
   addDependencyEdges fqn dependencies
-  loaded <- gets processedDefinitions
-  pushTodos $ dependencies `S.difference` loaded
+  processed <- gets processedDefinitions
+  pushTodos $ dependencies `S.difference` processed
   markAsProcessed fqn
 
-  ifM someTodos (buildProgram loadPath) programFromLoaderState
+  ifM someTodos (buildModule loadPath modName) (moduleFromLoaderState modName)
 
-programFromLoaderState :: StateT LoaderState IO Program
-programFromLoaderState = do
+moduleFromLoaderState :: Text -> StateT LoaderState IO ParsedModule
+moduleFromLoaderState modName = do
   LoaderState{..} <- get
-  let progFunDefs = loadedDefinitions
-  let progRoots = roots
   let edgeList = map (\(key, keys) -> (key, key, S.toList keys)) $ M.toList dependents
-  let (g, progVertexFqnMap, progFqnVertexMap)
-        = G.graphFromEdges edgeList
-  let progCallGraphSCC = G.scc g
-  return Program{..}
+  let (g, vertexFqnMap, fqnVertexMap) = G.graphFromEdges edgeList
+  let vertexFqnMap' = (\(fqn, _, _) -> fqn) . vertexFqnMap
+  let depSccs = G.scc g
+  return $ Module
+           modName
+           (sccsToRecBindings vertexFqnMap'  depSccs)
+           (M.mapKeys snd loadedDefinitions)
+  where sccsToRecBindings :: (G.Vertex -> Fqn) -> [Tree G.Vertex] -> [[Id]]
+        sccsToRecBindings vertexFqnMap = map (map (snd . vertexFqnMap) . toList)
 
 markAsProcessed :: Fqn -> StateT LoaderState IO ()
 markAsProcessed fqn = modify (\s -> s {processedDefinitions = S.insert fqn (processedDefinitions s)})
@@ -114,12 +124,6 @@ storeDefinitions :: [ParsedFunDef] -> StateT LoaderState IO ()
 storeDefinitions defs = modify (\s -> s {loadedDefinitions = insertDefs s})
   where newDefs = M.fromList $ zip (map (pfFqn . funAnn) defs) defs
         insertDefs state = newDefs `M.union` loadedDefinitions state
-
-isLoaded :: Text -> StateT LoaderState IO Bool
-isLoaded mod = gets $ S.member mod . loadedModules
-
-markAsLoaded :: Text -> StateT LoaderState IO ()
-markAsLoaded mod = modify (\s -> s {loadedModules = S.insert mod (loadedModules s)})
   
 popTodo :: StateT LoaderState IO Fqn
 popTodo = do
@@ -137,16 +141,3 @@ findModule loadPath moduleName = do
     Nothing -> fail $ "Could not locate module '" ++ moduleName ++ "'. Please check the specified search path."
     Just (file,_) -> return file
 
-
-prettyPrintSCC :: Program -> String
-prettyPrintSCC Program{..} = foldr op "" progCallGraphSCC 
-  where op tree [] = treeToString tree
-        op tree string = string ++ ", " ++ treeToString tree
-        treeToString G.Node{..} = show (((\(fqn, _, _) -> fqn) . progVertexFqnMap) rootLabel)
-          ++ " -> [" ++ concatMap treeToString subForest ++ "]"
-
-loadSimple :: FilePath -> Text -> IO (String, Text)
-loadSimple searchPath modName = do
-  modPath <- findModule searchPath (T.unpack modName)
-  contents <- TextIO.readFile modPath
-  return (modPath, contents)

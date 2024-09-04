@@ -69,11 +69,10 @@ evalEval defs initState eval = runExcept (
     return (s ^. cost, val))
 
 evalWithModule :: TypedModule -> TypedExpr -> StdGen -> Val
-evalWithModule mod exp rng = case evalEval defs (EvalState rng 0) (evalExpr M.empty exp) of
+evalWithModule mod exp rng = case evalEval (defs mod) (EvalState rng 0) (evalExpr M.empty exp) of
   Left e -> error $ show e
   Right (cost, val) -> val
-  where defs = M.fromList $ map splitDef mod
-        splitDef fun@(Fn id _ _) = (id, fun)
+  where splitDef fun@(Fn id _ _) = (id, fun)
 
 matchPatterns :: Val -> [TypedMatchArm] -> Maybe (Env, TypedExpr)
 matchPatterns val arms = msum $ map (matchArm val) arms

@@ -304,19 +304,17 @@ tiApply ctx e = do
   return $ apply s e
 
 tiProg :: Infer ParsedModule TypedModule
-tiProg ctx defs = do
-  ctx' <- initCtx defs
+tiProg ctx mod = do
+  ctx' <- initCtx (fns mod)
   
-  (ts, bodies) <- mapAndUnzipM (tiFun ctx') defs
+  (ts, bodies) <- mapAndUnzipM (tiFun ctx') (fns mod)
   s <- gets subst
   let ts' = apply s ts
   let bodies' = apply s bodies
   let fs = tv (apply s ctx')
   let gss = map (\t -> tv t L.\\ fs) ts'
-  --let ids = map (\(Fn id _ _) -> id) defs
   let qts = zipWith quantify gss ts'
-  --let ctx' = M.fromList (zip ids qts) `M.union` ctx
-  return $ map extendDef (zip3 defs qts bodies')
+  return $ modReplaceDefs mod (map extendDef (zip3 (fns mod) qts bodies'))
   where extendAnn t ann = TypedFunAnn{
           tfType = t,
           tfRsrcWithCost = pfRsrcWithCost ann,
@@ -360,10 +358,10 @@ infer ti = case runTI initState ti of
   (Right x, _) -> Right x
   where initState = TiState 0 nullSubst []
 
-inferModule :: [ParsedFunDef] -> Either SourceError TypedModule
+inferModule :: ParsedModule -> Either SourceError TypedModule
 inferModule = infer . tiProg M.empty
 
 inferExpr :: TypedModule -> ParsedExpr -> Either SourceError TypedExpr
-inferExpr context expr = infer $ tiApply M.empty =<< tiExpr initCtx expr
-  where initCtx = M.fromList $ map getScheme context
+inferExpr mod expr = infer $ tiApply M.empty =<< tiExpr initCtx expr
+  where initCtx = M.fromList $ map getScheme (fns mod)
         getScheme (FunDef funAnn id _ _) = (id, tfType funAnn)

@@ -23,7 +23,7 @@ newVar = do
   return (enumId i)
 
 nmModule :: TypedModule -> Norm TypedModule
-nmModule = mapM nmFunDef
+nmModule = modMapM nmFunDef
 
 nmFunDef :: TypedFunDef -> Norm TypedFunDef
 nmFunDef (FunDef ann id args body) = do
@@ -33,41 +33,49 @@ nmFunDef (FunDef ann id args body) = do
 nmExpr :: TypedExpr -> Norm TypedExpr
 nmExpr e = do
   (hole, e') <- nmExpr' e
-  return $ hole e'
+  return $ hole (getType e') e'
 
 nmExpr' :: TypedExpr -> Norm (HoleExpr, TypedExpr)
 nmExpr' app@(AppAnn ann id args) = do
   normedArgs <- mapM nmExpr' args
-  (hole, args') <- nmBinds (getType app) normedArgs
+  (hole, args') <- nmBinds normedArgs
   return (hole, AppAnn ann id args')
 nmExpr' match@(MatchAnn ann e arms) = do
   normedArms <- mapM nmMatchArm arms
-  (hole, e') <- nmBind (getType match) (id, e)
+  (hole, e') <- nmBind (idHole, e)
   return (hole, MatchAnn ann e' normedArms)
 nmExpr' e@(IteAnn ann e1@(Coin _) e2 e3) = do
   (holeE2, e2') <- nmExpr' e2
   (holeE3, e3') <- nmExpr' e3
-  return (id, IteAnn ann e1 (holeE2 e2') (holeE3 e3'))
+  return (idHole, IteAnn ann e1
+           (holeE2 (getType e2') e2')
+           (holeE3 (getType e3') e3'))
 nmExpr' ite@(IteAnn ann e1 e2 e3) = do
   (holeE2, e2') <- nmExpr' e2
   (holeE3, e3') <- nmExpr' e3
-  (holeE1, e1') <- nmBind (getType ite) (id, e1)
-  return (holeE1, IteAnn ann e1' (holeE2 e2') (holeE3 e3'))
+  (holeE1, e1') <- nmBind (idHole, e1)
+  return (holeE1, IteAnn ann e1'
+           (holeE2 (getType e2') e2')
+           (holeE3 (getType e3') e3'))
 nmExpr' const@(ConstAnn ann id args) = do
   normedArgs <- mapM nmExpr' args
-  (hole, args') <- nmBinds (getType const) normedArgs
+  (hole, args') <- nmBinds normedArgs
   return (hole, ConstAnn ann id args')
 nmExpr' (TickAnn ann c e) = do
   (hole, e') <- nmExpr' e
-  return (id, TickAnn ann c (hole e'))
-nmExpr' e = return (id, e)
+  return (idHole, TickAnn ann c (hole (getType e') e'))
+nmExpr' e = return (idHole, e)
 
 nmMatchArm :: TypedMatchArm -> Norm TypedMatchArm
 nmMatchArm (MatchArmAnn ann pat e) = do
   e' <- nmExpr e
   return $ MatchArmAnn ann pat e'
 
-type HoleExpr = TypedExpr -> TypedExpr
+type HoleExpr = Type -> TypedExpr -> TypedExpr
+
+holeCompose :: HoleExpr -> HoleExpr -> HoleExpr
+holeCompose h1 h2 = hole 
+  where hole t e = h1 t (h2 t e)
 
 srcForBind :: TypedExpr -> ExprSrc
 srcForBind e = case (teSrc . getAnn) e of
@@ -75,24 +83,28 @@ srcForBind e = case (teSrc . getAnn) e of
   (DerivedFrom pos) -> DerivedFrom pos
 
 
-letHole :: TypedExpr -> Id -> Type -> HoleExpr
-letHole e v t = LetAnn (TypedExprAnn src t) v e
+letHole :: TypedExpr -> Id  -> HoleExpr
+letHole e v = hole 
   where src = srcForBind e
+        hole t = LetAnn (TypedExprAnn src t) v e
 
-nmBind :: Type -> (HoleExpr, TypedExpr) -> Norm (HoleExpr, TypedExpr)
-nmBind t (holeE, e)
-  | isImmediate e = return (id, e)
+idHole :: HoleExpr
+idHole = const id
+
+nmBind :: (HoleExpr, TypedExpr) -> Norm (HoleExpr, TypedExpr)
+nmBind (holeE, e)
+  | isImmediate e = return (idHole, e)
   | otherwise = do
       v <- newVar
-      let hole = letHole e v t
+      let hole = letHole e v
       let ann = TypedExprAnn src (getType e)
-      return (holeE . hole, VarAnn ann v)
+      return (holeE `holeCompose` hole, VarAnn ann v)
         where src = srcForBind e
     
 
-nmBinds :: Type -> [(HoleExpr, TypedExpr)] -> Norm (HoleExpr, [TypedExpr])
-nmBinds t exps = foldM go (id, []) =<< mapM (nmBind t) exps
-  where go (hole, exps) (hole', exp) = return (hole . hole', exps ++ [exp])
+nmBinds :: [(HoleExpr, TypedExpr)] -> Norm (HoleExpr, [TypedExpr])
+nmBinds exps = foldM go (idHole, []) =<< mapM nmBind exps
+  where go (hole, exps) (hole', exp) = return (hole `holeCompose` hole', exps ++ [exp])
 
 isImmediate :: Expr a -> Bool
 isImmediate (Var _) = True

@@ -9,7 +9,7 @@ import Ast
 
 
 contextualizeMod :: TypedModule -> PositionedModule
-contextualizeMod = map contextualizeFun
+contextualizeMod = modMap contextualizeFun
 
 contextualizeFun :: TypedFunDef -> PositionedFunDef
 contextualizeFun (FunDef ann id args body) = FunDef ann id args (contextualizeExpr id body)

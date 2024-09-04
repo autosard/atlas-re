@@ -21,9 +21,6 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Foldable (foldrM)
 
-import Debug.Trace (trace)
-traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
-
 class Encodeable a where
   toZ3 :: (MonadZ3 z3) => a -> z3 AST
 
