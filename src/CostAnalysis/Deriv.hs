@@ -14,11 +14,12 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import qualified Data.Text as Text
 import Prelude hiding (or)
+import Control.Monad.Extra(unlessM)
 
 import Ast hiding (Coefficient)
 import Primitive(Id)
 import Control.Monad.RWS
-import Control.Monad.Except ( runExceptT )
+
 import Lens.Micro.Platform
 import Typing.Type
 import Typing.Scheme (toType)
@@ -35,30 +36,28 @@ import CostAnalysis.Weakening
 import CostAnalysis.ProveMonad
 import StaticAnalysis(freeVars)
 import Data.Maybe (fromMaybe, mapMaybe, maybeToList)
-import SourceError
 
 import Debug.Trace (trace)
 traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
   
 type ProofResult = (Derivation, [Constraint], RsrcSignature)
 
-runProof :: Bool -> PositionedModule -> Potential -> Map Id Tactic
-  -> (Int, Either SourceError ProofResult)
-runProof ignoreAnns mod pot tactics = (state' ^. varIdGen, (,cs, state' ^. sig) <$> deriv)
-  where (deriv, state', cs) = runRWS rws env state
-        rws = runExceptT $ proveModule mod ignoreAnns
-        env = ProofEnv pot tactics
-        state = ProofState M.empty 0 0 
+-- runProof :: Bool -> PositionedModule -> Potential -> Map Id Tactic
+--   -> (Int, Either SourceError ProofResult)
+-- runProof ignoreAnns mod pot tactics = (state' ^. varIdGen, (,cs, state' ^. sig) <$> deriv)
+--   where (deriv, state', cs) = runRWS rws env state
+--         rws = runExceptT $ proveModule mod ignoreAnns
+--         env = ProofEnv pot tactics
+--         state = ProofState M.empty 0 0 
 
-genFunRsrcAnn :: PositionedFunDef -> ProveMonad FunRsrcAnn
-genFunRsrcAnn fun = do
+genFunRsrcAnn :: RsrcAnn -> PositionedFunDef -> ProveMonad FunRsrcAnn
+genFunRsrcAnn rhs fun = do
   let (ctxFrom, argTo) = ctxFromFn fun
   let argsFrom = M.toAscList ctxFrom
   from <- defaultAnn "Q" "fn" argsFrom
-  to <- defaultAnn "Q'" "fn" [argTo]
   fromCf <- defaultAnn "P" "fn cf" argsFrom
   toCf <- defaultAnn "P'" "fn cf" [argTo]
-  return $ FunRsrcAnn (from, to) (fromCf, toCf)
+  return $ FunRsrcAnn (from, rhs) (fromCf, toCf)
 
 
 type TypeCtx = Map Id Type
@@ -127,7 +126,7 @@ proveMatchArm matchVar tactic cf ctx
   let ctx' = M.delete matchVar ctx `M.union` M.fromList vars
   p_ <- emptyAnn "P" "match arm" (M.toAscList ctx')
   let (p, cs) = cMatch pot q p_ matchVar vars
-  tell cs
+  tellCs cs
   deriv <- proveExpr tactic cf ctx' e p q'
   return (cs, deriv)
   where getVar :: PositionedPatternVar -> Maybe (Id, Type)
@@ -377,41 +376,44 @@ ctxFromProdType :: Type -> [Id] -> TypeCtx
 ctxFromProdType (TAp Prod ts) args = M.fromList $ zip args ts
 ctxFromProdType t _ = error $ "Cannot construct a type context from the non product type '" ++ show t ++ "'."
 
-proveFun :: Prove PositionedFunDef Derivation
-proveFun _ cf _ (FunDef ann id args e) q q' = do
+proveFunBody :: Prove PositionedFunDef Derivation
+proveFunBody _ cf _ (FunDef ann id args e) q q' = do
   let tFrom = fst . splitFnType . toType . tfType $ ann
   let ctx = ctxFromProdType tFrom args
   tactic <- fromMaybe Auto . M.lookup id <$> view tactics
   proveExpr tactic cf ctx e q q'
 
-proveFunWithAnn :: Bool -> PositionedFunDef -> FunRsrcAnn -> ProveMonad Derivation
-proveFunWithAnn ignoreAnns fun@(FunDef funAnn _ _ _) ann  = do
+proveFun :: RsrcAnn -> PositionedFunDef -> ProveMonad Derivation
+proveFun rhs fun@(FunDef funAnn fnId _ _) = do
+  ann <- genFunRsrcAnn rhs fun
+  sig %= M.insert fnId ann
+  
   -- prove both with and without costs for well-typedness
   let (p, p') = withoutCost ann
-  derivCf <- proveFun Auto True M.empty fun p p'
+  derivCf <- proveFunBody Auto True M.empty fun p p'
   
   let (q, q') = withCost ann  
-  deriv <- proveFun Auto False M.empty fun q q'
+  deriv <- proveFunBody Auto False M.empty fun q q'
 
-  unless ignoreAnns (do
-    tell . concat . maybeToList $ (annLe q . fst <$> tfRsrcWithCost funAnn)
-    tell . concat . maybeToList $ (annLe q' . snd <$> tfRsrcWithCost funAnn)
-    tell . concat . maybeToList $ (annLe p . fst <$> tfRsrcWithoutCost funAnn)
-    tell . concat . maybeToList $ (annLe p' . snd <$> tfRsrcWithoutCost funAnn))
+  unlessM (view ignoreAnns) (do
+    tellCs . concat . maybeToList $ (annLe q . fst <$> tfRsrcWithCost funAnn)
+    tellCs . concat . maybeToList $ (annLe q' . snd <$> tfRsrcWithCost funAnn)
+    tellCs . concat . maybeToList $ (annLe p . fst <$> tfRsrcWithoutCost funAnn)
+    tellCs . concat . maybeToList $ (annLe p' . snd <$> tfRsrcWithoutCost funAnn))
   
   return $ T.Node (R.FunRuleApp fun) [derivCf, deriv]
 
-setRightSidesEqual :: [FunRsrcAnn] -> [Constraint]
-setRightSidesEqual [] = []
-setRightSidesEqual (ann:anns) = concat [annEq (snd . withCost $ ann) (snd . withCost $ ann')
-                                       | ann' <- anns]
+-- setRightSidesEqual :: [FunRsrcAnn] -> [Constraint]
+-- setRightSidesEqual [] = []
+-- setRightSidesEqual (ann:anns) = concat [annEq (snd . withCost $ ann) (snd . withCost $ ann')
+--                                        | ann' <- anns]
 
-proveModule :: PositionedModule -> Bool -> ProveMonad Derivation
-proveModule mod ignoreAnns = do
-  s <- use sig
-  let fns = map (defs mod M.!) $ concat (mutRecGroups mod)
-  funAnns <- mapM (\f@(Fn name _ _) -> (name,) <$> genFunRsrcAnn f) fns
-  tell $ setRightSidesEqual (map snd funAnns)
-  sig .= s `M.union` M.fromList funAnns
-  derivs <- mapM (uncurry (proveFunWithAnn ignoreAnns)) $ zipWith (\x y -> (x, snd y)) fns funAnns
-  return $ T.Node (R.ProgRuleApp mod) derivs
+-- proveModule :: PositionedModule -> Bool -> ProveMonad Derivation
+-- proveModule mod ignoreAnns = do
+--   s <- use sig
+--   let fns = map (defs mod M.!) $ concat (mutRecGroups mod)
+--   funAnns <- mapM (\f@(Fn name _ _) -> (name,) <$> genFunRsrcAnn f) fns
+--   tell $ setRightSidesEqual (map snd funAnns)
+--   sig .= s `M.union` M.fromList funAnns
+--   derivs <- mapM (uncurry (proveFunWithAnn ignoreAnns)) $ zipWith (\x y -> (x, snd y)) fns funAnns
+--   return $ T.Node (R.ProgRuleApp mod) derivs

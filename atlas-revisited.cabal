@@ -33,6 +33,7 @@ library
                       Typing.Subst,
                       Typing.Inference,
                       AstContext,
+                      CostAnalysis.Analysis,
                       CostAnalysis.Coeff,
                       CostAnalysis.RsrcAnn,
                       CostAnalysis.Potential,

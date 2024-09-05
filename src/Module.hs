@@ -88,7 +88,7 @@ moduleFromLoaderState modName = do
   let depSccs = G.scc g
   return $ Module
            modName
-           (sccsToRecBindings vertexFqnMap'  depSccs)
+           (reverse (sccsToRecBindings vertexFqnMap'  depSccs))
            (M.mapKeys snd loadedDefinitions)
   where sccsToRecBindings :: (G.Vertex -> Fqn) -> [Tree G.Vertex] -> [[Id]]
         sccsToRecBindings vertexFqnMap = map (map (snd . vertexFqnMap) . toList)

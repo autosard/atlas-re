@@ -31,33 +31,52 @@ import Ast
 import CostAnalysis.Coeff
 import Data.List(intercalate)
 
+type Derivation = Tree RuleApp
+
 data ProofState = ProofState {
   _sig :: RsrcSignature,
+  _sigCs :: [Constraint],
   _annIdGen :: Int,
-  _varIdGen :: Int
+  _varIdGen :: Int,
+  _constraints :: [Constraint],
+  _fnDerivs :: [Derivation],
+  _solution :: Map Coeff Rational
   }
-  deriving (Show)
 
 makeLenses ''ProofState
 
 data ProofEnv = ProofEnv {
   _potential :: Potential,
-  _tactics :: Map Id Tactic
+  _tactics :: Map Id Tactic,
+  _ignoreAnns :: Bool
   }
+
+data ProofErr
+  = DerivErr SourceError
+  | UnsatErr [Constraint]
 
 makeLenses ''ProofEnv
 
-type ProveMonad a = ExceptT SourceError (RWS ProofEnv [Constraint] ProofState) a
+type Solution = Map Coeff Rational
 
-type Derivation = Tree RuleApp
+type ProveMonad a = ExceptT ProofErr (RWST ProofEnv Solution ProofState IO) a
+
+runProof :: ProofEnv -> ProofState -> ProveMonad a -> IO (Either ProofErr a, ProofState, Solution)
+runProof env state proof = let rws = runExceptT proof in
+  runRWST rws env state
+
+
 
 conclude :: Rule -> Bool -> RsrcAnn -> RsrcAnn -> [Constraint] -> PositionedExpr -> [Derivation] -> ProveMonad Derivation
 conclude rule cf q q' cs e derivs = do
-  tell cs
+  tellCs cs
   return $ T.Node (ExprRuleApp rule cf q q' cs e) derivs
 
+tellCs :: [Constraint] -> ProveMonad ()
+tellCs cs = constraints %= (++cs)
+
 errorFrom :: Syntax Positioned -> String -> ProveMonad a
-errorFrom e msg = throwError $ SourceError loc msg
+errorFrom e msg = throwError $ DerivErr $ SourceError loc msg
   where loc = case (peSrc . getAnn) e of
           (Loc pos) -> pos
           (DerivedFrom pos) -> pos

@@ -8,41 +8,24 @@ import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential.Log.Base
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Constraint
-import CostAnalysis.Optimization
 import CostAnalysis.Coeff (constFactor, facForVar)
 
-rankDifference :: RsrcAnn -> RsrcAnn -> OptiMonad Target
-rankDifference q q' = do
-  target <- freshVar
-  (ds, diffs) <- bindToVars (diff (q'!("e" :: Id))) (annVars q)
-  let cs = eq target (sum ds) ++ geZero target ++ diffs
-  return (target, cs)
-  where diff :: Term -> Term -> Id -> [Constraint]
-        diff rankQ' d x = eq d $ sub [q!x, rankQ']
+rankDifference :: RsrcAnn -> RsrcAnn -> Term
+rankDifference q q' = sum $ map (diff (q'!("e" :: Id))) (annVars q)
+  where diff :: Term -> Id -> Term
+        diff rankQ' x = sub [q!x, rankQ']
 
-
-weightedAbs :: RsrcAnn -> OptiMonad Target
-weightedAbs q = do
-  target <- freshVar
-  return (target,
-          eq target (sum [prod [q!idx, ConstTerm $ indexWeight a b]
-                         | idx <- mixes q,
-                           let a = facForVar idx x,
-                           let b = constFactor idx])
-          ++ geZero target)
+weightedAbs :: RsrcAnn -> Term
+weightedAbs q = sum [prod [q!idx, ConstTerm $ indexWeight a b]
+                    | idx <- mixes q,
+                      let a = facForVar idx x,
+                      let b = constFactor idx]
   where x = head (annVars q)
 
-weightedNonRankDifference :: Args -> RsrcAnn -> RsrcAnn -> OptiMonad Target
-weightedNonRankDifference potArgs q q' = do
-  target <- freshVar
-  (ds, diffs) <- bindToVars (\var (p, p', _) -> eq var $ sub [p, p']) pairs
-  (ws, weightedDiffs) <- bindToVars (\var (d, (_, _, (a,b))) -> eq var $ prod [d, ConstTerm (indexWeight a b)]) (zip ds pairs)
-  return (target,
-          eq target (sum ws)
-          ++ geZero target
-          ++ diffs
-          ++ weightedDiffs)
-  where pairs = [(q![mix|x^a,b|], q'![mix|y^a,b|], (a,b))
+weightedNonRankDifference :: Args -> RsrcAnn -> RsrcAnn -> Term
+weightedNonRankDifference potArgs q q' = sum $ map weightedDiff pairs 
+  where weightedDiff (p, p', (a,b)) = prod [ConstTerm (indexWeight a b), sub [p, p']]
+        pairs = [(q![mix|x^a,b|], q'![mix|y^a,b|], (a,b))
                 | a <- aRange potArgs,
                   b <- bRange potArgs,
                   a + b > 0,
@@ -61,42 +44,21 @@ indexWeight 1 0 = 1
 indexWeight a b = fromIntegral (1 + a + (2 * (b + 1)) ) ^ 2
 
 
-constantDifference :: RsrcAnn -> RsrcAnn -> OptiMonad Target
-constantDifference q q' = do
-  target <- freshVar
-  return (target,
-          eq target (sub [q![mix|2|], q'![mix|2|]])
-          ++ geZero target)
+constantDifference :: RsrcAnn -> RsrcAnn -> Term
+constantDifference q q' = sub [q![mix|2|], q'![mix|2|]]
 
-absRank :: RsrcAnn -> OptiMonad Target
-absRank q = do
-  target <- freshVar
-  return (target,
-          eq target (sum [q!x | x <- annVars q])
-          ++ geZero target)
+absRank :: RsrcAnn -> Term
+absRank q = sum [q!x | x <- annVars q]
 
-absNonRank :: RsrcAnn -> OptiMonad Target
-absNonRank q = do
-  target <- freshVar
-  return (target,
-          eq target (sum [q!idx | idx <- mixes q])
-          ++ geZero target)
+absNonRank :: RsrcAnn -> Term
+absNonRank q = sum [q!idx | idx <- mixes q]
   
-cOptimize :: Args ->
-  RsrcAnn -> RsrcAnn -> OptiMonad Target
-cOptimize potArgs q q' = do
-  target <- freshVar
-  (subTargets, cs) <- unzip <$> sequence [
-    rankDifference q q',
+cOptimize :: Args -> RsrcAnn -> RsrcAnn -> Term
+cOptimize potArgs q q' = let weights = [179969, 16127, 997, 97, 2] in
+  sum $ zipWith (\w metric -> prod [ConstTerm w, metric]) weights [
+  rankDifference q q',
 --        weightedAbs q,
-    absRank q,
-    weightedNonRankDifference potArgs q q',
-    constantDifference q q',
-    absNonRank q]
-  (weightedSubTargets, csWeighted) <- bindToVars (\var (target, w) -> eq var $ prod [target, ConstTerm w]) $
-    zip subTargets [179969, 16127, 997, 97, 2] --[100,100,100]--[16127, 997, 97, 2] --[179969, 16127, 997, 97, 2]
-  return (target,
-          geZero target
-          ++ eq target (sum weightedSubTargets)
-          ++ concat cs
-          ++ csWeighted)
+  absRank q,
+  weightedNonRankDifference potArgs q q',
+  constantDifference q q',
+  absNonRank q]  

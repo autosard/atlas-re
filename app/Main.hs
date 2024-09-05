@@ -47,6 +47,7 @@ import CostAnalysis.Deriv
 import CostAnalysis.Solving
 import CostAnalysis.ProveMonad
 import CostAnalysis.Rules
+import CostAnalysis.Analysis
 
 import Cli(Options(..), RunOptions(..), EvalOptions(..), Command(..), cliP)
 
@@ -82,29 +83,24 @@ run Options{..} RunOptions{..} = do
   let _bRange = [0,1,2]
   let args = Args _aRange _bRange 
   let pot = logPot args
-  let (varIdGen, proofResult) = runProof switchIgnoreAnns positionedProg pot tactics
-  (deriv, cs, sig) <- liftIO $ case proofResult of
-        Left srcErr -> die $ printSrcError srcErr contents
-        Right v -> return v
-  when switchPrintDeriv $
-    liftIO $ printDeriv (not switchHideConstraints)  Nothing deriv
-  let dump = False
-  when dump (do
-                liftIO $ dumpSMT pot sig cs varIdGen
-                error "dumped")
-  solution <- liftIO $ solveZ3 pot sig cs varIdGen
-  case solution of
-    (Left core) -> let core' = S.fromList core in do
-      logError $ "solver returned unsat. See unsat-core for details."
-      if switchHtmlOutput then
-        liftIO $ writeHtmlProof "./out" (renderProof (Just core') deriv)
-      else 
-        liftIO $ printDeriv True (Just core') deriv
-      
-    (Right coeffs) -> let target = withCost $ sig M.! funName in do
-      when switchHtmlOutput $
-         liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv)
-      liftIO $ putStr (printBound pot target coeffs)
+  let env = ProofEnv {
+        _potential=pot,
+        _tactics=tactics,
+        _ignoreAnns=switchIgnoreAnns}
+  result <- liftIO $ analyzeModule env positionedProg
+  case result of
+    Left srcErr -> liftIO $ die $ printSrcError srcErr contents
+    Right solverResult -> case solverResult of
+      (deriv, _, Left unsatCore) -> let core' = S.fromList unsatCore in do
+        logError $ "solver returned unsat. See unsat-core for details."
+        if switchHtmlOutput then
+          liftIO $ writeHtmlProof "./out" (renderProof (Just core') deriv)
+        else
+          liftIO $ printDeriv True (Just core') deriv
+      (deriv, sig, Right solution) -> let target = withCost $ sig M.! funName in do
+        when switchHtmlOutput $
+          liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv)
+        liftIO $ putStr (printBound pot target solution)
 
 writeHtmlProof :: FilePath -> LT.Text -> IO ()
 writeHtmlProof path html = do

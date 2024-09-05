@@ -72,8 +72,8 @@ data Potential = Potential {
   
   genExpertKnowledge :: Set WeakenArg -> [Id] -> Set CoeffIdx -> ExpertKnowledge,
   
-  -- | @ 'cOptimize' q q' @ returns constraints that minimize \[\Phi(\Gamma\mid Q) - \Phi(\Gamma\mid Q')\]
-  cOptimize :: RsrcAnn -> RsrcAnn -> OptiMonad Target,
+  -- | @ 'cOptimize' q q' @ returns a cost function that minimizes \[\Phi(\Gamma\mid Q) - \Phi(\Gamma\mid Q')\] as a term.
+  cOptimize :: RsrcAnn -> RsrcAnn -> Term,
   
   printBasePot :: Coeff -> Rational -> String}
 

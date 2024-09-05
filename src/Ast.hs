@@ -25,6 +25,7 @@ import Typing.Subst(Types(apply, tv))
 import Typing.Scheme (Scheme, toType)
 import Data.Ratio(numerator, denominator)
 import CostAnalysis.Coeff(CoeffIdx)
+import Data.List.Extra (allSame)
     
 type Fqn = (Text, Text)
 
