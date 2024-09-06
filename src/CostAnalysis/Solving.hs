@@ -120,7 +120,7 @@ solve fns = do
   sig' <- (`M.restrictKeys` S.fromList fns) <$> use sig
   opti <- genOptiTarget fns
   extCs <- (setRankEqual sig' ++) <$> use sigCs
-  --extCs <- use sigCs
+--  extCs <- use sigCs
   cs <- use constraints
   result <- liftIO $ evalZ3 $ solveZ3 sig' cs extCs opti
   solution <- case result of 

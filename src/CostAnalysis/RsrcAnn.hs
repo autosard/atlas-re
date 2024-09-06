@@ -187,6 +187,10 @@ extendAnns arr defs = (arr', concat cs)
 annLe :: RsrcAnn -> Map CoeffIdx Rational -> [Constraint]
 annLe ann values = concat [le (ann!idx) $ ConstTerm (M.findWithDefault 0 idx values)
                           | idx <- S.toList $ definedIdxs ann]
+
+annConstEq :: RsrcAnn -> Map CoeffIdx Rational -> [Constraint]
+annConstEq ann values = concat [eq (ann!idx) $ ConstTerm (M.findWithDefault 0 idx values)
+                               | idx <- S.toList $ definedIdxs ann]
                 
 instance HasCoeffs RsrcAnn where
   getCoeffs ann = map (coeffFromAnn ann) $ S.toList (ann^.coeffs)

@@ -34,7 +34,10 @@ data AnnRanges = AnnRanges {
 
 data Potential = Potential {
   -- Supported types
-  types :: [Type],
+  --types :: [Type],
+
+  bearesPotential :: Type -> Bool,
+  
   ranges :: AnnRanges,
   
   -- Annotation manipulation
@@ -87,7 +90,7 @@ defaultAnn pot id label comment args = rsrcAnn pot id label comment args abRange
 
 emptyAnn :: Potential -> Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn
 emptyAnn pot id label comment args = RsrcAnn id args' label comment S.empty
-  where args' = filter (\(x, t) -> matchesTypes t (types pot)) args
+  where args' = filter (\(x, t) -> bearesPotential pot t) args
 
 enrichWithDefaults :: Potential -> Bool -> Int -> Text -> Text -> RsrcAnn -> RsrcAnn
 enrichWithDefaults pot neg id label comment origin =
@@ -99,8 +102,8 @@ enrichWithDefaults pot neg id label comment origin =
 
 eqExceptConst :: Potential -> RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
 eqExceptConst pot q_ p = extendAnn q_ [(`eq` (p!idx)) <$> def idx
-                                     | idx <- S.toList (p^.coeffs),
-                                       idx /= constCoeff pot]
+                                      | idx <- S.toList (p^.coeffs),
+                                        idx /= constCoeff pot]
 
 -- | @ 'eqPlus' q p t@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) + t\] where @t@ is a term.
 eqPlus :: Potential -> RsrcAnn -> RsrcAnn -> Term -> (RsrcAnn, [Constraint])

@@ -1,4 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
+
 module Constants where
 
 import Primitive(Id)
@@ -10,6 +12,9 @@ import qualified Data.Text as T
 treeT = TAp Tree [TGen 0]
 tupleT = TAp Prod [TGen 0, TGen 1]
 boolT = TAp Bool []
+
+pattern TupleT :: Type -> Type -> Type
+pattern TupleT x y <- TAp Prod [x, y]
 
 treeSc = Forall 1 treeT
 tupleSc = Forall 2 tupleT

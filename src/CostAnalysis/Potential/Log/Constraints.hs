@@ -67,7 +67,7 @@ cConst q q'
 
 cMatch :: RsrcAnn -> RsrcAnn -> Id -> [(Id, Type)] -> (RsrcAnn, [Constraint])
 cMatch q p x ys = cMatch' q p x (map fst ys')
-  where ys' = filter (\(x, t) -> matchesTypes t types) ys
+  where ys' = filter (\(x, t) -> bearesPotential t) ys
 
 cMatch' :: RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint])
 -- leaf  
@@ -92,6 +92,15 @@ cMatch' q r x [u, v] = extendAnn r $
    (`eq` (q!x)) <$> def [mix|u^1|],
    (`eq` (q!x)) <$> def [mix|v^1|]]
   ++ [(`eq` (q!idx)) <$> def [mix|_xs,u^a,v^a,b|]
+     | idx <- mixes q,
+       let a = facForVar idx x,
+       let b = constFactor idx,
+       let xs = varsExcept idx [x]]
+  ++ [(`eq` (q!y)) <$> def y | y <- L.delete x (annVars q)]
+-- tuple with one tree
+cMatch' q r x [v] = extendAnn r $
+  ((`eq` (q!x)) <$> def v)
+  : [(`eq` (q!idx)) <$> def [mix|_xs,v^a,b|]
      | idx <- mixes q,
        let a = facForVar idx x,
        let b = constFactor idx,

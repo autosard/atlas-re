@@ -4,7 +4,6 @@
 module CostAnalysis.Analysis where
 
 import Control.Monad.RWS
-import Data.Map(Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Tree as T
@@ -21,7 +20,7 @@ import Control.Monad.Except (MonadError(throwError))
 import CostAnalysis.Deriv
 import CostAnalysis.Coeff
 import Typing.Type
-import CostAnalysis.RsrcAnn (RsrcAnn, RsrcSignature)
+import CostAnalysis.RsrcAnn (RsrcAnn, RsrcSignature, FunRsrcAnn(..))
 import Data.List.Extra (allSame)
 
 analyzeModule :: ProofEnv -> PositionedModule
@@ -50,11 +49,25 @@ analyzeModule' mod =
   
 analyzeBindingGroup :: PositionedModule -> RsrcAnn -> [Id]  -> ProveMonad ()
 analyzeBindingGroup mod rhs fns = do
-  derivs <- mapM (\fn -> proveFun rhs $ defs mod M.! fn) fns
+  mapM_ (createAnn rhs) fns
+  derivs <- mapM (\fn -> proveFun $ defs mod M.! fn) fns
   fnDerivs %= (++derivs)
   solution <- solve fns
   addSigCs fns solution
   tell solution
+  where createAnn rhs fn = do
+          ann <- genFunRsrcAnn rhs $ defs mod M.! fn
+          sig %= M.insert fn ann
+
+genFunRsrcAnn :: RsrcAnn -> PositionedFunDef -> ProveMonad FunRsrcAnn
+genFunRsrcAnn rhs fun = do
+  let (ctxFrom, argTo) = ctxFromFn fun
+  let argsFrom = M.toAscList ctxFrom
+  from <- defaultAnn "Q" "fn" argsFrom
+  fromCf <- defaultAnn "P" "fn cf" argsFrom
+  toCf <- defaultAnn "P'" "fn cf" [argTo]
+  return $ FunRsrcAnn (from, rhs) (fromCf, toCf)
+
   
 addSigCs :: [Id] -> Solution -> ProveMonad ()
 addSigCs fns solution = do
@@ -62,10 +75,13 @@ addSigCs fns solution = do
   let cs = concatMap go (getCoeffs sig')
   sigCs %= (++cs)
   where go coeff = eq (CoeffTerm coeff) (ConstTerm (solution M.! coeff))
-  
+
+
+-- TODO this breaks RandSplayTree.delete because splay max returns a tuple not a single tree.  
 argForRHS :: Module Positioned -> Either SourceError (Id, Type)
-argForRHS mod = if allSame args then Right $ head args else
-  Left $ SourceError (tfLoc $ funAnn (head $ fns mod))
-  "Cost analysis requries all involved functions to have the same return type to guarantee consistent a consistent potential function."
+argForRHS mod = Right $ head args
+  -- if allSame args then Right $ head args else
+  -- Left $ SourceError (tfLoc $ funAnn (head $ fns mod))
+  -- "Cost analysis requries all involved functions to have the same return type to guarantee a consistent potential function."
   where args = map go (concat $ mutRecGroups mod)
         go fn = snd . ctxFromFn $ defs mod M.! fn

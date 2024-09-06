@@ -50,15 +50,6 @@ type ProofResult = (Derivation, [Constraint], RsrcSignature)
 --         env = ProofEnv pot tactics
 --         state = ProofState M.empty 0 0 
 
-genFunRsrcAnn :: RsrcAnn -> PositionedFunDef -> ProveMonad FunRsrcAnn
-genFunRsrcAnn rhs fun = do
-  let (ctxFrom, argTo) = ctxFromFn fun
-  let argsFrom = M.toAscList ctxFrom
-  from <- defaultAnn "Q" "fn" argsFrom
-  fromCf <- defaultAnn "P" "fn cf" argsFrom
-  toCf <- defaultAnn "P'" "fn cf" [argTo]
-  return $ FunRsrcAnn (from, rhs) (fromCf, toCf)
-
 
 type TypeCtx = Map Id Type
 
@@ -83,11 +74,12 @@ proveVar _ cf ctx e@(Var id) q q' = do
   let cs = annLikeUnify q q'
   conclude R.Var cf q q' cs e []
 
+-- TODO move to proveConst and move tree specific check into the potential implementation
 provePair :: Prove PositionedExpr Derivation
-provePair _ cf ctx e@(Tuple (Var x1) (Var x2)) q q' = do
-  when (isTree (ctx M.!x1) && isTree (ctx M.!x2)) $
+provePair _ cf ctx e@(Tuple eX1@(Var x1) eX2@(Var x2)) q q' = do
+  when ((isTree . getType) eX1 && (isTree . getType) eX2) $
     errorFrom (SynExpr e) "(pair) applied to more then one tree type."
-  let cs = annEq q q'
+  let cs = annLikeUnify q q'
   conclude R.Const cf q q' cs e []
 
 proveIte :: Prove PositionedExpr Derivation
@@ -109,15 +101,6 @@ proveIte tactic cf ctx e@(Ite (Coin p) e1 e2) q q' = do
   conclude R.Ite cf q q' cs e [deriv1, deriv2]
 
 proveMatchArm :: Id -> Prove PositionedMatchArm ([Constraint], Derivation)
-proveMatchArm matchVar tactic cf ctx
-  arm@(MatchArm (PatTuple _ (Id _ x1) (Id _ x2)) e) q q' = do
-  let (tx1, tx2) = splitTupleType $ getType arm
-  when (isTree tx1 && isTree tx2) $
-    errorFrom (SynArm arm) "(match) applied to a pair with more then one tree type."
-    
-  let ctx' = ctx `M.union` M.fromList [(x1, tx1), (x2, tx2)]
-  deriv <- proveExpr tactic cf ctx' e q q'
-  return ([], deriv)
 proveMatchArm matchVar tactic cf ctx
   (MatchArm pat@(ConstPat _ id patVars) e) q q' = do
   pot <- view potential
@@ -160,55 +143,53 @@ splitLetCtx ctx e1 e2 = do
 
    
 proveLet :: Prove PositionedExpr Derivation
-proveLet tactic@(Rule (R.Let letArgs) _) cf ctx e@(Let x e1 e2) q q'
-  -- let
-  | isTree $ getType e1 = do
-      pot <- view potential
-      let [t1, t2] = subTactics 2 tactic
-      (ctxE1, ctxE2) <- splitLetCtx ctx e1 e2
-      let (gamma, delta) = (M.toAscList ctxE1, M.toAscList ctxE2)
-      let ctxE2' = M.insert x (getType e1) ctxE2
+proveLet tactic@(Rule (R.Let letArgs) _) cf ctx e@(Let x e1 e2) q q' = do
+  pot <- view potential
+  if bearesPotential pot $ getType e1 then do
+    let [t1, t2] = subTactics 2 tactic
+    (ctxE1, ctxE2) <- splitLetCtx ctx e1 e2
+    let (gamma, delta) = (M.toAscList ctxE1, M.toAscList ctxE2)
+    let ctxE2' = M.insert x (getType e1) ctxE2
       
-      p_ <- emptyAnn "P" "let:base e1" gamma
-      p' <- defaultAnn  "P'"  "let:base e1" [("e", getType e1)]
-      r_ <- emptyAnn "R" "let:base e2" (M.toAscList ctxE2')
+    p_ <- emptyAnn "P" "let:base e1" gamma
+    p' <- defaultAnn  "P'"  "let:base e1" [("e", getType e1)]
+    r_ <- emptyAnn "R" "let:base e2" (M.toAscList ctxE2')
       
-      let rangeD = rangeA . ranges $ pot
-      let rangeE = if R.NegE `elem` letArgs then
-            rangeBNeg . ranges $ pot else rangeB . ranges $ pot
+    let rangeD = rangeA . ranges $ pot
+    let rangeE = if R.NegE `elem` letArgs then
+         rangeBNeg . ranges $ pot else rangeB . ranges $ pot
       
-      let bdes = forAllCombinations q (M.keys ctxE2) (rangeD, rangeE) x
+    let bdes = forAllCombinations q (M.keys ctxE2) (rangeD, rangeE) x
       
-      ps_ <- annArrayFromIdxs bdes "P" (M.toAscList ctxE1)
-      ps'_ <- annArrayFromIdxs bdes "P'" [("e", getType e1)]
+    ps_ <- annArrayFromIdxs bdes "P" (M.toAscList ctxE1)
+    ps'_ <- annArrayFromIdxs bdes "P'" [("e", getType e1)]
 
-      let (p, pCs) = cLetBinding pot q p_ 
-      deriv1 <- proveExpr t1 cf ctxE1 e1 p p'
+    let (p, pCs) = cLetBinding pot q p_ 
+    deriv1 <- proveExpr t1 cf ctxE1 e1 p p'
 
-      let (ps, ps', cfCs) = cLetCf pot q ps_ ps'_ x (map fst gamma, map fst delta) bdes
-      cfDerivs <- zipWithM (proveExpr t1 True ctxE1 e1) (elems ps) (elems ps')
+    let (ps, ps', cfCs) = cLetCf pot q ps_ ps'_ x (map fst gamma, map fst delta) bdes
+    cfDerivs <- zipWithM (proveExpr t1 True ctxE1 e1) (elems ps) (elems ps')
       
-      let (r, rCs) = cLetBody pot q r_ p p' ps' x bdes
-      deriv2 <- proveExpr t2 cf ctxE2' e2 r q'
+    let (r, rCs) = cLetBody pot q r_ p p' ps' x bdes
+    deriv2 <- proveExpr t2 cf ctxE2' e2 r q'
 
-      conclude (R.Let letArgs) cf q q' (pCs ++ rCs ++ cfCs) e ([deriv1, deriv2] ++ cfDerivs)
+    conclude (R.Let letArgs) cf q q' (pCs ++ rCs ++ cfCs) e ([deriv1, deriv2] ++ cfDerivs)
   -- let:base
-  | otherwise = do
-      pot <- view potential
-      let [t1, t2] = subTactics 2 tactic
-      (ctxE1, ctxE2) <- splitLetCtx ctx e1 e2
-      let ctxE2' = M.insert x (getType e1) ctxE2 
+  else do
+    let [t1, t2] = subTactics 2 tactic
+    (ctxE1, ctxE2) <- splitLetCtx ctx e1 e2
+    let ctxE2' = M.insert x (getType e1) ctxE2 
 
-      p_ <- emptyAnn "P" "let:base e1" (M.toAscList ctxE1)
-      p' <- defaultAnn  "P'"  "let:base e1" []
-      r_ <- emptyAnn "R" "let:base e2" (M.toAscList ctxE2')
+    p_ <- emptyAnn "P" "let:base e1" (M.toAscList ctxE1)
+    p' <- defaultAnn  "P'"  "let:base e1" []
+    r_ <- emptyAnn "R" "let:base e2" (M.toAscList ctxE2')
       
-      let (p, pCs) = cLetBindingBase pot q p_ 
-      deriv1 <- proveExpr t1 cf ctxE1 e1 p p'
-      let (r, rCs) = cLetBodyBase pot q r_ p'
-      deriv2 <- proveExpr t2 cf ctxE2' e2 r q'
+    let (p, pCs) = cLetBindingBase pot q p_ 
+    deriv1 <- proveExpr t1 cf ctxE1 e1 p p'
+    let (r, rCs) = cLetBodyBase pot q r_ p'
+    deriv2 <- proveExpr t2 cf ctxE2' e2 r q'
 
-      conclude (R.Let letArgs) cf q q' (pCs ++ rCs) e [deriv1, deriv2]
+    conclude (R.Let letArgs) cf q q' (pCs ++ rCs) e [deriv1, deriv2]
 
 proveApp :: Prove PositionedExpr Derivation
 proveApp tactic False ctx e@(App id _) q q' = do
@@ -383,10 +364,9 @@ proveFunBody _ cf _ (FunDef ann id args e) q q' = do
   tactic <- fromMaybe Auto . M.lookup id <$> view tactics
   proveExpr tactic cf ctx e q q'
 
-proveFun :: RsrcAnn -> PositionedFunDef -> ProveMonad Derivation
-proveFun rhs fun@(FunDef funAnn fnId _ _) = do
-  ann <- genFunRsrcAnn rhs fun
-  sig %= M.insert fnId ann
+proveFun :: PositionedFunDef -> ProveMonad Derivation
+proveFun fun@(FunDef funAnn fnId _ _) = do
+  ann <- (M.! fnId) <$> use sig
   
   -- prove both with and without costs for well-typedness
   let (p, p') = withoutCost ann
@@ -396,24 +376,9 @@ proveFun rhs fun@(FunDef funAnn fnId _ _) = do
   deriv <- proveFunBody Auto False M.empty fun q q'
 
   unlessM (view ignoreAnns) (do
-    tellCs . concat . maybeToList $ (annLe q . fst <$> tfRsrcWithCost funAnn)
-    tellCs . concat . maybeToList $ (annLe q' . snd <$> tfRsrcWithCost funAnn)
-    tellCs . concat . maybeToList $ (annLe p . fst <$> tfRsrcWithoutCost funAnn)
-    tellCs . concat . maybeToList $ (annLe p' . snd <$> tfRsrcWithoutCost funAnn))
+    tellCs . concat . maybeToList $ (annConstEq q . fst <$> tfRsrcWithCost funAnn)
+    tellCs . concat . maybeToList $ (annConstEq q' . snd <$> tfRsrcWithCost funAnn)
+    tellCs . concat . maybeToList $ (annConstEq p . fst <$> tfRsrcWithoutCost funAnn)
+    tellCs . concat . maybeToList $ (annConstEq p' . snd <$> tfRsrcWithoutCost funAnn))
   
   return $ T.Node (R.FunRuleApp fun) [derivCf, deriv]
-
--- setRightSidesEqual :: [FunRsrcAnn] -> [Constraint]
--- setRightSidesEqual [] = []
--- setRightSidesEqual (ann:anns) = concat [annEq (snd . withCost $ ann) (snd . withCost $ ann')
---                                        | ann' <- anns]
-
--- proveModule :: PositionedModule -> Bool -> ProveMonad Derivation
--- proveModule mod ignoreAnns = do
---   s <- use sig
---   let fns = map (defs mod M.!) $ concat (mutRecGroups mod)
---   funAnns <- mapM (\f@(Fn name _ _) -> (name,) <$> genFunRsrcAnn f) fns
---   tell $ setRightSidesEqual (map snd funAnns)
---   sig .= s `M.union` M.fromList funAnns
---   derivs <- mapM (uncurry (proveFunWithAnn ignoreAnns)) $ zipWith (\x y -> (x, snd y)) fns funAnns
---   return $ T.Node (R.ProgRuleApp mod) derivs

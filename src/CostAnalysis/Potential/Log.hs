@@ -8,7 +8,7 @@ import CostAnalysis.Potential(Potential(Potential))
 
 logPot :: Args -> Potential
 logPot args = Potential
-  types
+  bearesPotential
   (ranges args)
   rsrcAnn
   constCoeff

@@ -16,12 +16,19 @@ import CostAnalysis.RsrcAnn
 import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential (AnnRanges(..))
+import Constants
 
 data Args = Args {
   aRange :: ![Int],
   bRange :: ![Int]}
 
 types = [TreeType]
+
+bearesPotential :: Type -> Bool
+bearesPotential (TupleT x y) = if matchesTypes x types && matchesTypes y types
+  then error "Tuples with two tree types are not supported."
+  else matchesTypes x types /= matchesTypes y types
+bearesPotential t = matchesTypes t types
 
 ranges :: Args -> AnnRanges
 ranges potArgs = AnnRanges (aRange potArgs) (bRange potArgs) (-1:bRange potArgs)
@@ -46,9 +53,10 @@ rsrcAnn id label comment args ranges =
                     | idx <- combi ranges vars,
                       idxSum idx > 0,
                       idx /= [mix|1|]]
-        args' = filter (\(x, t) -> matchesTypes t types) args
+        args' = filter (\(x, t) -> bearesPotential t) args
         vars = map fst args'
 
+               
 constCoeff :: CoeffIdx
 constCoeff = [mix|2|]
 
