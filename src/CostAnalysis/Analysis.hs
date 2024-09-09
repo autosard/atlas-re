@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 
 module CostAnalysis.Analysis where
 
@@ -7,6 +6,7 @@ import Control.Monad.RWS
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Tree as T
+import Data.Maybe(maybeToList)
 import Lens.Micro.Platform
 
 import Primitive(Id)
@@ -20,8 +20,9 @@ import Control.Monad.Except (MonadError(throwError))
 import CostAnalysis.Deriv
 import CostAnalysis.Coeff
 import Typing.Type
-import CostAnalysis.RsrcAnn (RsrcAnn, RsrcSignature, FunRsrcAnn(..))
-import Data.List.Extra (allSame)
+import CostAnalysis.RsrcAnn (RsrcAnn, RsrcSignature, FunRsrcAnn(..), annLikeConstEq)
+import CostAnalysis.Potential(symbolicCost)
+
 
 analyzeModule :: ProofEnv -> PositionedModule
   -> IO (Either SourceError (Derivation, RsrcSignature, Either [Constraint] Solution))
@@ -50,7 +51,7 @@ analyzeModule' mod =
 analyzeBindingGroup :: PositionedModule -> RsrcAnn -> [Id]  -> ProveMonad ()
 analyzeBindingGroup mod rhs fns = do
   mapM_ (createAnn rhs) fns
-  derivs <- mapM (\fn -> proveFun $ defs mod M.! fn) fns
+  derivs <- mapM analyzeFn fns
   fnDerivs %= (++derivs)
   solution <- solve fns
   addSigCs fns solution
@@ -58,6 +59,31 @@ analyzeBindingGroup mod rhs fns = do
   where createAnn rhs fn = do
           ann <- genFunRsrcAnn rhs $ defs mod M.! fn
           sig %= M.insert fn ann
+        analyzeFn fn = do
+          let def = defs mod M.! fn
+          mode <- view analysisMode
+          case mode of
+            CheckCoefficients -> coeffsMatchAnnotation def
+            CheckCost -> costMatchesAnnotation def
+            ImproveCost -> error "not implemented"
+            Infer -> error "not implemented"
+          proveFun def
+          
+costMatchesAnnotation :: PositionedFunDef -> ProveMonad ()
+costMatchesAnnotation fun@(FunDef funAnn fnId _ _) = do
+  ann <- (M.! fnId) <$> use sig
+  let cost = symbolicCost (withCost ann)
+  tellSigCs . concat . maybeToList $ (annLikeConstEq cost <$> tfCost funAnn)
+
+coeffsMatchAnnotation :: PositionedFunDef -> ProveMonad ()
+coeffsMatchAnnotation fun@(FunDef funAnn fnId _ _) = do
+  ann <- (M.! fnId) <$> use sig
+  let (p, p') = withoutCost ann
+  let (q, q') = withCost ann  
+  tellSigCs . concat . maybeToList $ (annLikeConstEq q . fst <$> tfRsrcWithCost funAnn)
+  tellSigCs . concat . maybeToList $ (annLikeConstEq q' . snd <$> tfRsrcWithCost funAnn)
+  tellSigCs . concat . maybeToList $ (annLikeConstEq p . fst <$> tfRsrcWithoutCost funAnn)
+  tellSigCs . concat . maybeToList $ (annLikeConstEq p' . snd <$> tfRsrcWithoutCost funAnn)
 
 genFunRsrcAnn :: RsrcAnn -> PositionedFunDef -> ProveMonad FunRsrcAnn
 genFunRsrcAnn rhs fun = do

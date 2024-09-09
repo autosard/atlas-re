@@ -24,9 +24,6 @@ import CostAnalysis.RsrcAnn
 import Typing.Type (Type)
 import CostAnalysis.AnnIdxQuoter
 
-import qualified Debug.Trace(trace)
-traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
-
 type ExpertKnowledge = (V.Vector (V.Vector Int), [Int])
 
 data AnnRanges = AnnRanges {
@@ -161,7 +158,12 @@ calculateBound (from, to) solution = M.fromList $ map subtract (getCoeffs from)
                 Nothing -> solutionOrZero left
             (ConstTerm 0) -> solutionOrZero left
   
-
+symbolicCost :: (RsrcAnn, RsrcAnn) -> PointWiseOp
+symbolicCost (from, to) = PointWiseOp (annVars from) $
+  M.fromList [(idx, sub [from!idx, to!?idx'])
+             | idx <- S.toList $ definedIdxs from,
+               let idx' = if length (annVars from) == length (annVars to) then
+                     substitute (annVars from) (annVars to) idx else idx]
 
 printBound :: Potential -> (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> String
 printBound pot sig solution = if L.null terms then "0" else

@@ -303,7 +303,8 @@ data ParsedFunAnn = ParsedFunAnn {
   pfFqn :: Fqn,
   pfType :: Maybe Scheme,
   pfRsrcWithCost :: Maybe (Map CoeffIdx Rational, Map CoeffIdx Rational),
-  pfRsrcWithoutCost :: Maybe (Map CoeffIdx Rational, Map CoeffIdx Rational)}
+  pfRsrcWithoutCost :: Maybe (Map CoeffIdx Rational, Map CoeffIdx Rational),
+  pfCost :: Maybe (Map CoeffIdx Rational)}
   deriving (Eq, Show)
 
 data Parsed
@@ -337,7 +338,8 @@ data TypedFunAnn = TypedFunAnn {
   tfFqn :: Fqn,
   tfType :: Scheme,
   tfRsrcWithCost :: Maybe (Map CoeffIdx Rational, Map CoeffIdx Rational),
-  tfRsrcWithoutCost :: Maybe (Map CoeffIdx Rational, Map CoeffIdx Rational)}
+  tfRsrcWithoutCost :: Maybe (Map CoeffIdx Rational, Map CoeffIdx Rational),
+  tfCost :: Maybe (Map CoeffIdx Rational)}
   deriving (Eq, Show)
 
 data ExprSrc = Loc SourcePos | DerivedFrom SourcePos

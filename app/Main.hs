@@ -25,7 +25,7 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
-import Ast(TypedModule, TypedExpr, containsFn, printProg, Fqn, defs)
+import Ast(TypedModule, TypedExpr, containsFn, Fqn, defs)
 import CostAnalysis.PrettyProof(renderProof, css, js)
 
 
@@ -37,14 +37,12 @@ import System.Environment(lookupEnv)
 
 import Typing.Inference(inferExpr, inferModule)
 import Normalization(normalizeMod, normalizeExpr)
-import Parsing.Program(parseExpr, parseModule)
+import Parsing.Program(parseExpr)
 import Parsing.Tactic
 import Eval(evalWithModule)
 import Primitive(Id)
 import CostAnalysis.Tactic 
 import CostAnalysis.Potential.Log
-import CostAnalysis.Deriv
-import CostAnalysis.Solving
 import CostAnalysis.ProveMonad
 import CostAnalysis.Rules
 import CostAnalysis.Analysis
@@ -86,7 +84,7 @@ run Options{..} RunOptions{..} = do
   let env = ProofEnv {
         _potential=pot,
         _tactics=tactics,
-        _ignoreAnns=switchIgnoreAnns}
+        _analysisMode=analysisMode}
   result <- liftIO $ analyzeModule env positionedProg
   case result of
     Left srcErr -> liftIO $ die $ printSrcError srcErr contents
@@ -151,7 +149,7 @@ loadTactics modName fns path = M.fromList . catMaybes <$> mapM loadOne fns
             logWarning $ "No tactic file for function '" `T.append` fn `T.append` "' found."
             return Nothing
 
-loadMod :: Maybe FilePath -> (Either Text Fqn) -> IO (TypedModule, Text)
+loadMod :: Maybe FilePath -> Either Text Fqn -> IO (TypedModule, Text)
 loadMod pathSearch modOrFqn = do
   searchPathfromEnv <- lookupEnv "ATLAS_SEARCH"
   let path = (`fromMaybe` pathSearch) . (`fromMaybe` searchPathfromEnv) $ "."

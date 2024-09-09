@@ -316,6 +316,7 @@ tiProg ctx mod = do
           tfType = t,
           tfRsrcWithCost = pfRsrcWithCost ann,
           tfRsrcWithoutCost = pfRsrcWithoutCost ann,
+          tfCost = pfCost ann,
           tfLoc = pfLoc ann,
           tfFqn = pfFqn ann}
         extendDef :: (ParsedFunDef, Scheme, TypedExpr) -> TypedFunDef

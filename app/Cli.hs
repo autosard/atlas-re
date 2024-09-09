@@ -9,6 +9,7 @@ import Ast(Fqn)
 import Options.Applicative
 import qualified Data.Text as T
 import Data.Text (Text)
+import CostAnalysis.ProveMonad (AnalysisMode (CheckCoefficients, CheckCost, ImproveCost, Infer))
 
 data Options = Options
   { searchPath :: !(Maybe FilePath)
@@ -39,7 +40,7 @@ data RunOptions = RunOptions {
   fqn :: Fqn,
   tacticsPath :: Maybe FilePath,
   switchPrintDeriv :: Bool,
-  switchIgnoreAnns :: Bool,
+  analysisMode :: AnalysisMode,
   switchHideConstraints :: Bool,
   switchHtmlOutput :: Bool}
 
@@ -53,9 +54,10 @@ runOptionsP = do
   switchPrintDeriv <- switch
     (long "print-deriv"
     <> help "Print the derivation tree in ascii.")
-  switchIgnoreAnns <- switch
-    (long "ignore-annotations"
-    <> help "When present, resource annotations are inferred, even if annotations are present in the source.")  
+  analysisMode <- option (eitherReader parseAnalysisMode)
+    (long "analysis-mode"
+    <> help "Analysis mode. One of [check-coeffs, check-cost, improve-cost, infer]."
+    <> value CheckCoefficients)
   switchHideConstraints <- switch
     (long "hide-constraints"
     <> help "When active, only the derivation tree is printed without constraints.")
@@ -67,6 +69,13 @@ runOptionsP = do
 
 runCommandP :: Parser Command
 runCommandP = Run <$> runOptionsP
+
+parseAnalysisMode :: String -> Either String AnalysisMode
+parseAnalysisMode "check-coeffs" = Right CheckCoefficients
+parseAnalysisMode "check-cost" = Right CheckCost
+parseAnalysisMode "improve-cost" = Right ImproveCost
+parseAnalysisMode "infer" = Right Infer
+parseAnalysisMode _ = Left "not a valid inference mode"
 
 parseFqn :: String -> Either String Fqn
 parseFqn s = case suffix of

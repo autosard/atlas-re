@@ -62,25 +62,31 @@ pModule = sc *> manyTill pFunc eof
 
 type FunRsrcAnn = (Map Coeff.CoeffIdx Rational, Map Coeff.CoeffIdx Rational)
 
+data Signature = Signature
+  Id
+  Scheme
+  (Maybe (FunRsrcAnn, Maybe FunRsrcAnn))
+  (Maybe (Map Coeff.CoeffIdx Rational))
+
 pFunc :: Parser ParsedFunDef
 pFunc = do
   pos <- getSourcePos
   sig <- optional pSignature
   funName <- pIdentifier
-  (_type, resourceAnn) <- case sig of
-    Just (name, _type, resouceAnn) -> do
+  (_type, resourceAnn, cost) <- case sig of
+    Just (Signature name _type resouceAnn costAnn) -> do
       when (funName /= name ) (fail $ "Signature for function '" ++ T.unpack name ++ "' must be followod by defining equation.")
-      return (Just _type, resouceAnn)
-    Nothing -> return (Nothing, Nothing)
+      return (Just _type, resouceAnn, costAnn)
+    Nothing -> return (Nothing, Nothing, Nothing)
   modName <- asks ctxModuleName
   let funFqn = (modName, funName)
   args <- manyTill pIdentifier (symbol "=")
   let (withCost, withoutCost) = case resourceAnn of
         Just (with, without) -> (Just with, without)
         Nothing -> (Nothing, Nothing)
-  FunDef (ParsedFunAnn pos funFqn _type withCost withoutCost) funName args <$> pExpr
+  FunDef (ParsedFunAnn pos funFqn _type withCost withoutCost cost) funName args <$> pExpr
 
-pSignature :: Parser (Id, Scheme, Maybe (FunRsrcAnn, Maybe FunRsrcAnn))
+pSignature :: Parser Signature
 pSignature = do
   name <- try pIdentifier <?> "function name"
   void pDoubleColon2
@@ -90,7 +96,8 @@ pSignature = do
     withCost <- pFunResourceAnn
     costFree <- optional $ symbol "," *> pCurlyParens pFunResourceAnn
     return (withCost, costFree))
-  return (name, _type, resourceAnn)
+  costAnn <- optional $ symbol "@" *> pCoefficients
+  return $ Signature name _type resourceAnn (M.fromList <$> costAnn)
 
 pConstraints :: Parser ()
 pConstraints = void (try $ pParens (some pConstraint))
@@ -138,10 +145,10 @@ pFunResourceAnn :: Parser FunRsrcAnn
 pFunResourceAnn = (,) <$> pResourceAnn <* pArrow <*> pResourceAnn
 
 pResourceAnn :: Parser (Map Coeff.CoeffIdx Rational)
-pResourceAnn = M.fromList <$> pCoefficients
+pResourceAnn = M.fromList <$> pSqParens pCoefficients
 
 pCoefficients :: Parser [(Coeff.CoeffIdx, Rational)]
-pCoefficients = pSqParens $ sepBy pCoefficient (symbol ",")
+pCoefficients =  sepBy pCoefficient (symbol ",")
 
 pCoefficient :: Parser (Coeff.CoeffIdx, Rational)
 pCoefficient = do

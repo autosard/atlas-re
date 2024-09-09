@@ -14,7 +14,6 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import qualified Data.Text as Text
 import Prelude hiding (or)
-import Control.Monad.Extra(unlessM)
 
 import Ast hiding (Coefficient)
 import Primitive(Id)
@@ -35,7 +34,7 @@ import CostAnalysis.Constraint ( ge,
 import CostAnalysis.Weakening
 import CostAnalysis.ProveMonad
 import StaticAnalysis(freeVars)
-import Data.Maybe (fromMaybe, mapMaybe, maybeToList)
+import Data.Maybe (fromMaybe, mapMaybe)
 
 import Debug.Trace (trace)
 traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
@@ -365,7 +364,7 @@ proveFunBody _ cf _ (FunDef ann id args e) q q' = do
   proveExpr tactic cf ctx e q q'
 
 proveFun :: PositionedFunDef -> ProveMonad Derivation
-proveFun fun@(FunDef funAnn fnId _ _) = do
+proveFun fun@(FunDef _ fnId _ _) = do
   ann <- (M.! fnId) <$> use sig
   
   -- prove both with and without costs for well-typedness
@@ -374,11 +373,5 @@ proveFun fun@(FunDef funAnn fnId _ _) = do
   
   let (q, q') = withCost ann  
   deriv <- proveFunBody Auto False M.empty fun q q'
-
-  unlessM (view ignoreAnns) (do
-    tellCs . concat . maybeToList $ (annConstEq q . fst <$> tfRsrcWithCost funAnn)
-    tellCs . concat . maybeToList $ (annConstEq q' . snd <$> tfRsrcWithCost funAnn)
-    tellCs . concat . maybeToList $ (annConstEq p . fst <$> tfRsrcWithoutCost funAnn)
-    tellCs . concat . maybeToList $ (annConstEq p' . snd <$> tfRsrcWithoutCost funAnn))
   
   return $ T.Node (R.FunRuleApp fun) [derivCf, deriv]

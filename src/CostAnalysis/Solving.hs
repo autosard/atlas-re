@@ -119,8 +119,8 @@ solve :: [Id] -> ProveMonad Solution
 solve fns = do
   sig' <- (`M.restrictKeys` S.fromList fns) <$> use sig
   opti <- genOptiTarget fns
-  extCs <- (setRankEqual sig' ++) <$> use sigCs
---  extCs <- use sigCs
+--  extCs <- (setRankEqual sig' ++) <$> use sigCs
+  extCs <- use sigCs
   cs <- use constraints
   result <- liftIO $ evalZ3 $ solveZ3 sig' cs extCs opti
   solution <- case result of 
@@ -135,7 +135,7 @@ solveZ3 sig typingCs extCs (optiTarget, optiCs) = do
   assertCoeffsPos typingCs
   tracker <- assertConstraints (typingCs ++ extCs ++ optiCs)
   target' <- toZ3 optiTarget
-  optimizeMinimize target'
+  --optimizeMinimize target'
   result <- check
   case result of
     Sat -> do

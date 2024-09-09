@@ -45,10 +45,16 @@ data ProofState = ProofState {
 
 makeLenses ''ProofState
 
+data AnalysisMode
+  = CheckCoefficients
+  | CheckCost
+  | ImproveCost
+  | Infer 
+
 data ProofEnv = ProofEnv {
   _potential :: Potential,
   _tactics :: Map Id Tactic,
-  _ignoreAnns :: Bool
+  _analysisMode :: AnalysisMode
   }
 
 data ProofErr
@@ -74,6 +80,9 @@ conclude rule cf q q' cs e derivs = do
 
 tellCs :: [Constraint] -> ProveMonad ()
 tellCs cs = constraints %= (++cs)
+
+tellSigCs :: [Constraint] -> ProveMonad ()
+tellSigCs cs = sigCs %= (++cs)
 
 errorFrom :: Syntax Positioned -> String -> ProveMonad a
 errorFrom e msg = throwError $ DerivErr $ SourceError loc msg
