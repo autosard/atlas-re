@@ -20,10 +20,12 @@ import Primitive(Id)
 import CostAnalysis.Rules ( WeakenArg )
 import CostAnalysis.Coeff
 import CostAnalysis.Constraint
-import CostAnalysis.Optimization (OptiMonad, Target)
 import CostAnalysis.RsrcAnn
-import Typing.Type ( Type, matchesTypes )
+import Typing.Type (Type)
 import CostAnalysis.AnnIdxQuoter
+
+import qualified Debug.Trace(trace)
+traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
 
 type ExpertKnowledge = (V.Vector (V.Vector Int), [Int])
 
@@ -143,17 +145,23 @@ forAllCombinations q xs (rangeA, rangeB) x =
 
 calculateBound :: (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> Map Coeff Rational
 calculateBound (from, to) solution = M.fromList $ map subtract (getCoeffs from)
-  where subtract left@(Coeff _ _ _ idx) = let
-          (CoeffTerm right) = to!substitute (annVars from) (annVars to) idx in
-          case solution M.!? right of
-            Just rightValue -> case solution M.!? left of
-              Just leftValue -> let diff =  leftValue - rightValue in (left, diff)
+  where solutionOrZero coeff = case solution M.!? coeff of
+                                 Just value -> (coeff, value)
+                                 Nothing -> (coeff, 0)           
+        subtract left@(Coeff _ _ _ idx) = let
+          right = if length (annVars from) == length (annVars to) then
+            to!substitute (annVars from) (annVars to) idx else to!?idx in
+          case right of
+            (CoeffTerm r) ->
+              case solution M.!? r of
+                Just rightValue -> case solution M.!? left of
+                  Just leftValue -> let diff =  leftValue - rightValue in (left, diff)
                 --if diff >= 0 then (left, diff) else error "Negative coefficient in result bound."
-              Nothing -> error $ "No such base term on the left hand side for '" ++ show right ++ "'."
-            Nothing -> case solution M.!? left of
-              Just leftValue -> (left, leftValue)
-              Nothing -> (left, 0)
-            
+                  Nothing -> error $ "No such base term on the left hand side for '" ++ show right ++ "'."
+                Nothing -> solutionOrZero left
+            (ConstTerm 0) -> solutionOrZero left
+  
+
 
 printBound :: Potential -> (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> String
 printBound pot sig solution = if L.null terms then "0" else

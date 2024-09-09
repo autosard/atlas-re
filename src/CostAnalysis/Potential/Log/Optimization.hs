@@ -2,13 +2,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 module CostAnalysis.Potential.Log.Optimization(cOptimize) where
 
+import qualified Data.Set as S
+
 import Prelude hiding (sum)
 import Primitive(Id)
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential.Log.Base
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Constraint
-import CostAnalysis.Coeff (constFactor, facForVar)
+import qualified CostAnalysis.Coeff as Coeff (constFactor, facForVar, (^))
 
 rankDifference :: RsrcAnn -> RsrcAnn -> Term
 rankDifference q q' = sum $ map (diff (q'!("e" :: Id))) (annVars q)
@@ -18,24 +20,21 @@ rankDifference q q' = sum $ map (diff (q'!("e" :: Id))) (annVars q)
 weightedAbs :: RsrcAnn -> Term
 weightedAbs q = sum [prod [q!idx, ConstTerm $ indexWeight a b]
                     | idx <- mixes q,
-                      let a = facForVar idx x,
-                      let b = constFactor idx]
+                      let a = Coeff.facForVar idx x,
+                      let b = Coeff.constFactor idx]
   where x = head (annVars q)
 
 weightedNonRankDifference :: Args -> RsrcAnn -> RsrcAnn -> Term
 weightedNonRankDifference potArgs q q' = sum $ map weightedDiff pairs 
   where weightedDiff (p, p', (a,b)) = prod [ConstTerm (indexWeight a b), sub [p, p']]
-        pairs = [(q![mix|x^a,b|], q'![mix|y^a,b|], (a,b))
+        pairs = [(q![mix|_xs,b|], q'![mix|_ys,b|], (a,b))
                 | a <- aRange potArgs,
                   b <- bRange potArgs,
                   a + b > 0,
                   (a, b) /= (0, 2),
                   (a, b) /= (0, 1),
-                  let x = annVar q,
-                  let y = annVar q']
-        annVar p = case annVars p of
-                     [x] -> x
-                     _multiArg -> error $ "Index weight is only defined for annotations of length 1." ++ show (annVars p)
+                  let xs = S.fromList $ map (Coeff.^a) $ annVars q,
+                  let ys = S.fromList $ map (Coeff.^a) $ annVars q']
 
 indexWeight :: Int -> Int -> Rational
 indexWeight 0 2 = 0

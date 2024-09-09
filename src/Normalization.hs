@@ -63,7 +63,7 @@ nmExpr' const@(ConstAnn ann id args) = do
   return (hole, ConstAnn ann id args')
 nmExpr' (TickAnn ann c e) = do
   (hole, e') <- nmExpr' e
-  return (idHole, TickAnn ann c (hole (getType e') e'))
+  return (hole, TickAnn ann c e')
 nmExpr' e = return (idHole, e)
 
 nmMatchArm :: TypedMatchArm -> Norm TypedMatchArm

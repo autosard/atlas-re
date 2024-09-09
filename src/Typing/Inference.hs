@@ -28,9 +28,6 @@ import Text.Megaparsec.Pos(unPos)
 import SourceError
 import Constants
 
-import qualified Debug.Trace(trace)
-traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
-
 data TiState = TiState {
   idGen :: Int,
   subst :: Subst,
