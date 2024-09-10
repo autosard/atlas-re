@@ -103,6 +103,9 @@ ul.tree li:last-child:before {
   color: #{colorRed}
 }
 
+.app:has(.unsat) > .toggle {
+  color: #{colorRed}
+}
 
 .unsat {
   color: #{colorRed};
@@ -126,6 +129,10 @@ ul.tree li:last-child:before {
 .constraints::before {
   display: block;
   content: "+constraints";
+}
+
+.constraints:has(.unsat)::before {
+  color: #{colorRed}
 }
 
 .constraints.show::before {
@@ -194,7 +201,7 @@ hamDeriv' unsat (T.Node appl children) = [shamlet|
 #{hamRuleApp unsat appl}
 <ul class="tree">
     $forall child <- children
-        <li>^{hamDeriv' unsat child}
+        <li .app>^{hamDeriv' unsat child}
 |]
   
 
