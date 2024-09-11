@@ -2,7 +2,9 @@
 
 module CostAnalysis.Analysis where
 
+import Prelude hiding (sum)
 import Control.Monad.RWS
+import Data.Map(Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Tree as T
@@ -20,14 +22,17 @@ import Control.Monad.Except (MonadError(throwError))
 import CostAnalysis.Deriv
 import CostAnalysis.Coeff
 import Typing.Type
-import CostAnalysis.RsrcAnn (RsrcAnn, RsrcSignature, FunRsrcAnn(..), annLikeConstEq)
-import CostAnalysis.Potential(symbolicCost)
+import CostAnalysis.RsrcAnn (RsrcAnn, RsrcSignature,
+                             FunRsrcAnn(..), annLikeConstEq,
+                             annLikeConstLe, PointWiseOp,
+                             opCoeffs)
+import CostAnalysis.Potential(symbolicCost, cOptimize)
 
 
 analyzeModule :: ProofEnv -> PositionedModule
   -> IO (Either SourceError (Derivation, RsrcSignature, Either [Constraint] Solution))
 analyzeModule env mod = do
-  let state = ProofState M.empty [] 0 0 [] [] M.empty
+  let state = ProofState M.empty [] [] 0 0 [] [] M.empty
   case argForRHS mod of
     Left err -> return $ Left err
     Right arg -> do
@@ -45,8 +50,11 @@ analyzeModule' mod =
     Right arg -> do
       -- unique right hand side for the whole module
       rhs <- defaultAnn "Q'" "fn" [arg]
-      mapM_ (analyzeBindingGroup mod rhs) (mutRecGroups mod)
-    
+      incr <- view incremental
+      if incr then
+        mapM_ (analyzeBindingGroup mod rhs) (mutRecGroups mod)
+      else
+        analyzeBindingGroup mod rhs (concat $ mutRecGroups mod)
   
 analyzeBindingGroup :: PositionedModule -> RsrcAnn -> [Id]  -> ProveMonad ()
 analyzeBindingGroup mod rhs fns = do
@@ -64,16 +72,20 @@ analyzeBindingGroup mod rhs fns = do
           mode <- view analysisMode
           case mode of
             CheckCoefficients -> coeffsMatchAnnotation def
-            CheckCost -> costMatchesAnnotation def
-            ImproveCost -> error "not implemented"
-            Infer -> error "not implemented"
+            CheckCost -> cmpCostWithAnn annLikeConstEq def
+            ImproveCost -> do
+              cmpCostWithAnn annLikeConstLe def
+              addSimpleCostOptimization def
+            Infer -> addFullCostOptimization def
           proveFun def
-          
-costMatchesAnnotation :: PositionedFunDef -> ProveMonad ()
-costMatchesAnnotation fun@(FunDef funAnn fnId _ _) = do
+
+type CostComparision = PointWiseOp -> Map CoeffIdx Rational -> [Constraint]
+
+cmpCostWithAnn :: CostComparision -> PositionedFunDef -> ProveMonad ()
+cmpCostWithAnn cmp fun@(FunDef funAnn fnId _ _) = do
   ann <- (M.! fnId) <$> use sig
   let cost = symbolicCost (withCost ann)
-  tellSigCs . concat . maybeToList $ (annLikeConstEq cost <$> tfCost funAnn)
+  tellSigCs . concat . maybeToList $ (cmp cost <$> tfCost funAnn)
 
 coeffsMatchAnnotation :: PositionedFunDef -> ProveMonad ()
 coeffsMatchAnnotation fun@(FunDef funAnn fnId _ _) = do
@@ -84,6 +96,23 @@ coeffsMatchAnnotation fun@(FunDef funAnn fnId _ _) = do
   tellSigCs . concat . maybeToList $ (annLikeConstEq q' . snd <$> tfRsrcWithCost funAnn)
   tellSigCs . concat . maybeToList $ (annLikeConstEq p . fst <$> tfRsrcWithoutCost funAnn)
   tellSigCs . concat . maybeToList $ (annLikeConstEq p' . snd <$> tfRsrcWithoutCost funAnn)
+
+addSimpleCostOptimization :: PositionedFunDef -> ProveMonad ()
+addSimpleCostOptimization fun@(FunDef funAnn fnId _ _) = do
+  ann <- (M.! fnId) <$> use sig
+  let cost = symbolicCost (withCost ann)
+  let costTerm = sum $ M.elems (opCoeffs cost)
+  optiTargets %= (costTerm:)
+
+  
+addFullCostOptimization :: PositionedFunDef -> ProveMonad ()
+addFullCostOptimization fun@(FunDef funAnn fnId _ _) = do
+  pot <- view potential
+  ann <- (M.! fnId) <$> use sig
+  let (q, q') = withCost ann
+  let costTerm = cOptimize pot q q'
+  optiTargets %= (costTerm:)
+  
 
 genFunRsrcAnn :: RsrcAnn -> PositionedFunDef -> ProveMonad FunRsrcAnn
 genFunRsrcAnn rhs fun = do

@@ -41,6 +41,7 @@ data RunOptions = RunOptions {
   tacticsPath :: Maybe FilePath,
   switchPrintDeriv :: Bool,
   analysisMode :: AnalysisMode,
+  switchIncremental :: Bool,
   switchHideConstraints :: Bool,
   switchHtmlOutput :: Bool}
 
@@ -58,6 +59,9 @@ runOptionsP = do
     (long "analysis-mode"
     <> help "Analysis mode. One of [check-coeffs, check-cost, improve-cost, infer]."
     <> value CheckCoefficients)
+  switchIncremental <- switch
+    (long "incremental"
+    <> help "When active, individual constraint systems for each recursive binding group are solved incrementally.")
   switchHideConstraints <- switch
     (long "hide-constraints"
     <> help "When active, only the derivation tree is printed without constraints.")

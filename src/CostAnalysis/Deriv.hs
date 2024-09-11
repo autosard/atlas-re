@@ -41,15 +41,6 @@ traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
   
 type ProofResult = (Derivation, [Constraint], RsrcSignature)
 
--- runProof :: Bool -> PositionedModule -> Potential -> Map Id Tactic
---   -> (Int, Either SourceError ProofResult)
--- runProof ignoreAnns mod pot tactics = (state' ^. varIdGen, (,cs, state' ^. sig) <$> deriv)
---   where (deriv, state', cs) = runRWS rws env state
---         rws = runExceptT $ proveModule mod ignoreAnns
---         env = ProofEnv pot tactics
---         state = ProofState M.empty 0 0 
-
-
 type TypeCtx = Map Id Type
 
 type Prove e a = Tactic -> Bool -> TypeCtx -> e -> RsrcAnn -> RsrcAnn -> ProveMonad a
@@ -301,16 +292,14 @@ proveExpr tactic@(Rule R.Const []) cf ctx e@(Const {}) = removeRedundantVars pro
 proveExpr tactic@(Rule R.Match _) cf ctx e@(Match {}) = proveMatch tactic cf ctx e
 proveExpr tactic@(Rule R.Ite _) cf ctx e@(Ite {}) = proveIte tactic cf ctx e
 proveExpr tactic@(Rule (R.Let _) _) cf ctx e@(Let {}) = proveLet tactic cf ctx e
-proveExpr tactic@(Rule R.TickDefer _) cf ctx e = removeRedundantVars proveTickDefer tactic cf ctx e
+proveExpr tactic@(Rule R.TickDefer _) cf ctx e@(Tick {}) = removeRedundantVars proveTickDefer tactic cf ctx e
 proveExpr tactic@(Rule R.WeakenVar _) cf ctx e = proveWeakenVar tactic cf ctx e
 proveExpr tactic@(Rule (R.Weaken _) _) cf ctx e = proveWeaken tactic cf ctx e
 proveExpr tactic@(Rule R.Shift _) cf ctx e = proveShift tactic cf ctx e
 proveExpr tactic@(Rule R.App _) cf ctx e@(App {}) = removeRedundantVars proveApp tactic cf ctx e
 proveExpr Auto cf ctx e = proveByAuto cf ctx e
-  
 proveExpr tactic _ _ e = \_ _ -> errorFrom (SynExpr e) $ "Could not apply tactic to given "
   ++ printExprHead e ++ " expression. Tactic: '" ++ printTacticHead tactic ++ "'"
-
 
 -- auto tactic
 proveByAuto :: Bool -> TypeCtx -> PositionedExpr -> RsrcAnn -> RsrcAnn -> ProveMonad Derivation

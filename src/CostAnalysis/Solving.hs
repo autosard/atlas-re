@@ -21,7 +21,6 @@ import Primitive(Id)
 import CostAnalysis.Coeff
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Constraint
-import CostAnalysis.Potential
 import CostAnalysis.ProveMonad
 
 
@@ -56,17 +55,6 @@ instance Encodeable Constraint where
   toZ3 (Or cs) = mkOr =<< mapM toZ3 cs
   toZ3 (Not c) = mkNot =<< toZ3 c
 
-genOptiTarget :: [Id] -> ProveMonad (Term, [Constraint])
-genOptiTarget fns = do
-  pot <- view potential
-  s <- use sig
-  target <- freshVar
-  let costTerms = map (optimizeFn pot s) fns
-  return (target, geZero target ++ eq target (sum costTerms))
-  where optimizeFn :: Potential -> RsrcSignature -> Id -> Term
-        optimizeFn pot sig fn = let (q, q') = withCost $ sig M.! fn in
-          cOptimize pot q q'
-
 evalCoeffs :: MonadOptimize z3 => Model -> [Coeff] -> z3 (Map Coeff Rational)
 evalCoeffs m qs = do
   M.fromList <$> mapM evalCoeff qs
@@ -97,14 +85,14 @@ assertCoeffsPos cs = do
   positiveCs <- mapM (\coeff -> mkGe coeff =<< mkReal 0 1) annCoeffs'
   mapM_ assert positiveCs
 
-setRankEqual :: RsrcSignature -> [Constraint]
-setRankEqual sig = concatMap setRankEqual' (M.elems sig) 
+-- setRankEqual :: RsrcSignature -> [Constraint]
+-- setRankEqual sig = concatMap setRankEqual' (M.elems sig) 
 
-setRankEqual' :: FunRsrcAnn -> [Constraint]
-setRankEqual' ann = eq (q!Pure x) (q'!Pure y)
-  where (q, q') = withCost ann
-        x = head $ annVars q
-        y = head $ annVars q'
+-- setRankEqual' :: FunRsrcAnn -> [Constraint]
+-- setRankEqual' ann = eq (q!Pure x) (q'!Pure y)
+--   where (q, q') = withCost ann
+--         x = head $ annVars q
+--         y = head $ annVars q'
 
 -- dumpSMT :: Potential -> RsrcSignature -> [Constraint] -> Int -> IO ()
 -- dumpSMT pot sig cs varIdGen = do
@@ -118,7 +106,7 @@ setRankEqual' ann = eq (q!Pure x) (q'!Pure y)
 solve :: [Id] -> ProveMonad Solution
 solve fns = do
   sig' <- (`M.restrictKeys` S.fromList fns) <$> use sig
-  opti <- genOptiTarget fns
+  opti <- sum <$> use optiTargets
 --  extCs <- (setRankEqual sig' ++) <$> use sigCs
   extCs <- use sigCs
   cs <- use constraints
@@ -129,13 +117,13 @@ solve fns = do
   constraints .= []
   return solution
 
-solveZ3 :: MonadOptimize z3 => RsrcSignature -> [Constraint] -> [Constraint] -> (Term, [Constraint])
+solveZ3 :: MonadOptimize z3 => RsrcSignature -> [Constraint] -> [Constraint] -> Term
   -> z3 (Either [Constraint] Solution)
-solveZ3 sig typingCs extCs (optiTarget, optiCs) = do
+solveZ3 sig typingCs extCs optiTarget = do
   assertCoeffsPos typingCs
-  tracker <- assertConstraints (typingCs ++ extCs ++ optiCs)
+  tracker <- assertConstraints (typingCs ++ extCs)
   target' <- toZ3 optiTarget
-  --optimizeMinimize target'
+  optimizeMinimize target'
   result <- check
   case result of
     Sat -> do

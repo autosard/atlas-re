@@ -19,7 +19,7 @@
                     (w{mono} const)
                     (w{l2xy}
                       (ite
-                        (w{mono} (tick:defer (let const (let const const))))
+                        (w{mono} (let const (let const (tick:defer const))))
                         (w{mono}       (let const (let const const)))
                       )
                     )
@@ -36,7 +36,7 @@
                     (w{mono} const)
                     (w{l2xy}
                       (ite
-                        (w{mono} (tick:defer (let const (let const const))))
+                        (w{mono} (let const (let const (tick:defer const))))
                         (w{mono}       (let const (let const const)))
                       )
                     )
@@ -61,7 +61,7 @@
                     (w{mono} const)
                     (w{l2xy}
                       (ite
-                        (w{mono} (tick:defer (let const (let const const))))
+                        (w{mono} (let const (let const (tick:defer const))))
                         (w{mono}       (let const (let const const)))
                       )
                     )
@@ -77,7 +77,7 @@
                   (match (w{mono} const)
                     (w{l2xy}
                       (ite
-                        (w{mono} (tick:defer (let const (let const const))))
+                        (w{mono} (let const (let const (tick:defer const))))
                         (w{mono}       (let const (let const const)))
                       )
                     )

@@ -36,6 +36,7 @@ type Derivation = Tree RuleApp
 data ProofState = ProofState {
   _sig :: RsrcSignature,
   _sigCs :: [Constraint],
+  _optiTargets :: [Term],
   _annIdGen :: Int,
   _varIdGen :: Int,
   _constraints :: [Constraint],
@@ -54,7 +55,8 @@ data AnalysisMode
 data ProofEnv = ProofEnv {
   _potential :: Potential,
   _tactics :: Map Id Tactic,
-  _analysisMode :: AnalysisMode
+  _analysisMode :: AnalysisMode,
+  _incremental :: Bool
   }
 
 data ProofErr

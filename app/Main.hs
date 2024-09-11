@@ -25,7 +25,7 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
-import Ast(TypedModule, TypedExpr, containsFn, Fqn, defs)
+import Ast(TypedModule, TypedExpr, containsFn, Fqn, defs, printProg)
 import CostAnalysis.PrettyProof(renderProof, css, js)
 
 
@@ -84,7 +84,8 @@ run Options{..} RunOptions{..} = do
   let env = ProofEnv {
         _potential=pot,
         _tactics=tactics,
-        _analysisMode=analysisMode}
+        _analysisMode=analysisMode,
+        _incremental=switchIncremental}
   result <- liftIO $ analyzeModule env positionedProg
   case result of
     Left srcErr -> liftIO $ die $ printSrcError srcErr contents
@@ -98,7 +99,7 @@ run Options{..} RunOptions{..} = do
       (deriv, sig, Right solution) -> let target = withCost $ sig M.! funName in do
         when switchHtmlOutput $
           liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv)
-        liftIO $ putStr (printBound pot target solution)
+        liftIO $ putStrLn (printBound pot target solution)
 
 writeHtmlProof :: FilePath -> LT.Text -> IO ()
 writeHtmlProof path html = do
