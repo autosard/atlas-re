@@ -10,6 +10,7 @@ import Options.Applicative
 import qualified Data.Text as T
 import Data.Text (Text)
 import CostAnalysis.ProveMonad (AnalysisMode (CheckCoefficients, CheckCost, ImproveCost, Infer))
+import CostAnalysis.Potential
 
 data Options = Options
   { searchPath :: !(Maybe FilePath)
@@ -43,7 +44,8 @@ data RunOptions = RunOptions {
   analysisMode :: AnalysisMode,
   switchIncremental :: Bool,
   switchHideConstraints :: Bool,
-  switchHtmlOutput :: Bool}
+  switchHtmlOutput :: Bool,
+  potential :: PotentialMode}
 
 runOptionsP :: Parser RunOptions
 runOptionsP = do
@@ -59,6 +61,10 @@ runOptionsP = do
     (long "analysis-mode"
     <> help "Analysis mode. One of [check-coeffs, check-cost, improve-cost, infer]."
     <> value CheckCoefficients)
+  potential <- option (eitherReader parsePotential)
+    (long "potential"
+    <> help "The type of potential function template used in the analysis. [logarithmic, polynomial]"
+    <> value Logarithmic)
   switchIncremental <- switch
     (long "incremental"
     <> help "When active, individual constraint systems for each recursive binding group are solved incrementally.")
@@ -73,6 +79,11 @@ runOptionsP = do
 
 runCommandP :: Parser Command
 runCommandP = Run <$> runOptionsP
+
+parsePotential :: String -> Either String PotentialMode
+parsePotential "logarithmic" = Right Logarithmic
+parsePotential "polynomial" = Right Polynomial
+parsePotential _ = Left "not a valid poential."
 
 parseAnalysisMode :: String -> Either String AnalysisMode
 parseAnalysisMode "check-coeffs" = Right CheckCoefficients

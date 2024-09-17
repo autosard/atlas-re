@@ -33,7 +33,7 @@ analyzeModule :: ProofEnv -> PositionedModule
   -> IO (Either SourceError (Derivation, RsrcSignature, Either [Constraint] Solution))
 analyzeModule env mod = do
   let state = ProofState M.empty [] [] 0 0 [] [] M.empty
-  case argForRHS mod of
+  case argsForRHS mod of
     Left err -> return $ Left err
     Right arg -> do
       (result, state', solution) <- runProof env state (analyzeModule' mod)
@@ -45,11 +45,11 @@ analyzeModule env mod = do
 
 analyzeModule' :: PositionedModule -> ProveMonad ()
 analyzeModule' mod = 
-  case argForRHS mod of
+  case argsForRHS mod of
     Left err -> throwError $ DerivErr err
-    Right arg -> do
+    Right args -> do
       -- unique right hand side for the whole module
-      rhs <- defaultAnn "Q'" "fn" [arg]
+      rhs <- defaultAnn "Q'" "fn" args
       incr <- view incremental
       if incr then
         mapM_ (analyzeBindingGroup mod rhs) (mutRecGroups mod)
@@ -116,11 +116,10 @@ addFullCostOptimization fun@(FunDef funAnn fnId _ _) = do
 
 genFunRsrcAnn :: RsrcAnn -> PositionedFunDef -> ProveMonad FunRsrcAnn
 genFunRsrcAnn rhs fun = do
-  let (ctxFrom, argTo) = ctxFromFn fun
-  let argsFrom = M.toAscList ctxFrom
+  let (argsFrom, argsTo) = ctxFromFn fun
   from <- defaultAnn "Q" "fn" argsFrom
   fromCf <- defaultAnn "P" "fn cf" argsFrom
-  toCf <- defaultAnn "P'" "fn cf" [argTo]
+  toCf <- defaultAnn "P'" "fn cf" argsTo
   return $ FunRsrcAnn (from, rhs) (fromCf, toCf)
 
   
@@ -133,8 +132,8 @@ addSigCs fns solution = do
 
 
 -- TODO this breaks RandSplayTree.delete because splay max returns a tuple not a single tree.  
-argForRHS :: Module Positioned -> Either SourceError (Id, Type)
-argForRHS mod = Right $ head args
+argsForRHS :: Module Positioned -> Either SourceError [(Id, Type)]
+argsForRHS mod = Right $ head args
   -- if allSame args then Right $ head args else
   -- Left $ SourceError (tfLoc $ funAnn (head $ fns mod))
   -- "Cost analysis requries all involved functions to have the same return type to guarantee a consistent potential function."

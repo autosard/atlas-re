@@ -60,9 +60,22 @@ rsrcAnn id label comment args ranges =
 constCoeff :: CoeffIdx
 constCoeff = [mix|2|]
 
+forAllCombinations :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
+forAllCombinations q xs (rangeA, rangeB) x =
+  [[mix|_bs,_xIdx,e|]
+  | idx <- varsRestrictMixes q xs,
+    let bs = idxToSet idx,
+    (not . null) bs,
+    d <- rangeA,
+    e <- rangeB,
+    d + max e 0 > 0,
+    let xIdx = S.singleton $ Arg x d]
+ 
+
 printBasePot :: Coeff -> Rational -> String
 printBasePot (Coeff _ _ _ (Pure x)) v = show v ++ " * rk(" ++ T.unpack x ++ ")"
-printBasePot (Coeff _ _ _ (Mixed factors)) v = show v ++ " * " ++ printLog
+printBasePot (Coeff _ _ _ c@(Mixed factors)) v | c == constCoeff = show v
+                                               | otherwise = show v ++ " * " ++ printLog
   where printLog = "log(" ++ intercalate " + " (map printFactor (S.toDescList factors)) ++ ")"
         printFactor (Const c) = show c
         printFactor (Arg x a) = if a /= 1 then show a ++ T.unpack x else T.unpack x

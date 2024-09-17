@@ -1,0 +1,26 @@
+module CostAnalysis.Potential.Poly(pot, Args(..)) where
+
+import CostAnalysis.Potential.Poly.Base
+import CostAnalysis.Potential.Poly.Constraints
+import CostAnalysis.Potential.Poly.Optimization
+import CostAnalysis.Potential.Poly.Weakening
+import CostAnalysis.Potential(Potential(Potential))
+
+pot :: Args -> Potential
+pot args = Potential
+  bearesPotential
+  (ranges args)
+  rsrcAnn
+  constCoeff
+  (forAllCombinations args)
+  (cConst args)
+  (cMatch args)
+  cLetBindingBase
+  cLetBodyBase
+  cLetBinding
+  cLetBody
+  (cLetCf args)
+  cWeakenVar
+  genExpertKnowledge
+  cOptimize
+  printBasePot

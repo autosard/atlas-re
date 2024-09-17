@@ -5,13 +5,14 @@ module Constants where
 
 import Primitive(Id)
 import Typing.Scheme
-import Typing.Type(Type(TGen, TAp), Tycon(Tree, Bool, Prod), fn)
+import Typing.Type(Type(TGen, TAp), Tycon(Tree, Bool, Prod, List), fn)
 import Ast(Val(ConstVal, LitVal), Literal(LitNum))
 import qualified Data.Text as T
 
 treeT = TAp Tree [TGen 0]
 tupleT = TAp Prod [TGen 0, TGen 1]
 boolT = TAp Bool []
+listT = TAp List [TGen 0]
 
 pattern TupleT :: Type -> Type -> Type
 pattern TupleT x y <- TAp Prod [x, y]
@@ -23,6 +24,8 @@ boolSc = Forall 0 boolT
 constType :: Id -> Scheme
 constType "node" = Forall 1 $ [treeT, TGen 0, treeT] `fn` treeT
 constType "leaf" = Forall 1 treeT
+constType "nil" = Forall 1 listT
+constType "cons" = Forall 1 $ [TGen 0, listT] `fn` listT
 constType "(,)" = Forall 2 $ [TGen 0, TGen 1] `fn` tupleT
 constType "true" = Forall 0 boolT
 constType "false" = Forall 0 boolT
@@ -36,6 +39,8 @@ constType c = error $ "undefined constant '" ++ T.unpack c ++ "'"
 constEval :: Id -> [Val] -> Val
 constEval "node" args = ConstVal "node" args
 constEval "leaf" args = ConstVal "leaf" args
+constEval "nil" args = ConstVal "nil" args
+constEval "cons" args = ConstVal "cons" args
 constEval "(,)" args = ConstVal "(,)" args
 constEval "true" args = ConstVal "true" args
 constEval "false" args = ConstVal "false" args

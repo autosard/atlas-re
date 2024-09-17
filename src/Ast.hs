@@ -136,6 +136,12 @@ pattern Leaf <- ConstAnn _ "leaf" []
 pattern Node :: Expr a -> Expr a -> Expr a -> Expr a 
 pattern Node l v r <- ConstAnn _ "node" [l, v, r]
 
+pattern Nil :: Expr a
+pattern Nil <- ConstAnn _ "nil" []
+
+pattern Cons :: Expr a -> Expr a -> Expr a
+pattern Cons x l <- ConstAnn _ "cons" [x, l]
+
 pattern Tuple :: Expr a -> Expr a -> Expr a
 pattern Tuple x1 x2 <- ConstAnn _ "(,)" [x1, x2]
 
@@ -369,12 +375,18 @@ instance HasType TypedExprAnn where
 extendWithType :: Type -> XExprAnn Parsed -> XExprAnn Typed
 extendWithType t pos = TypedExprAnn (Loc pos) t
 
-ctxFromFn :: FunDef Positioned -> (Map Id Type, (Id, Type))
+ctxFromFn :: FunDef Positioned -> ([(Id, Type)], [(Id, Type)])
 ctxFromFn (FunDef ann _ args _) =
   let (tFrom, tTo) = splitFnType . toType . tfType $ ann
       tsFrom = splitProdType tFrom
-      ctxFrom = M.fromList $ zip args tsFrom in
-    (ctxFrom, ("e", tTo))
+      tsTo = splitProdType tTo
+      ctxFrom = zip args tsFrom in
+    case tsTo of
+      [t] -> (ctxFrom, [("e", tTo)])
+      ts -> let ctxTo = zip (map (\n -> T.pack $ "e" ++ show n) [1..]) ts in
+        (ctxFrom, ctxTo)
+      
+    
 
 instance Types TypedExpr where
   apply s = mapAnn (\ann -> ann{teType = apply s (teType ann) })

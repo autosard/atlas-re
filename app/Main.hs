@@ -25,6 +25,7 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
+import CostAnalysis.Potential
 import Ast(TypedModule, TypedExpr, containsFn, Fqn, defs, printProg)
 import CostAnalysis.PrettyProof(renderProof, css, js)
 
@@ -42,7 +43,8 @@ import Parsing.Tactic
 import Eval(evalWithModule)
 import Primitive(Id)
 import CostAnalysis.Tactic 
-import CostAnalysis.Potential.Log
+import qualified CostAnalysis.Potential.Log as Log
+import qualified CostAnalysis.Potential.Poly as Poly
 import CostAnalysis.ProveMonad
 import CostAnalysis.Rules
 import CostAnalysis.Analysis
@@ -77,10 +79,12 @@ run Options{..} RunOptions{..} = do
   tactics <- case tacticsPath of
     Just path -> loadTactics (T.unpack modName) (M.keys (defs normalizedProg)) path
     Nothing -> return M.empty
-  let _aRange = [0,1]
-  let _bRange = [0,1,2]
-  let args = Args _aRange _bRange 
-  let pot = logPot args
+  let pot = case potential of
+        Logarithmic -> let _aRange = [0,1]
+                           _bRange = [0,1,2]
+                           args = Log.Args _aRange _bRange in
+                         Log.pot args
+        Polynomial -> Poly.pot (Poly.Args 2)
   let env = ProofEnv {
         _potential=pot,
         _tactics=tactics,
@@ -99,7 +103,10 @@ run Options{..} RunOptions{..} = do
       (deriv, sig, Right solution) -> let target = withCost $ sig M.! funName in do
         when switchHtmlOutput $
           liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv)
-        liftIO $ putStrLn (printBound pot target solution)
+        liftIO $ putStrLn "Potential function:"
+        liftIO $ putStrLn $ "\t" ++ printRHS pot (snd target) solution
+        liftIO $ putStrLn "Bound:"
+        liftIO $ putStrLn $ "\t" ++ printBound pot target solution
 
 writeHtmlProof :: FilePath -> LT.Text -> IO ()
 writeHtmlProof path html = do

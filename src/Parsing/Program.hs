@@ -138,6 +138,7 @@ pTypeConst
   = (`TAp` []) <$> (Bool <$ symbol "Bool")
   <|> (`TAp` []) <$> (Num <$ symbol "Num")
   <|> TAp <$> (Tree <$ symbol "Tree") <*> (singleton <$> pType)
+  <|> TAp <$> (List <$ symbol "List") <*> (singleton <$> pType)
   <|> TAp Prod <$> pParens (sepBy1 pType pCross)
 
 
@@ -159,7 +160,7 @@ pCoefficient = do
 
 pCoeffIdx :: Parser Coeff.CoeffIdx
 pCoeffIdx = Coeff.Pure <$> pIdentifier
-  <|> Coeff.mixed . S.fromList <$> pParens (sepBy1 pFactor (symbol ","))
+  <|> Coeff.mixed . S.fromList <$> pParens (sepBy pFactor (symbol ","))
 
 pFactor :: Parser Coeff.Factor
 pFactor = Coeff.Const <$> pInt
@@ -198,6 +199,8 @@ pConst = do
     <|> (,) <$> symbol' "false" <*> pure []
     <|> (,) <$> symbol' "node" <*> count 3 pArg
     <|> (,) <$> symbol' "leaf" <*> pure []
+    <|> (,) <$> symbol' "cons" <*> count 2 pArg
+    <|> ("nil",) <$ symbol "[]" <*> pure []
     <|> ("(,)",) <$> try (pParens ((\x y -> [x, y]) <$> pArg <* symbol "," <*> pArg))
   return $ ConstAnn pos name args
   
@@ -215,6 +218,8 @@ pConstPattern :: SourcePos -> Parser ParsedPattern
 pConstPattern pos = do
   (name, args) <- (,) <$> symbol' "node" <*> count 3 pPatternVar
     <|> (,) <$> symbol' "leaf" <*> pure []
+    <|> ("nil",) <$ symbol "[]" <*> pure []
+    <|> (,) <$> symbol' "cons" <*> count 2 pPatternVar
     <|> ("(,)",) <$> try (pParens ((\x y -> [x, y]) <$> pPatternVar <* symbol "," <*> pPatternVar))
   return $ ConstPat pos name args
 

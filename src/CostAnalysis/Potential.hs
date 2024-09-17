@@ -14,6 +14,7 @@ import qualified Data.Vector as V
 import Data.Set(Set)
 import qualified Data.Set as S
 import Lens.Micro.Platform
+import Control.Applicative
 
 
 import Primitive(Id)
@@ -22,7 +23,11 @@ import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.RsrcAnn
 import Typing.Type (Type)
-import CostAnalysis.AnnIdxQuoter
+import Ast
+
+import Debug.Trace (trace)
+traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
+
 
 type ExpertKnowledge = (V.Vector (V.Vector Int), [Int])
 
@@ -30,6 +35,10 @@ data AnnRanges = AnnRanges {
   rangeA :: ![Int],
   rangeB :: ![Int],
   rangeBNeg :: ![Int]}
+
+data PotentialMode
+  = Logarithmic
+  | Polynomial
 
 data Potential = Potential {
   -- Supported types
@@ -46,13 +55,16 @@ data Potential = Potential {
 
   -- | @ 'constCoeff'@ returns the coefficient index for the constant basic potential function.
   constCoeff :: CoeffIdx,
+
+  -- | @ 'forAllCombinations' q xs (rangeA, rangeB) x@ generates an index for all combinations of variables in @xs@ and the variable @x@, based on the indices in @q@.
+  forAllCombinations :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx],
   
   -- Constraint generation
   
   -- | @ 'cConst' q q'@ returns constraints that guarantee \[\phi(\Gamma \mid Q) = \phi(\Delta \mid Q') \text{ where } |\Gamma| = |Q|, |\Delta| = |Q'|\]  
-  cConst :: RsrcAnn -> RsrcAnn -> [Constraint],
+  cConst :: PositionedExpr -> RsrcAnn -> RsrcAnn -> Either String [Constraint],
   -- | @ 'cMatch' q p_ x ys = (p, cs)@ defines @p@ with the empty annotation @p_@ from @q@ by constraints @cs@, guaranteeing \[\phi(\Gamma, x \mid Q) = \phi(\Gamma, \vec{y} \mid P)\] where @x@ is the variable that matched and @ys@ is the pattern variables.
-  cMatch :: RsrcAnn -> RsrcAnn -> Id -> [(Id, Type)] -> (RsrcAnn, [Constraint]),
+  cMatch :: RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint]),
 
   -- | @ 'cLetBinding' q p_ = (p, cs)@
   cLetBindingBase :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint]),
@@ -120,21 +132,6 @@ eqMinus pot q_ p t = (q, cs ++ eqCs)
         (q, cs) = case constP of
           (ConstTerm 0) -> (eqQ, [])
           _nonZero -> extendAnn eqQ [(`eq` sub [p!?constIdx, t]) <$> def constIdx]
-  
-  -- | @ 'forAllCombinations' q xs (rangeA, rangeB) x@ generates an index for all combinations of variables in @xs@ and the variable @x@, based on the indices in @q@.
-forAllCombinations :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
-forAllCombinations q xs (rangeA, rangeB) x =
-  [[mix|_bs,_xIdx,e|]
-  | idx <- varsRestrictMixes q xs,
-    let bs = idxToSet idx,
-    (not . null) bs,
-    d <- rangeA,
-    e <- rangeB,
---    (annVars q == xs) || d /= 0,
-    d + max e 0 > 0,
-    let xIdx = S.singleton $ Arg x d]
---    (annVars q /= xs) || c /= 0] 
-
 
 --  -- | @ 'cPlusMulti' q p r k@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(* \mid P) + \phi(*\mid R) \cdot K\].
 -- cPlusMulti :: RsrcAnn -> RsrcAnn -> RsrcAnn -> Var -> [Constraint],
@@ -165,9 +162,16 @@ symbolicCost (from, to) = PointWiseOp (annVars from) $
                let idx' = if length (annVars from) == length (annVars to) then
                      substitute (annVars from) (annVars to) idx else idx]
 
+printRHS :: Potential -> RsrcAnn -> Map Coeff Rational -> String
+printRHS pot rhs solution = printPotential pot $ M.toList (M.restrictKeys solution (S.fromList (getCoeffs rhs)))
+
+printPotential :: Potential -> [(Coeff, Rational)] -> String
+printPotential pot coeffs = if L.null coeffs' then "0" else
+  L.intercalate " + " $ map (uncurry (printBasePot pot)) coeffs'
+  where coeffs' = filter (\(_, v) -> v /= 0) coeffs
+
 printBound :: Potential -> (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> String
-printBound pot sig solution = if L.null terms then "0" else
-  L.intercalate " + " $ map (uncurry (printBasePot pot)) terms
+printBound pot sig solution = printPotential pot terms
   where terms = M.toList $ M.filter (0 /=) solution'
         solution' = calculateBound sig solution
   

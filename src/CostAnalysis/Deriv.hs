@@ -48,7 +48,9 @@ type Prove e a = Tactic -> Bool -> TypeCtx -> e -> RsrcAnn -> RsrcAnn -> ProveMo
 proveConst :: Prove PositionedExpr Derivation
 proveConst _ cf ctx e q q' = do
   pot <- view potential
-  let cs = cConst pot q q'
+  cs <- case cConst pot e q q' of
+        Right cs -> return cs
+        Left err -> errorFrom (SynExpr e) err
   conclude R.Const cf q q' cs e []
 
 proveCmp :: Prove PositionedExpr Derivation
@@ -63,14 +65,6 @@ proveVar _ cf ctx e@(Var id) q q' = do
   when (M.notMember id ctx) $ errorFrom (SynExpr e) $ "(var) applied for variable '" ++ Text.unpack id ++ "' that is not in the context."
   let cs = annLikeUnify q q'
   conclude R.Var cf q q' cs e []
-
--- TODO move to proveConst and move tree specific check into the potential implementation
-provePair :: Prove PositionedExpr Derivation
-provePair _ cf ctx e@(Tuple eX1@(Var x1) eX2@(Var x2)) q q' = do
-  when ((isTree . getType) eX1 && (isTree . getType) eX2) $
-    errorFrom (SynExpr e) "(pair) applied to more then one tree type."
-  let cs = annLikeUnify q q'
-  conclude R.Const cf q q' cs e []
 
 proveIte :: Prove PositionedExpr Derivation
 proveIte tactic cf ctx e@(Ite (Var x) e1 e2) q q' = do
@@ -98,7 +92,8 @@ proveMatchArm matchVar tactic cf ctx
   let vars = mapMaybe getVar patVars
   let ctx' = M.delete matchVar ctx `M.union` M.fromList vars
   p_ <- emptyAnn "P" "match arm" (M.toAscList ctx')
-  let (p, cs) = cMatch pot q p_ matchVar vars
+  let vars' = filter (\(x, t) -> bearesPotential pot t) vars
+  let (p, cs) = cMatch pot q p_ matchVar (map fst vars')
   tellCs cs
   deriv <- proveExpr tactic cf ctx' e p q'
   return (cs, deriv)
@@ -149,7 +144,7 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf ctx e@(Let x e1 e2) q q' = do
     let rangeE = if R.NegE `elem` letArgs then
          rangeBNeg . ranges $ pot else rangeB . ranges $ pot
       
-    let bdes = forAllCombinations q (M.keys ctxE2) (rangeD, rangeE) x
+    let bdes = forAllCombinations pot q (M.keys ctxE2) (rangeD, rangeE) x
       
     ps_ <- annArrayFromIdxs bdes "P" (M.toAscList ctxE1)
     ps'_ <- annArrayFromIdxs bdes "P'" [("e", getType e1)]
@@ -286,7 +281,7 @@ proveExpr :: Prove PositionedExpr Derivation
 -- manual tactic
 proveExpr tactic@(Rule R.Var []) cf ctx e@(Var _) = removeRedundantVars proveVar tactic cf ctx e
 proveExpr tactic@(Rule R.Cmp []) cf ctx e@(Const {}) | isCmp e = proveCmp tactic cf ctx e
-proveExpr tactic@(Rule R.Const []) cf ctx e@(Tuple {}) = removeRedundantVars provePair tactic cf ctx e
+--proveExpr tactic@(Rule R.Const []) cf ctx e@(Tuple {}) = removeRedundantVars provePair tactic cf ctx e
 
 proveExpr tactic@(Rule R.Const []) cf ctx e@(Const {}) = removeRedundantVars proveConst tactic cf ctx e 
 proveExpr tactic@(Rule R.Match _) cf ctx e@(Match {}) = proveMatch tactic cf ctx e

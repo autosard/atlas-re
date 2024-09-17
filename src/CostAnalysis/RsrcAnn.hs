@@ -133,9 +133,15 @@ annLikeEq :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
 annLikeEq q op = concat [eq (q!?idx) (op!?idx)
              | idx <- S.toList $ definedIdxs q `S.union` definedIdxs op]
 
+
+
 annLikeUnify :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
 annLikeUnify q p = concat [eq (q!?idx) (p!?substitute (argVars q) (argVars p) idx)
                           | idx <- S.toList $ definedIdxs q]
+
+annLikeUnify' :: (AnnLike a, AnnLike b) => a -> b -> [Id] -> [Constraint]
+annLikeUnify' q p qArgs = concat [eq (q!?idx) (p!?substitute qArgs (argVars p) idx)
+                                 | idx <- S.toList $ definedIdxs q]
 
 annEq :: RsrcAnn -> RsrcAnn -> [Constraint]
 annEq q p | (length . _args $ q) /= (length . _args $ p) = error "Annotations with different lengths can not be equal."
@@ -179,10 +185,11 @@ extendAnn ann defs = (ann', concat cs)
   where (cs, ann') = runState def ann
         def = sequence defs
         
-extendAnns :: AnnArray -> [CoeffDef AnnArray [Constraint]] -> (AnnArray, [Constraint])
+extendAnns :: AnnArray -> [CoeffDef AnnArray [a]] -> (AnnArray, [a])
 extendAnns arr defs = (arr', concat cs)
   where (cs, arr') = runState def arr
         def = sequence defs
+
 
 annLikeConstLe :: AnnLike a => a -> Map CoeffIdx Rational -> [Constraint]
 annLikeConstLe ann values = concat [le (ann!idx) $ ConstTerm (M.findWithDefault 0 idx values)

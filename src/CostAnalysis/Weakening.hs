@@ -13,12 +13,6 @@ import CostAnalysis.ProveMonad
 import CostAnalysis.Rules
 import CostAnalysis.Coeff
 
--- -- | @'weaken' q q' p p'@
--- weaken :: Potential -> Set WeakenArg -> RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> ProveMonad [Constraint]
--- weaken pot args q q' p p' = (++)
---   <$> farkas pot args p q -- p <= q
---   <*> farkas pot args q' p' -- q' <= p'
-
 farkas :: Potential -> Set WeakenArg -> Set CoeffIdx -> RsrcAnn -> RsrcAnn -> ProveMonad [Constraint]
 farkas pot wArgs idxs p q = do
   let (as, bs) = genExpertKnowledge pot wArgs (map fst (p^.args)) idxs

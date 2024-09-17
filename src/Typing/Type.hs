@@ -14,6 +14,7 @@ newtype Tyvar = Tyvar Id
 data Tycon = Num
   | Bool
   | Tree
+  | List
   | Prod
   | Arrow
   deriving (Eq, Show)
@@ -63,6 +64,10 @@ isBool :: Type -> Bool
 isBool (TAp Bool []) = True
 isBool _ = False
 
+isBase (TAp Bool []) = True
+isBase (TAp Num []) = True
+isBase _ = False
+
 -- no proper unification just top level check
 matchesType :: Type -> Type -> Bool
 matchesType (TAp c1 _) (TAp c2 _) | c1 == c2 = True
@@ -74,3 +79,7 @@ matchesTypes t = any (matchesType t)
 pattern TreeType :: Type
 pattern TreeType <- TAp Tree _
   where TreeType = TAp Tree [TGen 0]
+
+pattern ListType :: Type
+pattern ListType <- TAp List _
+  where ListType = TAp List [TGen 0]
