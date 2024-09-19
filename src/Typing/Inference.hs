@@ -314,9 +314,7 @@ tiProg ctx mod = do
   return $ modReplaceDefs mod (map extendDef (zip3 (fns mod) qts bodies'))
   where extendAnn t ann = TypedFunAnn{
           tfType = t,
-          tfRsrcWithCost = pfRsrcWithCost ann,
-          tfRsrcWithoutCost = pfRsrcWithoutCost ann,
-          tfCost = pfCost ann,
+          tfCostAnn = pfCostAnn ann,
           tfLoc = pfLoc ann,
           tfFqn = pfFqn ann}
         extendDef :: (ParsedFunDef, Scheme, TypedExpr) -> TypedFunDef

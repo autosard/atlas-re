@@ -95,6 +95,16 @@ data Expr a
 type family XExprAnn a
 type family XFunAnn a
 
+
+type CoeffAnnotation = Map CoeffIdx Rational
+type FunRsrcAnn = (CoeffAnnotation, CoeffAnnotation)
+
+data CostAnnotation
+  = Coeffs {caWithCost :: FunRsrcAnn, caWithoutCost :: Maybe FunRsrcAnn}
+  | Cost {worstCase :: Bool, costCoeffs :: CoeffAnnotation}
+  deriving (Eq, Show)
+  
+
 funAnn :: FunDef a -> XFunAnn a
 funAnn (FunDef ann _ _ _) = ann
   
@@ -308,9 +318,7 @@ data ParsedFunAnn = ParsedFunAnn {
   pfLoc :: SourcePos,
   pfFqn :: Fqn,
   pfType :: Maybe Scheme,
-  pfRsrcWithCost :: Maybe (Map CoeffIdx Rational, Map CoeffIdx Rational),
-  pfRsrcWithoutCost :: Maybe (Map CoeffIdx Rational, Map CoeffIdx Rational),
-  pfCost :: Maybe (Map CoeffIdx Rational)}
+  pfCostAnn :: Maybe CostAnnotation}
   deriving (Eq, Show)
 
 data Parsed
@@ -343,9 +351,7 @@ data TypedFunAnn = TypedFunAnn {
   tfLoc :: SourcePos,
   tfFqn :: Fqn,
   tfType :: Scheme,
-  tfRsrcWithCost :: Maybe (Map CoeffIdx Rational, Map CoeffIdx Rational),
-  tfRsrcWithoutCost :: Maybe (Map CoeffIdx Rational, Map CoeffIdx Rational),
-  tfCost :: Maybe (Map CoeffIdx Rational)}
+  tfCostAnn :: Maybe CostAnnotation}
   deriving (Eq, Show)
 
 data ExprSrc = Loc SourcePos | DerivedFrom SourcePos

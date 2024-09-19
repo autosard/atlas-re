@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module CostAnalysis.Analysis where
 
@@ -12,7 +13,7 @@ import Data.Maybe(maybeToList)
 import Lens.Micro.Platform
 
 import Primitive(Id)
-import Ast
+import Ast hiding (CostAnnotation)
 import CostAnalysis.Solving (solve)
 import CostAnalysis.ProveMonad
 import CostAnalysis.Constraint
@@ -58,69 +59,87 @@ analyzeModule' mod =
   
 analyzeBindingGroup :: PositionedModule -> RsrcAnn -> [Id]  -> ProveMonad ()
 analyzeBindingGroup mod rhs fns = do
-  mapM_ (createAnn rhs) fns
-  derivs <- mapM analyzeFn fns
+  mapM_ (createAnn rhs . (defs mod M.!)) fns
+  derivs <- mapM (analyzeFn . (defs mod M.!)) fns
   fnDerivs %= (++derivs)
   solution <- solve fns
   addSigCs fns solution
   tell solution
-  where createAnn rhs fn = do
-          ann <- genFunRsrcAnn rhs $ defs mod M.! fn
-          sig %= M.insert fn ann
-        analyzeFn fn = do
-          let def = defs mod M.! fn
-          mode <- view analysisMode
-          case mode of
-            CheckCoefficients -> coeffsMatchAnnotation def
-            CheckCost -> cmpCostWithAnn annLikeConstEq def
-            ImproveCost -> do
-              cmpCostWithAnn annLikeConstLe def
-              addSimpleCostOptimization def
-            Infer -> addFullCostOptimization def
-          proveFun def
+
+createAnn :: RsrcAnn -> PositionedFunDef -> ProveMonad ()
+createAnn rhs def@(Fn fn _ _) = do
+  let rhs' = case tfCostAnn $ funAnn def of
+        Just (Cost True _) -> Nothing
+        _notWorstCase -> Just rhs
+  ann <- genFunRsrcAnn rhs' def
+  sig %= M.insert fn ann
+
+analyzeFn :: PositionedFunDef -> ProveMonad Derivation
+analyzeFn def@(FunDef funAnn fnId _ body) = do
+  mode <- view analysisMode
+  
+  case mode of
+    CheckCoefficients -> case tfCostAnn funAnn of
+      Just Coeffs {..} -> coeffsMatchAnnotation fnId (caWithCost, caWithoutCost)
+      Just (Cost True cost) -> coeffsMatchAnnotation fnId ((cost, M.empty) , Nothing)
+      _noCoeff -> errorFrom (SynExpr body) "Missing resource coefficient annotation for check-coeffs mode."
+    CheckCost -> case tfCostAnn funAnn of
+      Just Cost {..} -> cmpCostWithAnn annLikeConstEq fnId costCoeffs
+      _noCost -> errorFrom (SynExpr body) "Missing cost annotation for check-cost mode."
+    ImproveCost -> case tfCostAnn funAnn of
+      Just Cost {..} -> do
+        cmpCostWithAnn annLikeConstLe fnId costCoeffs
+        addSimpleCostOptimization fnId
+      noCost_ -> errorFrom (SynExpr body) "Missing cost annotation for improve-cost mode."
+    Infer -> addFullCostOptimization fnId
+  proveFun def
+
 
 type CostComparision = PointWiseOp -> Map CoeffIdx Rational -> [Constraint]
 
-cmpCostWithAnn :: CostComparision -> PositionedFunDef -> ProveMonad ()
-cmpCostWithAnn cmp fun@(FunDef funAnn fnId _ _) = do
-  ann <- (M.! fnId) <$> use sig
+cmpCostWithAnn :: CostComparision -> Id -> Map CoeffIdx Rational -> ProveMonad ()
+cmpCostWithAnn cmp fn costAnn = do
+  ann <- (M.! fn) <$> use sig
   let cost = symbolicCost (withCost ann)
-  tellSigCs . concat . maybeToList $ (cmp cost <$> tfCost funAnn)
+  tellSigCs $ cmp cost costAnn
 
-coeffsMatchAnnotation :: PositionedFunDef -> ProveMonad ()
-coeffsMatchAnnotation fun@(FunDef funAnn fnId _ _) = do
-  ann <- (M.! fnId) <$> use sig
+coeffsMatchAnnotation :: Id -> (Ast.FunRsrcAnn, Maybe Ast.FunRsrcAnn) -> ProveMonad ()
+coeffsMatchAnnotation fn (annWithCost, annWithoutCost) = do
+  ann <- (M.! fn) <$> use sig
   let (p, p') = withoutCost ann
   let (q, q') = withCost ann  
-  tellSigCs . concat . maybeToList $ (annLikeConstEq q . fst <$> tfRsrcWithCost funAnn)
-  tellSigCs . concat . maybeToList $ (annLikeConstEq q' . snd <$> tfRsrcWithCost funAnn)
-  tellSigCs . concat . maybeToList $ (annLikeConstEq p . fst <$> tfRsrcWithoutCost funAnn)
-  tellSigCs . concat . maybeToList $ (annLikeConstEq p' . snd <$> tfRsrcWithoutCost funAnn)
+  tellSigCs (annLikeConstEq q $ fst annWithCost)
+  tellSigCs (annLikeConstEq q' $ snd annWithCost)
+  tellSigCs . concat . maybeToList $ (annLikeConstEq p . fst <$> annWithoutCost)
+  tellSigCs . concat . maybeToList $ (annLikeConstEq p' . snd <$> annWithoutCost)
 
-addSimpleCostOptimization :: PositionedFunDef -> ProveMonad ()
-addSimpleCostOptimization fun@(FunDef funAnn fnId _ _) = do
-  ann <- (M.! fnId) <$> use sig
+addSimpleCostOptimization :: Id -> ProveMonad ()
+addSimpleCostOptimization fn = do
+  ann <- (M.! fn) <$> use sig
   let cost = symbolicCost (withCost ann)
   let costTerm = sum $ M.elems (opCoeffs cost)
   optiTargets %= (costTerm:)
 
   
-addFullCostOptimization :: PositionedFunDef -> ProveMonad ()
-addFullCostOptimization fun@(FunDef funAnn fnId _ _) = do
+addFullCostOptimization :: Id -> ProveMonad ()
+addFullCostOptimization fn = do
   pot <- view potential
-  ann <- (M.! fnId) <$> use sig
+  ann <- (M.! fn) <$> use sig
   let (q, q') = withCost ann
   let costTerm = cOptimize pot q q'
   optiTargets %= (costTerm:)
   
 
-genFunRsrcAnn :: RsrcAnn -> PositionedFunDef -> ProveMonad FunRsrcAnn
+genFunRsrcAnn :: Maybe RsrcAnn -> PositionedFunDef -> ProveMonad CostAnalysis.RsrcAnn.FunRsrcAnn
 genFunRsrcAnn rhs fun = do
   let (argsFrom, argsTo) = ctxFromFn fun
+  to <- case rhs of
+    Just ann -> return ann
+    Nothing -> emptyAnn "Q'" "fn" argsTo
   from <- defaultAnn "Q" "fn" argsFrom
   fromCf <- defaultAnn "P" "fn cf" argsFrom
   toCf <- defaultAnn "P'" "fn cf" argsTo
-  return $ FunRsrcAnn (from, rhs) (fromCf, toCf)
+  return $ FunRsrcAnn (from, to) (fromCf, toCf)
 
   
 addSigCs :: [Id] -> Solution -> ProveMonad ()

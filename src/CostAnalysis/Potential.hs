@@ -14,7 +14,6 @@ import qualified Data.Vector as V
 import Data.Set(Set)
 import qualified Data.Set as S
 import Lens.Micro.Platform
-import Control.Applicative
 
 
 import Primitive(Id)

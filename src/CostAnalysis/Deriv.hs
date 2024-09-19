@@ -15,7 +15,7 @@ import qualified Data.Set as S
 import qualified Data.Text as Text
 import Prelude hiding (or)
 
-import Ast hiding (Coefficient)
+import Ast hiding (Coefficient, CostAnnotation(..))
 import Primitive(Id)
 import Control.Monad.RWS
 
@@ -310,7 +310,7 @@ genTactic (Match _ arms) = Rule R.Match $ map (genTactic . armExpr) arms
 genTactic e@(Ite _ e2 e3) = let t1 = genTactic e2
                                 t2 = genTactic e3 in
   autoWeaken e $ Rule R.Ite [t1, t2]
-genTactic (App {}) = Rule R.App []
+genTactic (App {}) = Rule R.Shift [Rule R.App []]
 genTactic e@(Let _ binding body) = let t1 = genTactic binding
                                        t2 = genTactic body
                                        ctx = peCtx $ getAnn e 

@@ -120,7 +120,7 @@ annAdd :: RsrcAnn -> PointWiseOp -> PointWiseOp
 annAdd q op | annVars q == opArgs op = PointWiseOp (annVars q) $
   M.fromList [(idx, sum [q!?idx, op!?idx])
              | idx <- S.toList $ (q^.coeffs) `S.union` definedIdxs op]
-            | otherwise = error "point wise operation not valid for annotation likes with different arguments."
+            | otherwise = error $ "point wise operation not valid for annotation likes with different arguments." ++ show q ++ show (opCoeffs op)
 
 annLikeAdd :: (AnnLike a, AnnLike b) => a -> b -> PointWiseOp
 annLikeAdd q p | argVars q == argVars p = PointWiseOp (argVars q) $

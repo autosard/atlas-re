@@ -18,6 +18,7 @@ import qualified Data.Map as M
 import Data.Map(Map)
 import qualified Data.Set as S
 import Data.Ratio((%))
+import Data.Maybe(isJust)
 
 import Prelude hiding (LT, EQ, GT, LE)
 
@@ -60,31 +61,26 @@ type Parser = ParsecT Void Text (RWS ParserContext () ParserState)
 pModule :: Parser [ParsedFunDef]
 pModule = sc *> manyTill pFunc eof
 
-type FunRsrcAnn = (Map Coeff.CoeffIdx Rational, Map Coeff.CoeffIdx Rational)
-
 data Signature = Signature
   Id
   Scheme
-  (Maybe (FunRsrcAnn, Maybe FunRsrcAnn))
-  (Maybe (Map Coeff.CoeffIdx Rational))
+  (Maybe CostAnnotation)
+  
 
 pFunc :: Parser ParsedFunDef
 pFunc = do
   pos <- getSourcePos
   sig <- optional pSignature
   funName <- pIdentifier
-  (_type, resourceAnn, cost) <- case sig of
-    Just (Signature name _type resouceAnn costAnn) -> do
+  (_type, cost) <- case sig of
+    Just (Signature name _type costAnn) -> do
       when (funName /= name ) (fail $ "Signature for function '" ++ T.unpack name ++ "' must be followod by defining equation.")
-      return (Just _type, resouceAnn, costAnn)
-    Nothing -> return (Nothing, Nothing, Nothing)
+      return (Just _type, costAnn)
+    Nothing -> return (Nothing, Nothing)
   modName <- asks ctxModuleName
   let funFqn = (modName, funName)
   args <- manyTill pIdentifier (symbol "=")
-  let (withCost, withoutCost) = case resourceAnn of
-        Just (with, without) -> (Just with, without)
-        Nothing -> (Nothing, Nothing)
-  FunDef (ParsedFunAnn pos funFqn _type withCost withoutCost cost) funName args <$> pExpr
+  FunDef (ParsedFunAnn pos funFqn _type cost) funName args <$> pExpr
 
 pSignature :: Parser Signature
 pSignature = do
@@ -92,13 +88,21 @@ pSignature = do
   void pDoubleColon2
   constraints <- optional ((pConstraints <* pDoubleArrow) <?> "type constraint(s)")
   _type <- pFunctionType <?> "function type"
-  resourceAnn <- optional $ symbol "|" *> pSqParens (do
-    withCost <- pFunResourceAnn
-    costFree <- optional $ symbol "," *> pCurlyParens pFunResourceAnn
-    return (withCost, costFree))
-  costAnn <- optional $ symbol "@" *> pCoefficients
-  return $ Signature name _type resourceAnn (M.fromList <$> costAnn)
+  costAnn <- optional $ pCoeffAnn <|> pCostAnn
+  return $ Signature name _type costAnn
 
+pCoeffAnn :: Parser CostAnnotation
+pCoeffAnn = symbol "|" *> pSqParens (do
+  withCost <- pFunResourceAnn
+  costFree <- optional $ symbol "," *> pCurlyParens pFunResourceAnn
+  return $ Coeffs withCost costFree)
+
+pCostAnn :: Parser CostAnnotation
+pCostAnn = do
+  symbol "@"
+  worstCase <- isJust <$> optional (symbol ">")
+  Cost worstCase . M.fromList <$> pCoefficients
+  
 pConstraints :: Parser ()
 pConstraints = void (try $ pParens (some pConstraint))
   <|> pConstraint
