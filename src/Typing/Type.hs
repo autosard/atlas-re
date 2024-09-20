@@ -50,7 +50,7 @@ splitTupleType t = error "Got non-tuple type."
 
 splitProdType :: Type -> [Type]
 splitProdType (TAp Prod ts) = ts
-splitProdType t@(TAp _ _) = [t]
+splitProdType t = [t]
 
 countTrees :: Type -> Int
 countTrees (TAp Tree _) = 1

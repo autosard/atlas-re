@@ -143,7 +143,7 @@ calculateBound (from, to) solution = M.fromList $ map subtract (getCoeffs from)
                                  Nothing -> (coeff, 0)           
         subtract left@(Coeff _ _ _ idx) = let
           right = if length (annVars from) == length (annVars to) then
-            to!substitute (annVars from) (annVars to) idx else to!?idx in
+            to!?substitute (annVars from) (annVars to) idx else to!?idx in
           case right of
             (CoeffTerm r) ->
               case solution M.!? r of

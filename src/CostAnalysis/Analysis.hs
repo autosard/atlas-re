@@ -26,12 +26,12 @@ import Typing.Type
 import CostAnalysis.RsrcAnn (RsrcAnn, RsrcSignature,
                              FunRsrcAnn(..), annLikeConstEq,
                              annLikeConstLe, PointWiseOp,
-                             opCoeffs)
+                             opCoeffs, annLikeGeZero)
 import CostAnalysis.Potential(symbolicCost, cOptimize)
 
 
 analyzeModule :: ProofEnv -> PositionedModule
-  -> IO (Either SourceError (Derivation, RsrcSignature, Either [Constraint] Solution))
+  -> IO (Either SourceError (Derivation, RsrcSignature, Either [Constraint] (Solution, RsrcAnn)))
 analyzeModule env mod = do
   let state = ProofState M.empty [] [] 0 0 [] [] M.empty
   case argsForRHS mod of
@@ -42,9 +42,9 @@ analyzeModule env mod = do
       case result of
         Left (DerivErr srcErr) -> return (Left srcErr)
         Left (UnsatErr core) -> return (Right (deriv, state'^.sig, Left core))
-        Right _ -> return (Right (deriv, state'^.sig, Right solution))
+        Right rhs -> return (Right (deriv, state'^.sig, Right (solution, rhs)))
 
-analyzeModule' :: PositionedModule -> ProveMonad ()
+analyzeModule' :: PositionedModule -> ProveMonad RsrcAnn
 analyzeModule' mod = 
   case argsForRHS mod of
     Left err -> throwError $ DerivErr err
@@ -56,6 +56,7 @@ analyzeModule' mod =
         mapM_ (analyzeBindingGroup mod rhs) (mutRecGroups mod)
       else
         analyzeBindingGroup mod rhs (concat $ mutRecGroups mod)
+      return rhs
   
 analyzeBindingGroup :: PositionedModule -> RsrcAnn -> [Id]  -> ProveMonad ()
 analyzeBindingGroup mod rhs fns = do
@@ -101,6 +102,7 @@ cmpCostWithAnn :: CostComparision -> Id -> Map CoeffIdx Rational -> ProveMonad (
 cmpCostWithAnn cmp fn costAnn = do
   ann <- (M.! fn) <$> use sig
   let cost = symbolicCost (withCost ann)
+  tellSigCs $ annLikeGeZero cost
   tellSigCs $ cmp cost costAnn
 
 coeffsMatchAnnotation :: Id -> (Ast.FunRsrcAnn, Maybe Ast.FunRsrcAnn) -> ProveMonad ()
@@ -152,9 +154,18 @@ addSigCs fns solution = do
 
 -- TODO this breaks RandSplayTree.delete because splay max returns a tuple not a single tree.  
 argsForRHS :: Module Positioned -> Either SourceError [(Id, Type)]
-argsForRHS mod = Right $ head args
-  -- if allSame args then Right $ head args else
-  -- Left $ SourceError (tfLoc $ funAnn (head $ fns mod))
-  -- "Cost analysis requries all involved functions to have the same return type to guarantee a consistent potential function."
-  where args = map go (concat $ mutRecGroups mod)
-        go fn = snd . ctxFromFn $ defs mod M.! fn
+argsForRHS mod = if sameLength args then Right $ head args else
+                   Left $ SourceError (tfLoc $ funAnn (head $ fns mod))
+                   "Cost analysis requries all involved functions to have the same return type to guarantee a consistent potential function."
+  where args = [ snd . ctxFromFn $ fn
+               | id <- concat $ mutRecGroups mod,
+                 let fn = defs mod M.! id,
+                 hasPotential fn]
+        hasPotential :: FunDef Positioned -> Bool
+        hasPotential fn = case tfCostAnn (funAnn fn) of
+          Just (Cost True _) -> False
+          Just _ -> True
+          Nothing -> True
+        sameLength l = and [length l1 == length l2
+                           | l1 <- l, l2 <- l]
+

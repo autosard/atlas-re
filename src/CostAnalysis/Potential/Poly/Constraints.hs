@@ -80,7 +80,8 @@ cLetBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> AnnArray -> Id -> [Coeff
 cLetBody q r p p' ps' x js = extendAnn r $
   [(`eq` (p'!pIdx)) <$> def [mix|x^d|]
   | pIdx <- mixes p',
-    let d = facForVar pIdx exp]
+    let d = facForVar pIdx exp,
+    d /= 0]
   ++ [(`eq` (q!idx)) <$> def idx
      | idx <- mixes q,
        onlyVars idx ys]

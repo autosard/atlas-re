@@ -204,6 +204,7 @@ pConst = do
     <|> (,) <$> symbol' "node" <*> count 3 pArg
     <|> (,) <$> symbol' "leaf" <*> pure []
     <|> (,) <$> symbol' "cons" <*> count 2 pArg
+    <|> (,) <$> symbol' "error" <*> pure []
     <|> ("nil",) <$ symbol "[]" <*> pure []
     <|> ("(,)",) <$> try (pParens ((\x y -> [x, y]) <$> pArg <* symbol "," <*> pArg))
   return $ ConstAnn pos name args

@@ -68,17 +68,16 @@
                     (w{l2xy}
                       (ite
                         (w{mono}
-                          (tick:defer
+                          
                             (let
                               const
                               (let
                                 const
-                                (w{mono}
+                                (tick:defer (w{mono}
                                   const
-                                )
+                                ))
                               )
                             )
-                          )
                         )
                         (w{mono}
                           (let
@@ -133,17 +132,16 @@
                     (w{l2xy}
                       (ite
                         (w{mono}
-                          (tick:defer
+                          
                             (let
                               const
                               (let
                                 const
-                                (w{mono}
+                                (tick:defer (w{mono}
                                   const
-                                )
+                                ))
                               )
                             )
-                          )
                         )
                         (w{mono}
                           (let
@@ -226,17 +224,15 @@
                     (w{l2xy}
                       (ite
                         (w{mono}
-                          (tick:defer
                             (let
                               const
                               (let
                                 const
-                                (w{mono}
+                                (tick:defer (w{mono}
                                   const
-                                )
+                                ))
                               )
                             )
-                          )
                         )
                         (w{mono}
                           (let
@@ -291,17 +287,16 @@
                     (w{l2xy}
                       (ite
                         (w{mono}
-                          (tick:defer
+                          
                             (let
                               const
                               (let
                                 const
-                                (w{mono}
+                                (tick:defer (w{mono}
                                   const
-                                )
+                                ))
                               )
                             )
-                          )
                         )
                         (w{mono}
                           (let

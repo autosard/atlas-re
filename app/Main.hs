@@ -69,8 +69,9 @@ app options = do
 
 run :: Options -> RunOptions -> App ()
 run Options{..} RunOptions{..} = do
-  let (modName, funName) = fqn 
-  (normalizedProg, contents) <- liftIO $ loadMod searchPath (Right fqn)
+  let (modName, funName) = fqn
+  let toLoad = if switchLazy then Right fqn else Left modName
+  (normalizedProg, contents) <- liftIO $ loadMod searchPath toLoad
   let positionedProg = contextualizeMod normalizedProg
   unless (containsFn funName positionedProg) $ do
     logError $ "Module does not define the requested function '" `T.append` funName `T.append` "'."
@@ -100,13 +101,21 @@ run Options{..} RunOptions{..} = do
           liftIO $ writeHtmlProof "./out" (renderProof (Just core') deriv)
         else
           liftIO $ printDeriv True (Just core') deriv
-      (deriv, sig, Right solution) -> let target = withCost $ sig M.! funName in do
-        when switchHtmlOutput $
-          liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv)
-        liftIO $ putStrLn "Potential function:"
-        liftIO $ putStrLn $ "\t" ++ printRHS pot (snd target) solution
-        liftIO $ putStrLn "Bound:"
-        liftIO $ putStrLn $ "\t" ++ printBound pot target solution
+      (deriv, sig, Right (solution, rhs)) -> do
+         when switchHtmlOutput $
+           liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv)
+         liftIO $ printSolution pot sig rhs solution
+        
+
+printSolution :: Potential -> RsrcSignature -> RsrcAnn -> Solution -> IO ()
+printSolution pot sig potFn solution = do
+  putStrLn "Potential function:"
+  putStrLn $ "\t" ++ printRHS pot potFn solution
+  putStrLn ""
+  mapM_ printFnBound (M.keys sig)
+  where printFnBound fn = do
+          putStrLn $ T.unpack fn ++ ":"
+          putStrLn $ "\t" ++ printBound pot (withCost $ sig M.! fn) solution
 
 writeHtmlProof :: FilePath -> LT.Text -> IO ()
 writeHtmlProof path html = do

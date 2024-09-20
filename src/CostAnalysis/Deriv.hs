@@ -46,6 +46,9 @@ type TypeCtx = Map Id Type
 type Prove e a = Tactic -> Bool -> TypeCtx -> e -> RsrcAnn -> RsrcAnn -> ProveMonad a
 
 proveConst :: Prove PositionedExpr Derivation
+proveConst _ cf ctx e@Error q q' = do
+  let cs = annLikeUnify q q'
+  conclude R.Const cf q q' cs e []
 proveConst _ cf ctx e q q' = do
   pot <- view potential
   cs <- case cConst pot e q q' of

@@ -45,6 +45,7 @@ data RunOptions = RunOptions {
   switchIncremental :: Bool,
   switchHideConstraints :: Bool,
   switchHtmlOutput :: Bool,
+  switchLazy :: Bool,
   potential :: PotentialMode}
 
 runOptionsP :: Parser RunOptions
@@ -68,6 +69,9 @@ runOptionsP = do
   switchIncremental <- switch
     (long "incremental"
     <> help "When active, individual constraint systems for each recursive binding group are solved incrementally.")
+  switchLazy <- switch
+    (long "lazy"
+    <> help "When active, only the chosen function and its dependencies are analyzed.")
   switchHideConstraints <- switch
     (long "hide-constraints"
     <> help "When active, only the derivation tree is printed without constraints.")

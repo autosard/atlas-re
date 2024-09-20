@@ -155,6 +155,9 @@ pattern Cons x l <- ConstAnn _ "cons" [x, l]
 pattern Tuple :: Expr a -> Expr a -> Expr a
 pattern Tuple x1 x2 <- ConstAnn _ "(,)" [x1, x2]
 
+pattern Error :: Expr a
+pattern Error <- ConstAnn _ "error" []
+
 isCmp :: Expr a -> Bool
 isCmp (Const "EQ" _ ) = True
 isCmp (Const "LT" _ ) = True

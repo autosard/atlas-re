@@ -191,6 +191,9 @@ extendAnns arr defs = (arr', concat cs)
         def = sequence defs
 
 
+annLikeGeZero :: AnnLike a => a -> [Constraint]
+annLikeGeZero ann = concat [ge (ann!idx) $ ConstTerm 0 | idx <- S.toList $ definedIdxs ann]                   
+
 annLikeConstLe :: AnnLike a => a -> Map CoeffIdx Rational -> [Constraint]
 annLikeConstLe ann values = concat [le (ann!idx) $ ConstTerm (M.findWithDefault 0 idx values)
                                    | idx <- S.toList $ definedIdxs ann]                   

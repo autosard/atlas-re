@@ -8,7 +8,6 @@ import qualified Data.Set as S
 import Lens.Micro.Platform
 
 import Primitive(Id)
-import CostAnalysis.Potential.Log.Base
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Constraint
 import CostAnalysis.AnnIdxQuoter(mix)
