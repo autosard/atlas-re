@@ -17,15 +17,17 @@ exp :: Id
 exp = "e"
 
 -- additative shift
-addShiftL :: Int -> RsrcAnn -> Id -> RsrcAnn -> Id -> [Constraint] 
-addShiftL k q x q' y = concat [if idxSum idx < k then
-                                 eqSum (q!idx) [q'!?[mix|_is,y^j|], q'!?[mix|_is,y^j'|]]
-                               else
-                                 eq (q!idx) (q'!?[mix|_is,y^j|])
-                              | idx <- mixes q,
-                                let j = facForVar idx x,
-                                let j' = j+1,
-                                let is = varsExcept idx [x]]
+addShiftL :: Int -> RsrcAnn -> RsrcAnn -> [Constraint] 
+addShiftL k q q' = let [x] = map fst $ _args q
+                       [y] = map fst $ _args q' in
+  concat [if idxSum idx < k then
+             eqSum (q!idx) [q'!?[mix|_is,y^j|], q'!?[mix|_is,y^j'|]]
+          else
+             eq (q!idx) (q'!?[mix|_is,y^j|])
+         | idx <- mixes q,
+           let j = facForVar idx x,
+           let j' = j+1,
+           let is = varsExcept idx [x]]
 
 addShiftDefL :: Int -> RsrcAnn -> Id -> RsrcAnn -> Id -> (RsrcAnn, [Constraint])
 addShiftDefL k q_ x q' y = extendAnn q_ $
@@ -42,12 +44,9 @@ cConst :: Args -> PositionedExpr -> RsrcAnn -> RsrcAnn -> Either String [Constra
 cConst potArgs (Nil {}) q q'
   = Right $ eq (q![mix||]) (q'!?[mix||])
   -- cons
-cConst potArgs (Cons {}) q q'  
-  = let [x] = _args q
-        [y] = _args q' in
-      Right $ addShiftL (degree potArgs) q' (fst y) q (fst x)
+cConst potArgs (Cons {}) q q' = Right $ addShiftL (degree potArgs) q q' 
 cConst _ (Tuple (Var x1) (Var x2)) q q' = Right $ annLikeUnify' q q' [x1,x2]
-
+cConst _ constr _ _ = error $ show constr
 
 cMatch :: Args -> RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint])
 -- nil / leaf
@@ -74,7 +73,14 @@ cLetBodyBase q r p' = extendAnn r $
   where ys = annVars r
 
 cLetBinding :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
-cLetBinding = cLetBindingBase
+cLetBinding q p = extendAnn p $
+  [(`eq` (q!idx)) <$> def idx
+  | idx <- mixes q,
+    onlyVarsOrConst idx xs,
+    idx /= constCoeff]
+  -- move const
+  ++ [(`le` (q!?constCoeff)) <$> def constCoeff]
+  where xs = annVars p
 
 cLetBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> AnnArray -> Id -> [CoeffIdx] -> (RsrcAnn, [Constraint])
 cLetBody q r p p' ps' x js = extendAnn r $
@@ -84,7 +90,9 @@ cLetBody q r p p' ps' x js = extendAnn r $
     d /= 0]
   ++ [(`eq` (q!idx)) <$> def idx
      | idx <- mixes q,
-       onlyVars idx ys]
+       onlyVars idx ys,
+       idx /= constCoeff]
+  ++ [(`eq` sum [sub [q!?constCoeff, p!constCoeff], p'!constCoeff]) <$> def constCoeff]
   ++ [(`eq` (ps'!!j!pIdx)) <$> def [mix|_j',x^d|]
      | j <- js,
        let j' = idxToSet j,

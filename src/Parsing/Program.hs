@@ -274,7 +274,7 @@ keywords = [ "if", "then", "else", "match", "with", "let", "in"]
 pIdentifier :: Parser Text
 pIdentifier = do
   ident <- lexeme (T.cons <$> letterChar <*>
-                   takeWhileP Nothing (\x -> isAlphaNum x || (x == '_') || (x == '.')) <?> "identifier")
+                   takeWhileP Nothing (\x -> isAlphaNum x || (x == '_') || (x == '\'') || (x == '.')) <?> "identifier")
            
   if ident `elem` keywords
     then fail $ "Use of reserved keyword " ++ T.unpack ident
