@@ -9,7 +9,7 @@ import CostAnalysis.Potential.Log.Helper
 import qualified Data.Set as S
 
 import CostAnalysis.Potential
-import CostAnalysis.Potential.Log
+import CostAnalysis.Potential.Log hiding (pot)
 import CostAnalysis.Coeff
 import CostAnalysis.RsrcAnn
 import Constants (treeT, boolT)
@@ -75,7 +75,7 @@ spec = do
       let vars = [(x1, treeT), (x2, treeT)]
       let q = defaultAnn pot 0 "Q" "" vars
       let should = [[mix|x2^1,x3^1|], [mix|x2^1,x3^1,1|], [mix|x2^1,x3^1,2|], [mix|x2^1,x3^1|], [mix|x2^1,1|], [mix|x2^1,2|]]
-      S.fromList (forAllCombinations q [x2] (_aRange, _bRange) x3) `shouldBe` S.fromList should
+      S.fromList (forAllCombinations pot q [x2] (_aRange, _bRange) x3) `shouldBe` S.fromList should
       
                              
                                  

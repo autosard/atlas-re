@@ -11,7 +11,8 @@ import Data.List(intercalate)
 import Primitive(Id)
 import CostAnalysis.Coeff
 import CostAnalysis.Potential(emptyAnn)
-import CostAnalysis.Potential.Log
+import CostAnalysis.Potential.Log hiding (pot)
+import qualified CostAnalysis.Potential.Log as Log(pot)
 import CostAnalysis.Potential.Log.Base hiding (rsrcAnn)
 import qualified CostAnalysis.Potential.Log.Base as B(rsrcAnn)
 import Typing.Type (Type)
@@ -32,7 +33,7 @@ _aRange = [0,1] :: [Int]
 _bRange = [0,1,2] :: [Int]
 
 potArgs = Args _aRange _bRange 
-pot = logPot potArgs
+pot = Log.pot potArgs
 
 defaultRanges = (_aRange, _bRange)
 

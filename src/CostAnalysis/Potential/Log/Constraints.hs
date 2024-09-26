@@ -61,7 +61,7 @@ cConst (Node {}) q q'
 cConst (Tuple x1 x2) q q' | (isTree . getType) x1 && (isTree . getType) x2
   = Left "Tuple with more then one tree type are not supported."
                           | otherwise = Right $ annLikeUnify q q'
-cConst c q q' = error $ "Constructure " ++ show c ++ " not supported."
+cConst (Ast.Const id _) q q' = error $ "Constructor " ++ show id ++ " not supported."
       
 cMatch :: RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint])
 -- leaf  

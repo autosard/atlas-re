@@ -143,18 +143,18 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf ctx e@(Let x e1 e2) q q' = do
     let rangeE = if R.NegE `elem` letArgs then
          rangeBNeg . ranges $ pot else rangeB . ranges $ pot
       
-    let bdes = forAllCombinations pot q (M.keys ctxE2) (rangeD, rangeE) x
+    let combis = forAllCombinations pot q (M.keys ctxE2) (rangeD, rangeE) x
       
-    ps_ <- annArrayFromIdxs bdes "P" (M.toAscList ctxE1)
-    ps'_ <- annArrayFromIdxs bdes "P'" [("e", getType e1)]
+    ps_ <- annArrayFromIdxs combis "P" (M.toAscList ctxE1)
+    ps'_ <- annArrayFromIdxs combis "P'" [("e", getType e1)]
 
     let (p, pCs) = cLetBinding pot q p_ 
     deriv1 <- proveExpr t1 cf ctxE1 e1 p p'
 
-    let (ps, ps', cfCs) = cLetCf pot q ps_ ps'_ x (map fst gamma, map fst delta) bdes
+    let (ps, ps', cfCs) = cLetCf pot q ps_ ps'_ x (map fst gamma, map fst delta) combis
     cfDerivs <- zipWithM (proveExpr t1 True ctxE1 e1) (elems ps) (elems ps')
       
-    let (r, rCs) = cLetBody pot q r_ p p' ps' x bdes
+    let (r, rCs) = cLetBody pot q r_ p p' ps' x combis
     deriv2 <- proveExpr t2 cf ctxE2' e2 r q'
 
     conclude (R.Let letArgs) cf q q' (pCs ++ rCs ++ cfCs) e ([deriv1, deriv2] ++ cfDerivs)
