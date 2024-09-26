@@ -1,7 +1,6 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
 
 module CostAnalysis.Potential where
 
@@ -16,16 +15,17 @@ import qualified Data.Set as S
 import Lens.Micro.Platform
 
 
-import Primitive(Id)
+import Primitive(Id, printRat)
 import CostAnalysis.Rules ( WeakenArg )
 import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.RsrcAnn
 import Typing.Type (Type)
-import Ast
+import Ast hiding (FunRsrcAnn)
 
-import Debug.Trace (trace)
-traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
+
+import Data.Bifunctor (Bifunctor(first))
+
 
 
 type ExpertKnowledge = (V.Vector (V.Vector Int), [Int])
@@ -87,8 +87,10 @@ data Potential = Potential {
   
   -- | @ 'cOptimize' q q' @ returns a cost function that minimizes \[\Phi(\Gamma\mid Q) - \Phi(\Gamma\mid Q')\] as a term.
   cOptimize :: RsrcAnn -> RsrcAnn -> Term,
+
+  cExternal :: FunRsrcAnn -> [Constraint],
   
-  printBasePot :: Coeff -> Rational -> String}
+  printBasePot :: CoeffIdx -> String}
 
 defaultNegAnn :: Potential -> Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn
 defaultNegAnn pot id label comment args = rsrcAnn pot id label comment args abRanges
@@ -164,13 +166,21 @@ symbolicCost (from, to) = PointWiseOp (annVars from) $
 printRHS :: Potential -> RsrcAnn -> Map Coeff Rational -> String
 printRHS pot rhs solution = printPotential pot $ M.toList (M.restrictKeys solution (S.fromList (getCoeffs rhs)))
 
-printPotential :: Potential -> [(Coeff, Rational)] -> String
-printPotential pot coeffs = if L.null coeffs' then "0" else
-  L.intercalate " + " $ map (uncurry (printBasePot pot)) coeffs'
-  where coeffs' = filter (\(_, v) -> v /= 0) coeffs
 
 printBound :: Potential -> (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> String
 printBound pot sig solution = printPotential pot terms
   where terms = M.toList $ M.filter (0 /=) solution'
         solution' = calculateBound sig solution
+
+printPotential :: Potential -> [(Coeff, Rational)] -> String
+printPotential pot coeffs = if L.null coeffs' then "0" else
+  L.intercalate " + " $
+    map (uncurry (printPotTerm pot) . first getIdx) coeffs'
+  where coeffs' = filter (\(_, v) -> v /= 0) coeffs
+        
   
+printPotTerm :: Potential -> CoeffIdx -> Rational -> String
+printPotTerm pot c 1 = if c == constCoeff pot then "1" else printBasePot pot c
+printPotTerm pot c v | c == constCoeff pot = printRat v
+                     | otherwise = printRat v ++ " * " ++ printBasePot pot c
+

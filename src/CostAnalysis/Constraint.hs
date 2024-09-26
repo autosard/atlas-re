@@ -24,6 +24,7 @@ data Term
   | Sum [Term]
   | Diff [Term]
   | Prod [Term]
+  | Minus Term
   | ConstTerm Rational
   deriving (Eq, Ord, Show)
 
@@ -36,7 +37,8 @@ data Constraint
   | Ge Term Term
   | Impl Constraint Constraint
   | Not Constraint
-  | Or [Constraint] 
+  | Or [Constraint]
+  | And [Constraint]
   deriving (Eq, Ord, Show)
 
 -- pattern Prod2 :: Term -> Term -> Term 
@@ -57,11 +59,18 @@ prod ts | any termIsZero ts = ConstTerm 0
        | otherwise = Prod ts
 
 prod2 :: Term -> Term -> Term
+prod2 t1 (ConstTerm 1) = t1
+prod2 (ConstTerm 1) t2 = t2
+prod2 t1 (ConstTerm (-1)) = minus t1
+prod2 (ConstTerm (-1)) t2 = minus t2
 prod2 t1 t2 = prod [t1, t2]
 
 sub :: [Term] -> Term
 sub ts | all termIsZero ts = ConstTerm 0
        | otherwise = Diff ts
+
+minus :: Term -> Term
+minus = Minus
 
 eqSum :: Term -> [Term] -> [Constraint]
 eqSum t ts = eq t $ sum ts
@@ -111,6 +120,9 @@ or :: [Constraint] -> [Constraint]
 or [] = []
 or cs = [Or cs]
 
+and :: [Constraint] -> [Constraint]
+and cs = [And cs]
+
 printTerm :: Term -> String
 printTerm (VarTerm k) = printVar k
 printTerm (CoeffTerm q) = printCoeff q
@@ -137,6 +149,7 @@ instance HasCoeffs Term where
   getCoeffs (Sum terms) = getCoeffs terms
   getCoeffs (Diff terms) = getCoeffs terms
   getCoeffs (Prod terms) = getCoeffs terms
+  getCoeffs (Minus term) = getCoeffs term
   getCoeffs _ = []
 
 instance HasCoeffs Constraint where
@@ -146,3 +159,4 @@ instance HasCoeffs Constraint where
   getCoeffs (Impl c1 c2) = getCoeffs c1 ++ getCoeffs c2
   getCoeffs (Not c) = getCoeffs c
   getCoeffs (Or cs) = getCoeffs cs
+  getCoeffs (And cs) = getCoeffs cs

@@ -25,7 +25,6 @@ library
     exposed-modules:  Ast,
                       Parsing.Program,
                       Parsing.Tactic,
-                      Parsing.SmtLib
                       Module,
                       Primitive,
                       Typing.Type,

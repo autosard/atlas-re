@@ -1,8 +1,5 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
---{-# LANGUAGE FlexibleContexts #-}
-
 
 module CostAnalysis.Deriv where
 
@@ -13,7 +10,7 @@ import qualified Data.Map as M
 import Data.Set(Set)
 import qualified Data.Set as S
 import qualified Data.Text as Text
-import Prelude hiding (or)
+import Prelude hiding (or, and)
 
 import Ast hiding (Coefficient, CostAnnotation(..))
 import Primitive(Id)
@@ -26,11 +23,10 @@ import CostAnalysis.Tactic
 import qualified CostAnalysis.Rules as R
 import CostAnalysis.Potential hiding (Factor(..), emptyAnn, defaultAnn, defaultNegAnn, enrichWithDefaults)
 import CostAnalysis.RsrcAnn hiding (fromAnn)
-import CostAnalysis.Constraint ( ge,
-                                 eq,
+import CostAnalysis.Constraint ( and,
                                  or,
                                  Constraint,
-                                 Term(ConstTerm) )
+                                 Term(ConstTerm), geZero )
 import CostAnalysis.Weakening
 import CostAnalysis.ProveMonad
 import StaticAnalysis(freeVars)
@@ -187,22 +183,22 @@ proveApp tactic False ctx e@(App id _) q q' = do
   let (r, r') = withoutCost $ fnSig M.! id
   
   k <- freshVar
-  let cs =
-        or (concatMap (eq k . ConstTerm) [0,1,2])
-        --or (eq k (ConstTerm 0) ++ ge k (ConstTerm 1))
-        ++ annLikeUnify q (annAdd p (annScalarMul r k))
-        ++ annLikeUnify q' (annAdd p' (annScalarMul r' k))
+  let cs = or $
+        concat [ and $
+                   annLikeUnify q (annAdd p (annScalarMul r (ConstTerm k)))
+                   ++ annLikeUnify q' (annAdd p' (annScalarMul r' (ConstTerm k)))
+               | k <- [0,1,2]]
   conclude R.App False q q' cs e []
 proveApp tactic True ctx e@(App id _) q q' = do
   pot <- view potential
   fnSig <- use sig
   let (p, p') = withoutCost $ fnSig M.! id
   k <- freshVar
-  let cs =
-        or (concatMap (eq k . ConstTerm) [0,1,2])
-        --or (eq k (ConstTerm 0) ++ ge k (ConstTerm 1))
-        ++ annLikeUnify q (annScalarMul p k)
-        ++ annLikeUnify q' (annScalarMul p' k)
+  let cs = or $
+        concat [ and $
+                   annLikeUnify q (annScalarMul p (ConstTerm k))
+                   ++ annLikeUnify q' (annScalarMul p' (ConstTerm k))
+               | k <- [0,1,2]]
   conclude R.App True q q' cs e []
 
 redundentVars :: RsrcAnn -> Expr a -> Set Id
@@ -255,7 +251,7 @@ proveShift tactic cf ctx e q q' = do
   p'_ <- emptyAnn "P'" "" (q'^.args)
   let (p', p'Cs) = eqMinus pot p'_ q' k
   
-  let cs = ge k (ConstTerm 0) ++ pCs ++ p'Cs
+  let cs = geZero k ++ pCs ++ p'Cs
   deriv <- proveExpr subTactic cf ctx e p p'
   conclude R.Shift cf q q' cs e [deriv]
 
@@ -284,8 +280,6 @@ proveExpr :: Prove PositionedExpr Derivation
 -- manual tactic
 proveExpr tactic@(Rule R.Var []) cf ctx e@(Var _) = removeRedundantVars proveVar tactic cf ctx e
 proveExpr tactic@(Rule R.Cmp []) cf ctx e@(Const {}) | isCmp e = proveCmp tactic cf ctx e
---proveExpr tactic@(Rule R.Const []) cf ctx e@(Tuple {}) = removeRedundantVars provePair tactic cf ctx e
-
 proveExpr tactic@(Rule R.Const []) cf ctx e@(Const {}) = removeRedundantVars proveConst tactic cf ctx e 
 proveExpr tactic@(Rule R.Match _) cf ctx e@(Match {}) = proveMatch tactic cf ctx e
 proveExpr tactic@(Rule R.Ite _) cf ctx e@(Ite {}) = proveIte tactic cf ctx e

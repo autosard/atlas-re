@@ -14,6 +14,7 @@ import qualified CostAnalysis.Potential as P
 import CostAnalysis.Coeff
 import CostAnalysis.RsrcAnn
 import CostAnalysis.AnnIdxQuoter(mix)
+import CostAnalysis.Constraint (Constraint)
 
 data Args = Args { degree :: !Int }
 
@@ -57,11 +58,12 @@ constCoeff = [mix||]
 forAllCombinations :: Args -> RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 forAllCombinations potArgs q xs (rangeA, rangeB) x = filter (not . null . idxToSet ) $ varsRestrictMixes q xs
 
-printBasePot :: Coeff -> Rational -> String
-printBasePot (Coeff _ _ _ (Pure x)) v = error "pure coefficients are not supported with polynomial potential."
-printBasePot (Coeff _ _ _ c@(Mixed factors)) v | c == constCoeff = show v
-                                               | otherwise = show v ++ " * " ++ printProd
-  where printProd = concatMap printFactor (S.toDescList factors)
-        printFactor (Arg x a) = if a > 1 then
+cExternal :: FunRsrcAnn -> [Constraint]
+cExternal _ = []
+
+printBasePot :: CoeffIdx -> String
+printBasePot (Pure x) = error "pure coefficients are not supported with polynomial potential."
+printBasePot (Mixed factors) = concatMap printFactor (S.toDescList factors)
+  where printFactor (Arg x a) = if a > 1 then
           "[" ++ T.unpack x ++ " " ++ show a ++  "]" else
           T.unpack x

@@ -2,6 +2,7 @@ module Primitive where
 
 import Data.Text(Text)
 import qualified Data.Text as T
+import Data.Ratio
 
 type Id = Text
 
@@ -34,3 +35,10 @@ instance Ord IntWithInf where
   (<=) Inf _ = False
   (<=) _ Inf = True
   (<=) (NotInf x) (NotInf y) = x <= y
+
+printRat :: Rational -> String
+printRat r = let n = numerator r
+                 d = denominator r in
+               case d of
+                 1 -> show n
+                 _ -> show n ++ "/" ++ show d

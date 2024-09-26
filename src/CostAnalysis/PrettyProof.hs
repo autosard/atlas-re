@@ -310,6 +310,7 @@ hamTerm (VarTerm k) = [shamlet|
 hamTerm (CoeffTerm q) = hamCoeff q
 hamTerm (Sum terms) = hamOpTerm [shamlet|<mo>+|] terms
 hamTerm (Diff terms) = hamOpTerm [shamlet|<mo>-|] terms
+hamTerm (Minus term) = [shamlet|<mo>- #{hamTerm term}|]
 hamTerm (Prod terms) = hamOpTerm [shamlet|<mo lspace="0em" rspace="0em">⋅|] terms
 hamTerm (ConstTerm c) = hamRat c
 
@@ -361,7 +362,16 @@ hamConstraint (Not c) = [shamlet|
 <mo form="postfix" stretchy="false">)
 |]
 hamConstraint (Or cs) = [shamlet|
-<mo form="prefix" stretchy="false" lspace="0em" rspace="0em">¬
+<mo form="prefix" stretchy="false" lspace="0em" rspace="0em">or
+<mo form="prefix" stretchy="false">(
+#{args}
+<mo form="postfix" stretchy="false">)
+|]
+  where args = toHtml $ intersperse
+          [shamlet|<mo separator="true">,|]
+          (map hamConstraint cs)
+hamConstraint (And cs) = [shamlet|
+<mo form="prefix" stretchy="false" lspace="0em" rspace="0em">and
 <mo form="prefix" stretchy="false">(
 #{args}
 <mo form="postfix" stretchy="false">)

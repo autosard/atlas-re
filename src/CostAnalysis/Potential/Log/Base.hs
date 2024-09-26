@@ -17,6 +17,7 @@ import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential (AnnRanges(..))
 import Constants
+import CostAnalysis.Constraint
 
 data Args = Args {
   aRange :: ![Int],
@@ -70,14 +71,18 @@ forAllCombinations q xs (rangeA, rangeB) x =
     e <- rangeB,
     d + max e 0 > 0,
     let xIdx = S.singleton $ Arg x d]
- 
 
-printBasePot :: Coeff -> Rational -> String
-printBasePot (Coeff _ _ _ (Pure x)) v = show v ++ " * rk(" ++ T.unpack x ++ ")"
-printBasePot (Coeff _ _ _ c@(Mixed factors)) v | c == constCoeff = show v
-                                               | otherwise = show v ++ " * " ++ printLog
-  where printLog = "log(" ++ intercalate " + " (map printFactor (S.toDescList factors)) ++ ")"
-        printFactor (Const c) = show c
+-- equal ranks
+cExternal :: FunRsrcAnn -> [Constraint]
+cExternal funAnn = let (q, q') = withCost funAnn in
+  concat [eq (q!idx) (q'!substitute (argVars q) (argVars q') idx)
+         | idx <- pures q]
+
+
+printBasePot :: CoeffIdx -> String
+printBasePot (Pure x) = "rk(" ++ T.unpack x ++ ")"
+printBasePot (Mixed factors) = "log(" ++ intercalate " + " (map printFactor (S.toDescList factors)) ++ ")"
+  where printFactor (Const c) = show c
         printFactor (Arg x a) = if a /= 1 then show a ++ T.unpack x else T.unpack x
 
 

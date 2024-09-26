@@ -16,12 +16,14 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Foldable (foldrM)
 import Lens.Micro.Platform
+import Data.Maybe (isJust)
 
 import Primitive(Id)
 import CostAnalysis.Coeff
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
+import Control.Monad.Extra (whenJust)
 
 
 class Encodeable a where
@@ -39,6 +41,7 @@ instance Encodeable Term where
   toZ3 (Sum terms) = mkAdd =<< mapM toZ3 terms
   toZ3 (Diff terms) = mkSub =<< mapM toZ3 terms
   toZ3 (Prod terms) = mkMul =<< mapM toZ3 terms
+  toZ3 (Minus term) = mkUnaryMinus =<< toZ3 term
   toZ3 (ConstTerm c) = toZ3 c
 
 bind2 :: Monad m => (t1 -> t2 -> m b) -> m t1 -> m t2 -> m b
@@ -53,6 +56,7 @@ instance Encodeable Constraint where
   toZ3 (Ge t1 t2) = bind2 mkGe (toZ3 t1) (toZ3 t2)
   toZ3 (Impl c1 c2) = bind2 mkImplies (toZ3 c1) (toZ3 c2)
   toZ3 (Or cs) = mkOr =<< mapM toZ3 cs
+  toZ3 (And cs) = mkAnd =<< mapM toZ3 cs
   toZ3 (Not c) = mkNot =<< toZ3 c
 
 evalCoeffs :: MonadOptimize z3 => Model -> [Coeff] -> z3 (Map Coeff Rational)
@@ -65,17 +69,20 @@ evalCoeffs m qs = do
             Just r -> return (q, r)
             Nothing -> error $ "Evaluation of coefficient " ++ show q ++ " in z3 model failed."
 
-assertConstraints :: MonadOptimize z3 => [Constraint] -> z3 (Map String Constraint)
-assertConstraints = foldrM go M.empty
-  where go :: MonadOptimize z3 => Constraint -> Map String Constraint -> z3 (Map String Constraint)
-        go c@(Ge (VarTerm k) (ConstTerm 0)) tracker = do
-          assert =<< toZ3 c
+assertConstraints :: Bool -> MonadOptimize z3 => [Constraint] -> z3 (Map String Constraint)
+assertConstraints track = foldrM (go track) M.empty
+  where go :: Bool -> MonadOptimize z3 => Constraint -> Map String Constraint -> z3 (Map String Constraint)
+        go True c tracker = do
+          optimizeAssert =<< toZ3 c
           return tracker
-        go c tracker = do
+        go False c@(Ge (VarTerm k) (ConstTerm 0)) tracker = do
+          optimizeAssert =<< toZ3 c
+          return tracker
+        go False c tracker = do
           p <- mkFreshBoolVar "c"
           pS <- astToString p
           c' <- toZ3 c
-          solverAssertAndTrack c' p
+          optimizeAssertAndTrack c' p
           return $ M.insert pS c tracker
 
 assertCoeffsPos :: (MonadOptimize z3) => [Constraint] -> z3 ()
@@ -83,60 +90,55 @@ assertCoeffsPos cs = do
   let annCoeffs = S.unions $ map (S.fromList . getCoeffs) cs
   annCoeffs' <- mapM (toZ3 . CoeffTerm) (S.toList annCoeffs)
   positiveCs <- mapM (\coeff -> mkGe coeff =<< mkReal 0 1) annCoeffs'
-  mapM_ assert positiveCs
-
--- setRankEqual :: RsrcSignature -> [Constraint]
--- setRankEqual sig = concatMap setRankEqual' (M.elems sig) 
-
--- setRankEqual' :: FunRsrcAnn -> [Constraint]
--- setRankEqual' ann = eq (q!Pure x) (q'!Pure y)
---   where (q, q') = withCost ann
---         x = head $ annVars q
---         y = head $ annVars q'
-
--- dumpSMT :: Potential -> RsrcSignature -> [Constraint] -> Int -> IO ()
--- dumpSMT pot sig cs varIdGen = do
---   writeFile "constraints.smt" =<< evalZ3 go
---   where go = do
---           let (optiTarget, optiCs) = genOptiTarget pot (M.elems sig) varIdGen
---           assertCoeffsPos cs
---           mapM_ (assert <=< toZ3) (cs ++ optiCs)
---           solverToString
+  mapM_ optimizeAssert positiveCs
 
 solve :: [Id] -> ProveMonad Solution
 solve fns = do
   sig' <- (`M.restrictKeys` S.fromList fns) <$> use sig
-  opti <- sum <$> use optiTargets
---  extCs <- (setRankEqual sig' ++) <$> use sigCs
+  targets <- use optiTargets
+  let opti = case targets of
+               [] -> Nothing
+               ts -> Just . sum $ ts
   extCs <- use sigCs
   cs <- use constraints
-  result <- liftIO $ evalZ3 $ solveZ3 sig' cs extCs opti
+  let dump = True
+  (result, smt) <- liftIO . evalZ3 $
+    do
+      tracker <- createSolverZ3 sig' cs extCs opti
+      smt <- if dump then Just <$> optimizeToString else return Nothing
+      result <- solveZ3 tracker sig'
+      return (result, smt)
+  liftIO $ whenJust smt (writeFile "out/instance.smt")
   solution <- case result of 
     Left unsatCore -> throwError $ UnsatErr unsatCore
     Right solution -> return solution
   constraints .= []
   return solution
 
-solveZ3 :: MonadOptimize z3 => RsrcSignature -> [Constraint] -> [Constraint] -> Term
-  -> z3 (Either [Constraint] Solution)
-solveZ3 sig typingCs extCs optiTarget = do
-  assertCoeffsPos typingCs
-  tracker <- assertConstraints (typingCs ++ extCs)
-  target' <- toZ3 optiTarget
-  optimizeMinimize target'
-  result <- check
+createSolverZ3 :: MonadOptimize z3 => RsrcSignature -> [Constraint] -> [Constraint] -> Maybe Term -> z3 (Map String Constraint)
+createSolverZ3 sig typingCs extCs optiTarget = do
+  assertCoeffsPos (typingCs ++ extCs)
+  tracker <- assertConstraints (isJust optiTarget) $ typingCs ++ extCs
+  case optiTarget of
+    Just target -> do
+      target' <- toZ3 target
+      optimizeMinimize target'
+      return tracker
+    Nothing -> return tracker
+
+solveZ3 :: MonadOptimize z3 => Map String Constraint -> RsrcSignature -> z3 (Either [Constraint] Solution)
+solveZ3 tracker sig = do
+  result <- optimizeCheck []
   case result of
     Sat -> do
-      maybeModel <- snd <$> getModel
-      let model = case maybeModel of
-                    Just model -> model
-                    Nothing -> error "bug: z3 returned sat, but no model."
-      solution <- modelToString model
+      model <- optimizeGetModel
       Right <$> evalCoeffs model (getCoeffs sig)
     Unsat -> do
-      unsatCore <- getUnsatCore
+      unsatCore <- optimizeGetUnsatCore
       astStrings <- mapM astToString unsatCore
       return $ Left (map (tracker M.!) astStrings)
-    Undef -> error "Z3 returned undef."
+    Undef -> do
+      bound <- astToString =<< optimizeGetLower 0
+      error $ "Z3 returned undef. " ++ "Bound: " ++ show bound 
   
 

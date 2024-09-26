@@ -19,11 +19,10 @@ import Text.Megaparsec(SourcePos, unPos, sourceLine, sourceColumn)
 import Data.List(intercalate)
 import Prelude hiding (break)
 
-import Primitive(Id)
+import Primitive(Id, printRat)
 import Typing.Type (Type, splitProdType, splitFnType)
 import Typing.Subst(Types(apply, tv))
 import Typing.Scheme (Scheme, toType)
-import Data.Ratio(numerator, denominator)
 import CostAnalysis.Coeff(CoeffIdx)
     
 type Fqn = (Text, Text)
@@ -204,8 +203,6 @@ printPat (WildcardPat _) = "_"
 
 printMatchArm :: (XExprAnn a -> String) -> Int -> MatchArm a -> String
 printMatchArm printAnn ident (MatchArmAnn _ pat e) = "| " ++ printPat pat ++ " -> " ++ printExpr printAnn ident e 
-
-printRat r = (show . numerator $ r) ++ "/" ++ (show . denominator $ r)
 
 break :: Int -> String
 break ident = "\n" ++ replicate (2*ident) ' ' 

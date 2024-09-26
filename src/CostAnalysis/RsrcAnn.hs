@@ -114,7 +114,7 @@ instance AnnLike PointWiseOp where
 
 annScalarMul :: RsrcAnn -> Term -> PointWiseOp
 annScalarMul q k = PointWiseOp (annVars q) $
-  M.fromList [(idx, prod [q!idx, k]) | idx <- S.toList (q^.coeffs)]
+  M.fromList [(idx, prod2 (q!idx) k) | idx <- S.toList (q^.coeffs)]
 
 annAdd :: RsrcAnn -> PointWiseOp -> PointWiseOp
 annAdd q op | annVars q == opArgs op = PointWiseOp (annVars q) $
@@ -131,7 +131,7 @@ annLikeAdd q p | argVars q == argVars p = PointWiseOp (argVars q) $
 
 annLikeEq :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
 annLikeEq q op = concat [eq (q!?idx) (op!?idx)
-             | idx <- S.toList $ definedIdxs q `S.union` definedIdxs op]
+                        | idx <- S.toList $ definedIdxs q `S.union` definedIdxs op]
 
 
 

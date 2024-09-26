@@ -23,4 +23,5 @@ pot args = Potential
   cWeakenVar
   genExpertKnowledge
   cOptimize
+  cExternal
   printBasePot

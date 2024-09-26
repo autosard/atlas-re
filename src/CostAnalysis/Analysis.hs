@@ -16,7 +16,7 @@ import Primitive(Id)
 import Ast hiding (CostAnnotation)
 import CostAnalysis.Solving (solve)
 import CostAnalysis.ProveMonad
-import CostAnalysis.Constraint
+import CostAnalysis.Constraint hiding (and)
 import SourceError
 import CostAnalysis.Rules
 import Control.Monad.Except (MonadError(throwError))
@@ -27,7 +27,7 @@ import CostAnalysis.RsrcAnn (RsrcAnn, RsrcSignature,
                              FunRsrcAnn(..), annLikeConstEq,
                              annLikeConstLe, PointWiseOp,
                              opCoeffs, annLikeGeZero)
-import CostAnalysis.Potential(symbolicCost, cOptimize)
+import CostAnalysis.Potential(symbolicCost, cOptimize, Potential (cExternal))
 
 
 analyzeModule :: ProofEnv -> PositionedModule
@@ -92,7 +92,11 @@ analyzeFn def@(FunDef funAnn fnId _ body) = do
         cmpCostWithAnn annLikeConstLe fnId costCoeffs
         addSimpleCostOptimization fnId
       noCost_ -> errorFrom (SynExpr body) "Missing cost annotation for improve-cost mode."
-    Infer -> addFullCostOptimization fnId
+    Infer -> do
+      s <- use sig
+      pot <- view potential
+      tellCs (cExternal pot $ s M.! fnId)
+      addFullCostOptimization fnId
   proveFun def
 
 
@@ -154,7 +158,11 @@ addSigCs fns solution = do
 
 -- TODO this breaks RandSplayTree.delete because splay max returns a tuple not a single tree.  
 argsForRHS :: Module Positioned -> Either SourceError [(Id, Type)]
-argsForRHS mod = if sameLength args then Right $ head args else
+argsForRHS mod = if sameLength args then
+                   case args of
+                     [] -> Right []
+                     arg:args -> Right arg
+                 else
                    Left $ SourceError (tfLoc $ funAnn (head $ fns mod))
                    "Cost analysis requries all involved functions to have the same return type to guarantee a consistent potential function."
   where args = [ snd . ctxFromFn $ fn

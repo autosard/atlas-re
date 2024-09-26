@@ -22,6 +22,9 @@ data Coeff =
     CoeffIdx -- ^ An index to identify the coefficient.
   deriving (Eq, Ord, Show)
 
+getIdx :: Coeff -> CoeffIdx
+getIdx (Coeff _ _ _ idx) = idx
+
 printCoeff :: Coeff -> String
 printCoeff (Coeff id label comment idx) = "q" ++ show id ++ "[" ++ T.unpack label ++ "]" ++ show idx
 

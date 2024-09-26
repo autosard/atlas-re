@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module CostAnalysis.Potential.Log.Constraints where
 
-import Prelude hiding (exp, (!!), sum)
+import Prelude hiding (exp, (!!), sum, or)
 import qualified Data.List as L
 import qualified Data.Set as S
 import Lens.Micro.Platform
@@ -63,11 +63,6 @@ cConst (Tuple x1 x2) q q' | (isTree . getType) x1 && (isTree . getType) x2
                           | otherwise = Right $ annLikeUnify q q'
 cConst c q q' = error $ "Constructure " ++ show c ++ " not supported."
       
-
--- cMatch :: RsrcAnn -> RsrcAnn -> Id -> [(Id, Type)] -> (RsrcAnn, [Constraint])
--- cMatch q p x ys = cMatch' q p x (map fst ys')
---   where ys' = filter (\(x, t) -> bearesPotential t) ys
-
 cMatch :: RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint])
 -- leaf  
 cMatch q p x [] = extendAnn p $
@@ -135,7 +130,7 @@ cLetBinding q p = extendAnn p $
        onlyVarsOrConst idx xs,
        (not . justConst) idx]
   -- move const
-  ++ [(`le` (q!?[mix|2|])) <$> def [mix|2|]]
+  ++ [(`le` (q![mix|2|])) <$> def [mix|2|]]
   where xs = annVars p
 
 
@@ -143,8 +138,8 @@ cLetBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> AnnArray -> Id -> [Coeff
 cLetBody q r p p' ps' x bdes = extendAnn r $
   [(`eq` (q!y)) <$> def y | y <- ys]
   ++ [(`eq` (p'!("e" :: Id))) <$> def x]
-  -- move const 
-  ++ [(`eq` sum [sub [p'![mix|2|], p![mix|2|]], q!?[mix|2|]]) <$> def [mix|2|]]
+  -- move const
+  ++ [(`eq` sum [p'![mix|2|], minus (p![mix|2|]), q![mix|2|]]) <$> def [mix|2|]]
   ++ [(`eq` (p'!pIdx)) <$> def [mix|x^d,e|]
      | pIdx <- mixes p',
        let d = facForVar pIdx exp,
