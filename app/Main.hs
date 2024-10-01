@@ -26,7 +26,7 @@ import qualified Data.Set as S
 import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Potential
-import Ast(TypedModule, TypedExpr, containsFn, Fqn, defs, printProg)
+import Ast(PotentialMode(..), Module(..), TypedModule, TypedExpr, containsFn, Fqn, defs, printProg)
 import CostAnalysis.PrettyProof(renderProof, css, js)
 
 
@@ -80,12 +80,10 @@ run Options{..} RunOptions{..} = do
   tactics <- case tacticsPath of
     Just path -> loadTactics (T.unpack modName) (M.keys (defs normalizedProg)) path
     Nothing -> return M.empty
-  let pot = case potential of
-        Logarithmic -> let _aRange = [0,1]
-                           _bRange = [0,1,2]
-                           args = Log.Args _aRange _bRange in
-                         Log.pot args
-        Polynomial -> Poly.pot (Poly.Args 2)
+  let pot = case modPotential positionedProg of
+        Nothing -> Log.defaultPot
+        Just Logarithmic -> Log.defaultPot
+        Just Polynomial -> Poly.defaultPot
   let env = ProofEnv {
         _potential=pot,
         _tactics=tactics,

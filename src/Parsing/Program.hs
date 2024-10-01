@@ -19,6 +19,7 @@ import Data.Map(Map)
 import qualified Data.Set as S
 import Data.Ratio((%))
 import Data.Maybe(isJust)
+import Data.Functor(($>))
 
 import Prelude hiding (LT, EQ, GT, LE)
 
@@ -58,8 +59,17 @@ quantifyTypeVar id = do
 type Parser = ParsecT Void Text (RWS ParserContext () ParserState)
 
 
-pModule :: Parser [ParsedFunDef]
-pModule = sc *> manyTill pFunc eof
+pModule :: Parser (Maybe PotentialMode, [ParsedFunDef])
+pModule = sc *> do
+  pot <- optional $ pPragma "POTENTIAL" pPotentialMode
+  (pot,) <$> manyTill pFunc eof
+
+pPragma :: Text -> Parser a -> Parser a
+pPragma word p = between (symbol "{-#") (symbol "#-}") $ symbol word *> p
+
+pPotentialMode :: Parser PotentialMode
+pPotentialMode = symbol "logarithmic" $> Logarithmic
+                 <|> symbol "polynomial" $> Polynomial
 
 data Signature = Signature
   Id
@@ -318,7 +328,7 @@ sc = L.space
 initState = ParserState 0 M.empty
 
 
-parseModule :: String -> Text -> Text -> [ParsedFunDef]
+parseModule :: String -> Text -> Text -> (Maybe PotentialMode, [ParsedFunDef])
 parseModule fileName moduleName contents = case fst $ evalRWS rws initEnv initState of
   Left errs -> error $ errorBundlePretty errs
   Right prog -> prog

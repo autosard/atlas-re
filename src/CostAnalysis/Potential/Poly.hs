@@ -1,4 +1,4 @@
-module CostAnalysis.Potential.Poly(pot, Args(..)) where
+module CostAnalysis.Potential.Poly(pot, defaultPot, Args(..)) where
 
 import CostAnalysis.Potential.Poly.Base
 import CostAnalysis.Potential.Poly.Constraints
@@ -25,3 +25,5 @@ pot args = Potential
   cOptimize
   cExternal
   printBasePot
+
+defaultPot = pot (Args 2)

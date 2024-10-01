@@ -45,8 +45,7 @@ data RunOptions = RunOptions {
   switchIncremental :: Bool,
   switchHideConstraints :: Bool,
   switchHtmlOutput :: Bool,
-  switchLazy :: Bool,
-  potential :: PotentialMode}
+  switchLazy :: Bool}
 
 runOptionsP :: Parser RunOptions
 runOptionsP = do
@@ -62,10 +61,6 @@ runOptionsP = do
     (long "analysis-mode"
     <> help "Analysis mode. One of [check-coeffs, check-cost, improve-cost, infer]."
     <> value CheckCoefficients)
-  potential <- option (eitherReader parsePotential)
-    (long "potential"
-    <> help "The type of potential function template used in the analysis. [logarithmic, polynomial]"
-    <> value Logarithmic)
   switchIncremental <- switch
     (long "incremental"
     <> help "When active, individual constraint systems for each recursive binding group are solved incrementally.")
@@ -83,11 +78,6 @@ runOptionsP = do
 
 runCommandP :: Parser Command
 runCommandP = Run <$> runOptionsP
-
-parsePotential :: String -> Either String PotentialMode
-parsePotential "logarithmic" = Right Logarithmic
-parsePotential "polynomial" = Right Polynomial
-parsePotential _ = Left "not a valid poential."
 
 parseAnalysisMode :: String -> Either String AnalysisMode
 parseAnalysisMode "check-coeffs" = Right CheckCoefficients

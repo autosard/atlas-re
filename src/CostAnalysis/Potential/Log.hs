@@ -1,4 +1,4 @@
-module CostAnalysis.Potential.Log(pot, Args(..)) where
+module CostAnalysis.Potential.Log(pot, defaultPot, Args(..)) where
 
 import CostAnalysis.Potential.Log.Base
 import CostAnalysis.Potential.Log.Constraints
@@ -25,3 +25,8 @@ pot args = Potential
   (cOptimize args)
   cExternal
   printBasePot
+
+defaultPot = let _aRange = [0,1]
+                 _bRange = [0,1,2]
+                 args = Args _aRange _bRange in
+               pot args

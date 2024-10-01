@@ -23,7 +23,6 @@ import Typing.Type
 import Control.Monad.State
 import CostAnalysis.Constraint
 
-
 data RsrcAnn = RsrcAnn {
   _annId :: Int,
   _args :: [(Id, Type)],

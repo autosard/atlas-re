@@ -35,9 +35,6 @@ data AnnRanges = AnnRanges {
   rangeB :: ![Int],
   rangeBNeg :: ![Int]}
 
-data PotentialMode
-  = Logarithmic
-  | Polynomial
 
 data Potential = Potential {
   -- Supported types

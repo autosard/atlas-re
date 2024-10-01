@@ -41,8 +41,8 @@ loadLazy loadPath rootFqn = do
   let moduleName = fst rootFqn
   moduleFile <- findModule loadPath (T.unpack moduleName)
   contents <- TextIO.readFile moduleFile
-  let parsedDefs = Parsing.Program.parseModule moduleFile moduleName contents
-  parsedMod <- evalStateT (buildModule loadPath moduleName) $
+  let (potential, parsedDefs) = Parsing.Program.parseModule moduleFile moduleName contents
+  parsedMod <- evalStateT (buildModule loadPath moduleName potential) $
     LoaderState
     M.empty
     (M.fromList $ zip (map (pfFqn . funAnn) parsedDefs) parsedDefs)
@@ -55,9 +55,9 @@ load loadPath moduleName = do
   moduleFile <- findModule loadPath (T.unpack moduleName)
   contents <- TextIO.readFile moduleFile
   let parsedDefs = Parsing.Program.parseModule moduleFile moduleName contents
-  parsedDefs <- Parsing.Program.parseModule moduleFile moduleName <$> TextIO.readFile moduleFile
+  (potential, parsedDefs) <- Parsing.Program.parseModule moduleFile moduleName <$> TextIO.readFile moduleFile
   let defsWithFqn = M.fromList $ zip (map (pfFqn . funAnn) parsedDefs) parsedDefs
-  parsedMod <- evalStateT (buildModule loadPath moduleName) $
+  parsedMod <- evalStateT (buildModule loadPath moduleName potential) $
     LoaderState
     M.empty
     defsWithFqn
@@ -66,8 +66,8 @@ load loadPath moduleName = do
   return (parsedMod, contents)
 
 
-buildModule :: FilePath -> Text -> StateT LoaderState IO ParsedModule
-buildModule loadPath modName = do
+buildModule :: FilePath -> Text -> Maybe PotentialMode -> StateT LoaderState IO ParsedModule
+buildModule loadPath modName potential = do
   fqn@(moduleName, definitionName) <- popTodo
   def <- retrieveDefinition fqn
   addVertex fqn
@@ -77,10 +77,10 @@ buildModule loadPath modName = do
   pushTodos $ dependencies `S.difference` processed
   markAsProcessed fqn
 
-  ifM someTodos (buildModule loadPath modName) (moduleFromLoaderState modName)
+  ifM someTodos (buildModule loadPath modName potential) (moduleFromLoaderState modName potential)
 
-moduleFromLoaderState :: Text -> StateT LoaderState IO ParsedModule
-moduleFromLoaderState modName = do
+moduleFromLoaderState :: Text -> Maybe PotentialMode -> StateT LoaderState IO ParsedModule
+moduleFromLoaderState modName potential = do
   LoaderState{..} <- get
   let edgeList = map (\(key, keys) -> (key, key, S.toList keys)) $ M.toList dependents
   let (g, vertexFqnMap, fqnVertexMap) = G.graphFromEdges edgeList
@@ -89,6 +89,7 @@ moduleFromLoaderState modName = do
   return $ Module
            modName
            (reverse (sccsToRecBindings vertexFqnMap'  depSccs))
+           potential
            (M.mapKeys snd loadedDefinitions)
   where sccsToRecBindings :: (G.Vertex -> Fqn) -> [Tree G.Vertex] -> [[Id]]
         sccsToRecBindings vertexFqnMap = map (map (snd . vertexFqnMap) . toList)

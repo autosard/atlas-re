@@ -34,21 +34,27 @@ type Number = Int
 data Module a = Module {
   name :: Text,
   mutRecGroups :: [[Id]],
+  modPotential :: Maybe PotentialMode,
   defs :: Map Id (FunDef a)
 } 
+
+data PotentialMode
+  = Logarithmic
+  | Polynomial
+  deriving (Eq, Show)
 
 fns :: Module a -> [FunDef a]
 fns = M.elems . defs
 
 modMap :: (FunDef a -> FunDef b) -> Module a -> Module b
-modMap f (Module name mutRecBindings defs) = Module name mutRecBindings (M.map f defs)
+modMap f (Module name mutRecBindings pot defs) = Module name mutRecBindings pot (M.map f defs) 
 
 modMapM :: Monad m => (FunDef a -> m (FunDef b)) -> Module a -> m (Module b)
-modMapM f (Module name mutRecGroups defs) = Module name mutRecGroups <$> mapM f defs
+modMapM f (Module name mutRecGroups pot defs) = Module name mutRecGroups pot <$> mapM f defs 
 
 modReplaceDefs :: Module b -> [FunDef a] -> Module a
-modReplaceDefs (Module name mutRecGroups _) defs = Module name mutRecGroups $
-  M.fromList $ zip (map fnId defs) defs
+modReplaceDefs (Module name mutRecGroups pot _) defs = Module name mutRecGroups pot $
+  M.fromList $ zip (map fnId defs) defs 
   where fnId (Fn id _ _) = id
 
 data FunDef a = FunDef (XFunAnn a) Id [Id] (Expr a)
