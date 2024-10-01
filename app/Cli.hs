@@ -38,14 +38,13 @@ optionsP = do
    return Options{..}
 
 data RunOptions = RunOptions {
-  fqn :: Fqn,
+  target :: Either Text Fqn,
   tacticsPath :: Maybe FilePath,
   switchPrintDeriv :: Bool,
   analysisMode :: AnalysisMode,
   switchIncremental :: Bool,
   switchHideConstraints :: Bool,
-  switchHtmlOutput :: Bool,
-  switchLazy :: Bool}
+  switchHtmlOutput :: Bool}
 
 runOptionsP :: Parser RunOptions
 runOptionsP = do
@@ -64,16 +63,13 @@ runOptionsP = do
   switchIncremental <- switch
     (long "incremental"
     <> help "When active, individual constraint systems for each recursive binding group are solved incrementally.")
-  switchLazy <- switch
-    (long "lazy"
-    <> help "When active, only the chosen function and its dependencies are analyzed.")
   switchHideConstraints <- switch
     (long "hide-constraints"
     <> help "When active, only the derivation tree is printed without constraints.")
   switchHtmlOutput <- switch
     (long "html-output"
     <> help "When active, a html representation, potentially including the unsat-core is produced.")  
-  fqn <- argument (eitherReader parseFqn) (metavar "FQN")
+  target <- argument (eitherReader parseFqn) (metavar "MODULE[.FUNCTION]" <> help "Analysis target. When a specific function is specified only this function and its dependencies are analyzed, which can save time.")
   return RunOptions{..}
 
 runCommandP :: Parser Command
@@ -86,14 +82,14 @@ parseAnalysisMode "improve-cost" = Right ImproveCost
 parseAnalysisMode "infer" = Right Infer
 parseAnalysisMode _ = Left "not a valid inference mode"
 
-parseFqn :: String -> Either String Fqn
+parseFqn :: String -> Either String (Either Text Fqn)
 parseFqn s = case suffix of
-               [] -> Left errorMsg
+               [] -> Right (Left $ T.pack moduleName)
                [_] -> Left errorMsg
-               (_:functionName) -> Right (T.pack moduleName, T.pack functionName)
+               (_:functionName) -> Right (Right (T.pack moduleName, T.pack functionName))
   where (moduleName, suffix) = break (== '.') s
         errorMsg = "Could not parse fqn '" ++ s ++
-                   "'. Make sure to specify the module name with <module>.<function>."
+                   "'. Make sure to specify the target name with <module>[.<function>]."
 
 
 data EvalOptions = EvalOptions { modName :: !Text, expr :: !Text }

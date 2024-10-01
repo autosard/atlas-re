@@ -52,7 +52,7 @@ import CostAnalysis.Analysis
 import Cli(Options(..), RunOptions(..), EvalOptions(..), Command(..), cliP)
 
 import System.Random (getStdGen)
-import Module (load, loadLazy)
+import Module (load)
 import SourceError (printSrcError)
 import CostAnalysis.Potential (printBound)
 import CostAnalysis.Constraint (Constraint)
@@ -69,14 +69,14 @@ app options = do
 
 run :: Options -> RunOptions -> App ()
 run Options{..} RunOptions{..} = do
-  let (modName, funName) = fqn
-  let toLoad = if switchLazy then Right fqn else Left modName
-  (normalizedProg, contents) <- liftIO $ loadMod searchPath toLoad
+  let (modName, _) = case target of
+        (Left mod) -> (mod, Nothing)
+        (Right (mod, fn)) -> (mod, Just fn)
+  (normalizedProg, contents) <- liftIO $ loadMod searchPath target
   let positionedProg = contextualizeMod normalizedProg
-  unless (containsFn funName positionedProg) $ do
-    logError $ "Module does not define the requested function '" `T.append` funName `T.append` "'."
+  when (null . mutRecGroups $ positionedProg) $ do
+    logError $ "Module does not define the requested function."
     liftIO exitFailure
---  liftIO $ putStr (printProg positionedProg)
   tactics <- case tacticsPath of
     Just path -> loadTactics (T.unpack modName) (M.keys (defs normalizedProg)) path
     Nothing -> return M.empty
@@ -169,8 +169,8 @@ loadMod pathSearch modOrFqn = do
   searchPathfromEnv <- lookupEnv "ATLAS_SEARCH"
   let path = (`fromMaybe` pathSearch) . (`fromMaybe` searchPathfromEnv) $ "."
   (parsedMod, contents) <- case modOrFqn of
-    Left moduleName -> load path moduleName
-    Right fqn -> loadLazy path fqn
+    Left moduleName -> load path moduleName Nothing
+    Right (mod, fn) -> load path mod (Just fn)
   typedMod <- case inferModule parsedMod of
         Left srcErr -> die $ printSrcError srcErr contents
         Right mod -> return mod

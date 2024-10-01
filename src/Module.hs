@@ -33,38 +33,24 @@ data LoaderState = LoaderState {
   dependents :: Map Fqn (Set Fqn), -- depedency fqdn -> [dependent fqdn]
   loadedDefinitions :: Map Fqn ParsedFunDef,
   processedDefinitions :: Set Fqn,
-  todo :: [Fqn]
-                               }
+  todo :: [Fqn]}
 
-loadLazy :: FilePath -> Fqn -> IO (ParsedModule, Text)
-loadLazy loadPath rootFqn = do
-  let moduleName = fst rootFqn
-  moduleFile <- findModule loadPath (T.unpack moduleName)
+load :: FilePath -> Text -> Maybe Text -> IO (ParsedModule, Text)
+load loadPath modName fn = do
+  moduleFile <- findModule loadPath (T.unpack modName)
   contents <- TextIO.readFile moduleFile
-  let (potential, parsedDefs) = Parsing.Program.parseModule moduleFile moduleName contents
-  parsedMod <- evalStateT (buildModule loadPath moduleName potential) $
-    LoaderState
-    M.empty
-    (M.fromList $ zip (map (pfFqn . funAnn) parsedDefs) parsedDefs)
-    S.empty
-    [rootFqn]
-  return (parsedMod, contents)
-
-load :: FilePath -> Text -> IO (ParsedModule, Text)
-load loadPath moduleName = do
-  moduleFile <- findModule loadPath (T.unpack moduleName)
-  contents <- TextIO.readFile moduleFile
-  let parsedDefs = Parsing.Program.parseModule moduleFile moduleName contents
-  (potential, parsedDefs) <- Parsing.Program.parseModule moduleFile moduleName <$> TextIO.readFile moduleFile
+  let (potential, parsedDefs) = Parsing.Program.parseModule moduleFile modName contents
   let defsWithFqn = M.fromList $ zip (map (pfFqn . funAnn) parsedDefs) parsedDefs
-  parsedMod <- evalStateT (buildModule loadPath moduleName potential) $
+  let todos = case fn of
+        Just id -> [(modName, id)]
+        Nothing -> M.keys defsWithFqn
+  parsedMod <- evalStateT (buildModule loadPath modName potential) $
     LoaderState
     M.empty
     defsWithFqn
     S.empty
-    (M.keys defsWithFqn)
+    todos
   return (parsedMod, contents)
-
 
 buildModule :: FilePath -> Text -> Maybe PotentialMode -> StateT LoaderState IO ParsedModule
 buildModule loadPath modName potential = do
@@ -88,8 +74,8 @@ moduleFromLoaderState modName potential = do
   let depSccs = G.scc g
   return $ Module
            modName
-           (reverse (sccsToRecBindings vertexFqnMap'  depSccs))
            potential
+           (reverse (sccsToRecBindings vertexFqnMap'  depSccs))
            (M.mapKeys snd loadedDefinitions)
   where sccsToRecBindings :: (G.Vertex -> Fqn) -> [Tree G.Vertex] -> [[Id]]
         sccsToRecBindings vertexFqnMap = map (map (snd . vertexFqnMap) . toList)
