@@ -26,7 +26,7 @@ import qualified Data.Set as S
 import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Potential
-import Ast(PotentialMode(..), Module(..), TypedModule, TypedExpr, containsFn, Fqn, defs, printProg)
+import Ast(Module(..), TypedModule, TypedExpr, containsFn, Fqn, defs, printProg)
 import CostAnalysis.PrettyProof(renderProof, css, js)
 
 
@@ -59,6 +59,9 @@ import CostAnalysis.Constraint (Constraint)
 import Control.Monad (when, unless)
 import AstContext (contextualizeMod)
 
+import Debug.Trace (trace)
+traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
+
 type App a = LoggerT (Msg Severity) IO a
 
 app :: Options -> App ()
@@ -74,18 +77,14 @@ run Options{..} RunOptions{..} = do
         (Right (mod, fn)) -> (mod, Just fn)
   (normalizedProg, contents) <- liftIO $ loadMod searchPath target
   let positionedProg = contextualizeMod normalizedProg
+  --liftIO $ putStrLn (printProg positionedProg)
   when (null . mutRecGroups $ positionedProg) $ do
     logError $ "Module does not define the requested function."
     liftIO exitFailure
   tactics <- case tacticsPath of
     Just path -> loadTactics (T.unpack modName) (M.keys (defs normalizedProg)) path
     Nothing -> return M.empty
-  let pot = case modPotential positionedProg of
-        Nothing -> Log.defaultPot
-        Just Logarithmic -> Log.defaultPot
-        Just Polynomial -> Poly.defaultPot
   let env = ProofEnv {
-        _potential=pot,
         _tactics=tactics,
         _analysisMode=analysisMode,
         _incremental=switchIncremental}
@@ -99,21 +98,26 @@ run Options{..} RunOptions{..} = do
           liftIO $ writeHtmlProof "./out" (renderProof (Just core') deriv)
         else
           liftIO $ printDeriv True (Just core') deriv
-      (deriv, sig, Right (solution, rhs)) -> do
+      (deriv, sig, Right (solution, pots)) -> do
          when switchHtmlOutput $
            liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv)
-         liftIO $ printSolution pot sig rhs solution
+         liftIO $ printSolution sig pots solution
         
 
-printSolution :: Potential -> RsrcSignature -> RsrcAnn -> Solution -> IO ()
-printSolution pot sig potFn solution = do
-  putStrLn "Potential function:"
-  putStrLn $ "\t" ++ printRHS pot potFn solution
+printSolution :: RsrcSignature -> PotFnMap -> Solution -> IO ()
+printSolution sig potFns solution = do
+  putStrLn "Potential functions:"
+  mapM_ printPotFn (M.assocs potFns)
   putStrLn ""
   mapM_ printFnBound (M.keys sig)
   where printFnBound fn = do
+          let fnSig = sig M.! fn
+          let pot = fst $ potFns M.! potentialKind fnSig
           putStrLn $ T.unpack fn ++ ":"
-          putStrLn $ "\t" ++ printBound pot (withCost $ sig M.! fn) solution
+          putStrLn $ "\t" ++ printBound pot (withCost fnSig) solution
+        printPotFn (kind, (pot, rhs)) = do
+          putStrLn $ "\t" ++ printRHS pot rhs solution ++ " (" ++ show kind ++ ")"
+          
 
 writeHtmlProof :: FilePath -> LT.Text -> IO ()
 writeHtmlProof path html = do

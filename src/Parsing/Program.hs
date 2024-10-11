@@ -59,7 +59,7 @@ quantifyTypeVar id = do
 type Parser = ParsecT Void Text (RWS ParserContext () ParserState)
 
 
-pModule :: Parser (Maybe PotentialMode, [ParsedFunDef])
+pModule :: Parser (Maybe PotentialKind, [ParsedFunDef])
 pModule = sc *> do
   pot <- optional $ pPragma "POTENTIAL" pPotentialMode
   (pot,) <$> manyTill pFunc eof
@@ -67,9 +67,10 @@ pModule = sc *> do
 pPragma :: Text -> Parser a -> Parser a
 pPragma word p = between (symbol "{-#") (symbol "#-}") $ symbol word *> p
 
-pPotentialMode :: Parser PotentialMode
+pPotentialMode :: Parser PotentialKind
 pPotentialMode = symbol "logarithmic" $> Logarithmic
                  <|> symbol "polynomial" $> Polynomial
+                 <|> symbol "linlog" $> LinLog
 
 data Signature = Signature
   Id
@@ -79,6 +80,7 @@ data Signature = Signature
 
 pFunc :: Parser ParsedFunDef
 pFunc = do
+  potential <- optional $ pPragma "POTENTIAL" pPotentialMode
   pos <- getSourcePos
   sig <- optional pSignature
   funName <- pIdentifier
@@ -90,7 +92,7 @@ pFunc = do
   modName <- asks ctxModuleName
   let funFqn = (modName, funName)
   args <- manyTill pIdentifier (symbol "=")
-  FunDef (ParsedFunAnn pos funFqn _type cost) funName args <$> pExpr
+  FunDef (ParsedFunAnn pos funFqn _type cost potential) funName args <$> pExpr
 
 pSignature :: Parser Signature
 pSignature = do
@@ -178,9 +180,13 @@ pCoeffIdx = Coeff.Pure <$> pIdentifier
 
 pFactor :: Parser Coeff.Factor
 pFactor = Coeff.Const <$> pInt
+  <|> try (do id <- pIdentifier
+              symbol "^"
+              arg <- pInt
+              return $ Coeff.Arg id [arg])
   <|> (do id <- pIdentifier
           symbol "^"
-          Coeff.Arg id <$> pInt)
+          Coeff.Arg id <$> pListInt)
 
 
 pExpr :: Parser ParsedExpr
@@ -293,6 +299,9 @@ pIdentifier = do
 pInt :: Parser Int
 pInt = lexeme L.decimal
 
+pListInt :: Parser [Int]
+pListInt = pParens $ sepBy pInt (symbol ",")
+
 pNumber = LitNum <$> lexeme L.decimal
 
 pInteger :: Parser Integer
@@ -328,7 +337,7 @@ sc = L.space
 initState = ParserState 0 M.empty
 
 
-parseModule :: String -> Text -> Text -> (Maybe PotentialMode, [ParsedFunDef])
+parseModule :: String -> Text -> Text -> (Maybe PotentialKind, [ParsedFunDef])
 parseModule fileName moduleName contents = case fst $ evalRWS rws initEnv initState of
   Left errs -> error $ errorBundlePretty errs
   Right prog -> prog

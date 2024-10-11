@@ -28,7 +28,7 @@ getIdx (Coeff _ _ _ idx) = idx
 printCoeff :: Coeff -> String
 printCoeff (Coeff id label comment idx) = "q" ++ show id ++ "[" ++ T.unpack label ++ "]" ++ show idx
 
-data Factor = Const Int | Arg Id Int
+data Factor = Const Int | Arg Id [Int]
   deriving (Eq, Ord)
 
 instance Show Factor where
@@ -37,10 +37,10 @@ instance Show Factor where
 
 infixl 9 ^
 (^) :: Id -> Int -> Factor
-(^) = Arg
+(^) x a = Arg x [a]
 
 factorNotZero :: Factor -> Bool
-factorNotZero (Arg _ a) = a /= 0
+factorNotZero (Arg _ a) = not $ all (==0) a
 factorNotZero (Const c) = c /= 0
 
 
@@ -66,11 +66,27 @@ constFactor _ = error "cannot extract const for pure index."
 matchesVar x (Arg id _) = id == x
 matchesVar _ _ = False
 
-facForVar :: CoeffIdx -> Id -> Int
-facForVar (Mixed idx) x = getArg $ L.find (matchesVar x) (S.toList idx)
+facForVar' :: CoeffIdx -> Id -> [Int]
+facForVar' (Mixed idx) x = getArg $ L.find (matchesVar x) (S.toList idx)
   where getArg (Just (Arg _ a)) = a
-        getArg Nothing = 0
-facForVar _ _ = error "cannot extract factor for pure index."
+        getArg Nothing = []
+facForVar' _ _ = error "cannot extract factor for pure index."
+
+facForVar :: CoeffIdx -> Id -> Int
+facForVar idx x = case facForVar' idx x of
+  [a] -> a
+  [] -> 0
+
+facForVar2 :: CoeffIdx -> Id -> (Int, Int)
+facForVar2 idx x = case facForVar' idx x of
+  [x1, x2] -> (x1, x2)
+  [] -> (0, 0)
+
+facForVar3 :: CoeffIdx -> Id -> (Int, Int, Int)
+facForVar3 idx x =
+  case facForVar' idx x of
+    [] -> (0, 0, 0)
+    [x1, x2, x3] -> (x1, x2, x3)
 
 -- with const
 except :: CoeffIdx -> [Id] -> Set Factor
@@ -108,23 +124,37 @@ justConst _ = error "pure index"
 idxSum :: CoeffIdx -> Int
 idxSum (Mixed idx) = foldr go 0 idx
   where go (Const c) s = s + c
-        go (Arg _ a) s = s + a
+        go (Arg _ a) s = s + sum a
 idxSum _ = error "idx sum only makes sense for mixed indicies."
 
+facToTuple :: Factor -> (Id, [Int])
 facToTuple (Arg x a) = (x,a)
-facToTuple (Const a) = (":c",a)
-tupleToFac :: (Id, Int) -> Factor
-tupleToFac (":c", a) = Const a
+
+tupleToFac :: (Id, [Int]) -> Factor
 tupleToFac (x, a) = Arg x a
 
-idxToMap :: CoeffIdx -> Map Id Int
-idxToMap = M.fromList . S.toList . S.map facToTuple . idxToSet
+type OrderedCoeffIdx = (Map Id [Int], Int)
 
-idxFromMap :: Map Id Int -> CoeffIdx
-idxFromMap = mixed . S.fromList . map tupleToFac . M.toList
+orderedIdx :: CoeffIdx -> OrderedCoeffIdx
+orderedIdx idx = let as = M.fromList .
+                       S.toList .
+                       S.map facToTuple .
+                       S.filter (not . isConst) $
+                       idxToSet idx
+                     c = constFactor idx in
+                   (as, c)
+
+fromOrderedIdx :: OrderedCoeffIdx -> CoeffIdx
+fromOrderedIdx (as, c) = let as' = S.fromList . map tupleToFac . M.toList $ as
+                             c' = Const c in
+                           mixed $ S.insert c' as'
 
 addIdxs :: CoeffIdx -> CoeffIdx -> CoeffIdx
-addIdxs idxX idxY = idxFromMap $ M.unionWith (+) (idxToMap idxX) (idxToMap idxY)
+addIdxs idxX idxY = let (xs, cx) = orderedIdx idxX
+                        (ys, cy) = orderedIdx idxY
+                        as = M.unionWith (zipWith (+)) xs ys
+                        c = cx + cy in
+                      fromOrderedIdx (as, c)
 
 instance Show CoeffIdx where
   show :: CoeffIdx -> String

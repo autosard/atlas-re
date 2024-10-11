@@ -69,6 +69,11 @@ isBase (TAp Bool []) = True
 isBase (TAp Num []) = True
 isBase _ = False
 
+notNested :: Type -> Bool
+notNested (TAp List [t]) | isBase t = True
+notNested (TAp Tree [t]) | isBase t = True
+notNested _ = True
+
 -- no proper unification just top level check
 matchesType :: Type -> Type -> Bool
 matchesType (TAp c1 _) (TAp c2 _) | c1 == c2 = True

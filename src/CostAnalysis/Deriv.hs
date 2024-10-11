@@ -29,11 +29,10 @@ import CostAnalysis.Constraint ( and,
                                  Term(ConstTerm), geZero )
 import CostAnalysis.Weakening
 import CostAnalysis.ProveMonad
+import CostAnalysis.Potential.Kind (pays)
 import StaticAnalysis(freeVars)
 import Data.Maybe (fromMaybe, mapMaybe)
 
-import Debug.Trace (trace)
-traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
   
 type ProofResult = (Derivation, [Constraint], RsrcSignature)
 
@@ -46,7 +45,7 @@ proveConst _ cf ctx e@Error q q' = do
   let cs = annLikeUnify q q'
   conclude R.Const cf q q' cs e []
 proveConst _ cf ctx e q q' = do
-  pot <- view potential
+  pot <- use potential
   cs <- case cConst pot e q q' of
         Right cs -> return cs
         Left err -> errorFrom (SynExpr e) err
@@ -86,7 +85,7 @@ proveIte tactic cf ctx e@(Ite (Coin p) e1 e2) q q' = do
 proveMatchArm :: Id -> Prove PositionedMatchArm ([Constraint], Derivation)
 proveMatchArm matchVar tactic cf ctx
   (MatchArm pat@(ConstPat _ id patVars) e) q q' = do
-  pot <- view potential
+  pot <- use potential
   let tMatch = getType pat
   let vars = mapMaybe getVar patVars
   let ctx' = M.delete matchVar ctx `M.union` M.fromList vars
@@ -108,7 +107,7 @@ proveMatchArm _ _ _ _ arm _ _ = errorFrom (SynArm arm) "unsupported pattern matc
 
 proveMatch :: Prove PositionedExpr Derivation
 proveMatch tactic cf ctx e@(Match (Var x) arms) q q' = do
-  pot <- view potential
+  pot <- use potential
   let tactics = subTactics (length arms) tactic
   results <- zipWithM proveArmWithTactic tactics arms
   let (cs, derivs) = foldr accum ([], []) results
@@ -128,7 +127,7 @@ splitLetCtx ctx e1 e2 = do
    
 proveLet :: Prove PositionedExpr Derivation
 proveLet tactic@(Rule (R.Let letArgs) _) cf ctx e@(Let x e1 e2) q q' = do
-  pot <- view potential
+  pot <- use potential
   if bearesPotential pot $ getType e1 then do
     let [t1, t2] = subTactics 2 tactic
     (ctxE1, ctxE2) <- splitLetCtx ctx e1 e2
@@ -175,9 +174,31 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf ctx e@(Let x e1 e2) q q' = do
 
     conclude (R.Let letArgs) cf q q' (pCs ++ rCs) e [deriv1, deriv2]
 
+proveAppForeign :: Prove PositionedExpr Derivation
+proveAppForeign tactic False ctx e@(App id _) q q' = do
+  fnSig <- use sig
+  pot <- kind <$> use potential
+  let otherPot = potentialKind $ fnSig M.! id
+  cs <- case pays pot otherPot of
+    Just unifier -> do
+      let (p, p') = withCost $ fnSig M.! id
+      let cost = symbolicCost (p, p')
+      if annEmpty q' then do
+        let cost' = annLikeMap cost q unifier
+        return $ annLikeEq q cost'
+      else do
+        let cost' = annLikeMap cost q' unifier
+        return $ annLikeUnify q (annLikeAdd q' cost')
+
+    Nothing -> errorFrom (SynExpr e) $ "Cannot pay " ++ show otherPot ++ " cost with " ++ show pot ++ " cost function."
+  conclude R.App False q q' cs e []
+proveAppForeign tactic True ctx e@(App id _) q q' = do
+  let cs = annLikeUnify q q' 
+  conclude R.App True q q' cs e []
+
 proveApp :: Prove PositionedExpr Derivation
 proveApp tactic False ctx e@(App id _) q q' = do
-  pot <- view potential
+  pot <- use potential
   fnSig <- use sig
   let (p, p') = withCost $ fnSig M.! id
   let (r, r') = withoutCost $ fnSig M.! id
@@ -190,15 +211,16 @@ proveApp tactic False ctx e@(App id _) q q' = do
                | k <- [0,1,2]]
   conclude R.App False q q' cs e []
 proveApp tactic True ctx e@(App id _) q q' = do
-  pot <- view potential
+  pot <- use potential
   fnSig <- use sig
-  let (p, p') = withoutCost $ fnSig M.! id
-  k <- freshVar
-  let cs = or $
-        concat [ and $
-                   annLikeUnify q (annScalarMul p (ConstTerm k))
-                   ++ annLikeUnify q' (annScalarMul p' (ConstTerm k))
-               | k <- [0,1,2]]
+  -- let (p, p') = withoutCost $ fnSig M.! id
+  -- k <- freshVar
+  -- let cs = or $
+  --       concat [ and $
+  --                  annLikeUnify q (annScalarMul p (ConstTerm k))
+  --                  ++ annLikeUnify q' (annScalarMul p' (ConstTerm k))
+  --              | k <- [0,1,2]]
+  let cs = annLikeUnify q q'
   conclude R.App True q q' cs e []
 
 redundentVars :: RsrcAnn -> Expr a -> Set Id
@@ -206,7 +228,7 @@ redundentVars q e = S.fromList (annVars q) S.\\ freeVars e
 
 proveWeakenVar :: Prove PositionedExpr Derivation
 proveWeakenVar tactic cf ctx e q q' = do
-  pot <- view potential
+  pot <- use potential
   let redundant = redundentVars q e
   var <- if S.null redundant then
         errorFrom (SynExpr e) "Could not find a redundant variable to eleminate with the (w:var) rule."
@@ -223,7 +245,7 @@ proveWeakenVar tactic cf ctx e q q' = do
   
 proveWeaken :: Prove PositionedExpr Derivation
 proveWeaken tactic@(Rule (R.Weaken wArgs) _) cf ctx e q q' = do
-  pot <- view potential
+  pot <- use potential
   let [t] = subTactics 1 tactic
   let wArgs' = S.fromList wArgs
   let neg = R.Neg `S.member` wArgs'
@@ -241,7 +263,7 @@ proveWeaken tactic@(Rule (R.Weaken wArgs) _) cf ctx e q q' = do
 
 proveShift :: Prove PositionedExpr Derivation
 proveShift tactic cf ctx e q q' = do
-  pot <- view potential
+  pot <- use potential
   let [subTactic] = subTactics 1 tactic
 
   k <- freshVar
@@ -257,7 +279,7 @@ proveShift tactic cf ctx e q q' = do
 
 proveTickDefer :: Prove PositionedExpr Derivation
 proveTickDefer tactic cf ctx e@(Tick c e1) q q' = do
-  pot <- view potential
+  pot <- use potential
   let [subTactic] = subTactics 1 tactic
   if cf then do
     deriv <- proveExpr subTactic cf ctx e1 q q'
@@ -275,6 +297,16 @@ removeRedundantVars prove tactic cf ctx e q q' = if (not . null) (redundentVars 
   proveWeakenVar (Rule R.WeakenVar [tactic]) cf ctx e q q'
   else prove tactic cf ctx e q q'
 
+proveApp' :: Prove PositionedExpr Derivation
+proveApp' tactic cf ctx e@(App id _) q q' = do
+  fnSig <- use sig
+  pot <- kind <$> use potential
+  let f = fnSig M.! id
+  let otherPot = potentialKind f
+  if pot == otherPot then
+    proveApp tactic cf ctx e q q'
+  else
+    proveAppForeign tactic cf ctx e q q'
 
 proveExpr :: Prove PositionedExpr Derivation
 -- manual tactic
@@ -288,7 +320,8 @@ proveExpr tactic@(Rule R.TickDefer _) cf ctx e@(Tick {}) = removeRedundantVars p
 proveExpr tactic@(Rule R.WeakenVar _) cf ctx e = proveWeakenVar tactic cf ctx e
 proveExpr tactic@(Rule (R.Weaken _) _) cf ctx e = proveWeaken tactic cf ctx e
 proveExpr tactic@(Rule R.Shift _) cf ctx e = proveShift tactic cf ctx e
-proveExpr tactic@(Rule R.App _) cf ctx e@(App {}) = removeRedundantVars proveApp tactic cf ctx e
+proveExpr tactic@(Rule R.App _) cf ctx e@(App id _) = removeRedundantVars proveApp' tactic cf ctx e
+
 proveExpr Auto cf ctx e = proveByAuto cf ctx e
 proveExpr tactic _ _ e = \_ _ -> errorFrom (SynExpr e) $ "Could not apply tactic to given "
   ++ printExprHead e ++ " expression. Tactic: '" ++ printTacticHead tactic ++ "'"

@@ -286,12 +286,25 @@ hamFactor :: Factor -> Html
 hamFactor (Const c)= [shamlet|
 <mn>#{c}
 |]
-hamFactor (Arg x a)= [shamlet|
+hamFactor (Arg x [a])= [shamlet|
 <msup>
    <mi>#{x}
    <mn>#{a}
 |]  
+hamFactor (Arg x a) = [shamlet|
+<msup>
+   <mi>#{x}
+   <mrow>
+     <mo form="prefix" stretchy="false">(
+     ^{hamListInt a}
+     <mo form="postfix" stretchy="false">)
+|]  
 
+hamListInt :: [Int] -> Html
+hamListInt xs = toHtml $ intersperse
+  [shamlet|<mo separator="true">,|]
+  (map (\x -> [shamlet|<mn>#{x}|]) xs)
+  
 hamCoeff :: Coeff -> Html
 hamCoeff (Coeff id label comment idx) = [shamlet|
 <msubsup>

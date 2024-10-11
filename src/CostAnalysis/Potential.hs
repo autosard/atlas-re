@@ -37,8 +37,7 @@ data AnnRanges = AnnRanges {
 
 
 data Potential = Potential {
-  -- Supported types
-  --types :: [Type],
+  kind :: PotentialKind,
 
   bearesPotential :: Type -> Bool,
   

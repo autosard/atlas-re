@@ -41,8 +41,8 @@ data ProofState = ProofState {
   _varIdGen :: Int,
   _constraints :: [Constraint],
   _fnDerivs :: [Derivation],
-  _solution :: Map Coeff Rational
-  }
+  _solution :: Map Coeff Rational,
+  _potential :: Potential}
 
 makeLenses ''ProofState
 
@@ -53,11 +53,9 @@ data AnalysisMode
   | Infer 
 
 data ProofEnv = ProofEnv {
-  _potential :: Potential,
   _tactics :: Map Id Tactic,
   _analysisMode :: AnalysisMode,
-  _incremental :: Bool
-  }
+  _incremental :: Bool}
 
 data ProofErr
   = DerivErr SourceError
@@ -116,7 +114,13 @@ freshVar = VarTerm <$> genVarId
 withPotAndId :: (Potential -> Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn)
   -> (Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn)
 withPotAndId f label comment args = do
-  pot <- view potential
+  pot <- use potential
+  id <- genAnnId
+  return $ f pot id label comment args
+
+withId :: (Potential -> Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn)
+  -> (Potential -> Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn)
+withId f pot label comment args = do
   id <- genAnnId
   return $ f pot id label comment args
 
@@ -130,12 +134,15 @@ fromAnn label comment ann = do
 
 enrichWithDefaults :: Bool -> Text -> Text -> RsrcAnn -> ProveMonad RsrcAnn
 enrichWithDefaults neg label comment ann = do
-  pot <- view potential
+  pot <- use potential
   id <- genAnnId
   return $ P.enrichWithDefaults pot neg id label comment ann
   
 defaultAnn :: Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn
 defaultAnn = withPotAndId P.defaultAnn
+
+defaultAnn' :: Potential -> Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn
+defaultAnn' = withId P.defaultAnn
 
 defaultNegAnn :: Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn
 defaultNegAnn = withPotAndId P.defaultNegAnn

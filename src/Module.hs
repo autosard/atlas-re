@@ -52,7 +52,7 @@ load loadPath modName fn = do
     todos
   return (parsedMod, contents)
 
-buildModule :: FilePath -> Text -> Maybe PotentialMode -> StateT LoaderState IO ParsedModule
+buildModule :: FilePath -> Text -> Maybe PotentialKind -> StateT LoaderState IO ParsedModule
 buildModule loadPath modName potential = do
   fqn@(moduleName, definitionName) <- popTodo
   def <- retrieveDefinition fqn
@@ -65,7 +65,7 @@ buildModule loadPath modName potential = do
 
   ifM someTodos (buildModule loadPath modName potential) (moduleFromLoaderState modName potential)
 
-moduleFromLoaderState :: Text -> Maybe PotentialMode -> StateT LoaderState IO ParsedModule
+moduleFromLoaderState :: Text -> Maybe PotentialKind -> StateT LoaderState IO ParsedModule
 moduleFromLoaderState modName potential = do
   LoaderState{..} <- get
   let edgeList = map (\(key, keys) -> (key, key, S.toList keys)) $ M.toList dependents

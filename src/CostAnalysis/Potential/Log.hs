@@ -5,9 +5,11 @@ import CostAnalysis.Potential.Log.Constraints
 import CostAnalysis.Potential.Log.Optimization
 import CostAnalysis.Potential.Log.Weakening
 import CostAnalysis.Potential(Potential(Potential))
+import Ast (PotentialKind(Logarithmic))
 
 pot :: Args -> Potential
 pot args = Potential
+  Logarithmic
   bearesPotential
   (ranges args)
   rsrcAnn

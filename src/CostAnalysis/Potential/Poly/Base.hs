@@ -5,7 +5,6 @@ module CostAnalysis.Potential.Poly.Base where
 import Prelude hiding ((^))
 import Data.Text(Text)
 import qualified Data.Text as T
-import Data.List(intercalate)
 import qualified Data.Set as S
 
 import Primitive(Id)
@@ -16,14 +15,9 @@ import CostAnalysis.RsrcAnn
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Constraint (Constraint)
 
-data Args = Args { degree :: !Int }
+newtype Args = Args { degree :: Int }
 
 types = [ListType]
-
-notNested :: Type -> Bool
-notNested (TAp List [t]) | isBase t = True
-notNested (TAp Tree [t]) | isBase t = True
-notNested _ = True
 
 nestedError = error "Polynomial potential only supports simple (non-nested) inductive data types."
 
@@ -64,6 +58,6 @@ cExternal _ = []
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = error "pure coefficients are not supported with polynomial potential."
 printBasePot (Mixed factors) = concatMap printFactor (S.toDescList factors)
-  where printFactor (Arg x a) = if a > 1 then
+  where printFactor (Arg x [a]) = if a > 1 then
           "[" ++ T.unpack x ++ " " ++ show a ++  "]" else
           T.unpack x

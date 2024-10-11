@@ -21,7 +21,7 @@ import Language.Haskell.TH.Quote
 import qualified CostAnalysis.Coeff as Coeff
 
 data Atom = Lit !Int | Var !String | SetVar !String
-data Factor = Atom !Atom | Arg !Atom !Atom
+data Factor = Atom !Atom | Arg !Atom !Atom | Args !Atom ![Atom]
 
 newtype Idx = Idx [Factor]
 
@@ -55,7 +55,8 @@ factorToQ :: Factor -> Q Exp
 factorToQ (Atom a@(Lit _)) = [| S.singleton (Coeff.Const $(atomToQ a)) |]
 factorToQ (Atom a@(SetVar _)) = atomToQ a
 factorToQ (Atom a@(Var _)) = [| S.singleton (Coeff.Const $(atomToQ a)) |]
-factorToQ (Arg x y) = [| S.singleton (Coeff.Arg $(atomToQ x) $(atomToQ y)) |] 
+factorToQ (Arg x y) = [| S.singleton (Coeff.Arg $(atomToQ x) [$(atomToQ y)]) |]
+factorToQ (Args x ys) = [| S.singleton (Coeff.Arg $(atomToQ x) $(ListE <$> mapM atomToQ ys)) |] 
 
 atomToQ :: Atom -> Q Exp
 atomToQ (Lit n) = [|n|]
@@ -68,10 +69,19 @@ pIdx :: Parser Idx
 pIdx = Idx <$> sepBy pFactor (symbol ",") <* eof
 
 pFactor :: Parser Factor
-pFactor = try pArg <|> Atom <$> pAtom 
+pFactor = try pArg
+  <|> try pArgs
+  <|> Atom <$> pAtom 
 
 pArg :: Parser Factor
 pArg = Arg <$> pAtom <* symbol "^" <*> pAtom
+
+pArgs :: Parser Factor
+pArgs = do
+  x <- pAtom
+  symbol "^"
+  args <- pParens (sepBy pAtom (symbol ","))
+  return $ Args x args
 
 pAtom = Lit <$> pNumber <|>
         SetVar <$> pSetIdentifier <|>
@@ -82,6 +92,8 @@ symbol = void . L.symbol space
 
 pNumber :: Parser Int
 pNumber = lexeme L.decimal
+
+pParens = between (symbol "(") (symbol ")")
 
 lexeme :: Parser a -> Parser a
 lexeme = L.lexeme space

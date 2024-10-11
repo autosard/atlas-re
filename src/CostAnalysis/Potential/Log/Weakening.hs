@@ -8,8 +8,6 @@ import qualified Data.Vector as V
 import Data.Set(Set)
 import Data.Maybe(catMaybes)
 import qualified Data.Set as S
-import qualified Data.List as L
-import Data.Containers.ListUtils
 
 import Primitive(Id, infinity)
 import CostAnalysis.Rules(WeakenArg(..))
@@ -17,10 +15,8 @@ import CostAnalysis.Potential(ExpertKnowledge)
 import CostAnalysis.Coeff
 import CostAnalysis.AnnIdxQuoter(mix)
 
-import Debug.Trace (trace)
+
 import CostAnalysis.RsrcAnn (isPure)
-import qualified Data.Map as M
-traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
 
 supportedArgs = S.fromList [Mono, L2xy]
 

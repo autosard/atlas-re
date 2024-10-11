@@ -15,6 +15,7 @@ import Typing.Type
 import CostAnalysis.Coeff
 import Data.List.Extra (groupSort)
 import Ast
+import qualified Data.Text as T
 
 
 exp :: Id
@@ -61,7 +62,7 @@ cConst (Node {}) q q'
 cConst (Tuple x1 x2) q q' | (isTree . getType) x1 && (isTree . getType) x2
   = Left "Tuple with more then one tree type are not supported."
                           | otherwise = Right $ annLikeUnify q q'
-cConst (Ast.Const id _) q q' = error $ "Constructor " ++ show id ++ " not supported."
+cConst (Ast.Const id _) q q' = Left $ "Constructor '" ++ T.unpack id ++ "' not supported."
       
 cMatch :: RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint])
 -- leaf  

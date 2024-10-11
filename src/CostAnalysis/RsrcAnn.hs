@@ -22,6 +22,7 @@ import CostAnalysis.Coeff
 import Typing.Type
 import Control.Monad.State
 import CostAnalysis.Constraint
+import Ast (PotentialKind)
 
 data RsrcAnn = RsrcAnn {
   _annId :: Int,
@@ -65,13 +66,16 @@ class AnnLike a where
   (!?) :: (Index i, Show i) => a -> i -> Term
   definedIdxs :: a -> Set CoeffIdx
   argVars :: a -> [Id]
+  annEmpty :: a -> Bool
 
 instance AnnLike RsrcAnn where
   argVars = annVars
   definedIdxs q = q^.coeffs
+  annEmpty = S.null . _coeffs
   (!) ann idx = case coeffForIdx ann (toIdx idx) of
     Just q -> CoeffTerm q
     Nothing -> error $ "Invalid index '" ++ show idx ++ "' for annotation '" ++ show ann ++ "'."
+  (!?) :: (Index i, Show i) => RsrcAnn -> i -> Term
   (!?) ann idx = case coeffForIdx ann (toIdx idx) of
     Just q -> CoeffTerm q
     Nothing -> ConstTerm 0
@@ -104,10 +108,12 @@ instance Index (Set Factor) where
 data PointWiseOp = PointWiseOp {
   opArgs :: [Id] ,
   opCoeffs :: Map CoeffIdx Term}
+  deriving(Show)
 
 instance AnnLike PointWiseOp where
   argVars = opArgs
   definedIdxs op =  M.keysSet $ opCoeffs op
+  annEmpty = M.null . opCoeffs
   (!) op idx = opCoeffs op M.! toIdx idx
   (!?) op idx = fromMaybe (ConstTerm 0) $ opCoeffs op M.!? toIdx idx
 
@@ -138,6 +144,13 @@ annLikeUnify :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
 annLikeUnify q p = concat [eq (q!?idx) (p!?substitute (argVars q) (argVars p) idx)
                           | idx <- S.toList $ definedIdxs q]
 
+annLikeMap :: (AnnLike a, AnnLike b) => a -> b -> (CoeffIdx -> Maybe CoeffIdx) -> PointWiseOp
+annLikeMap q p unifier = PointWiseOp (argVars p) (M.fromList coeffs')
+  where coeffs' = [ (idx', q!idx)
+                  | (Just idx', idx) <- zip (map unify qs) qs]
+        unify = unifier . substitute (argVars q) (argVars p)
+        qs = S.toList $ definedIdxs q
+                  
 annLikeUnify' :: (AnnLike a, AnnLike b) => a -> b -> [Id] -> [Constraint]
 annLikeUnify' q p qArgs = concat [eq (q!?idx) (p!?substitute qArgs (argVars p) idx)
                                  | idx <- S.toList $ definedIdxs q]
@@ -159,7 +172,8 @@ infixl 9 !!
 
 data FunRsrcAnn = FunRsrcAnn {
   withCost :: (RsrcAnn, RsrcAnn),
-  withoutCost :: (RsrcAnn, RsrcAnn)}
+  withoutCost :: (RsrcAnn, RsrcAnn),
+  potentialKind :: PotentialKind}
   deriving(Show)
 
 type RsrcSignature = Map Id FunRsrcAnn

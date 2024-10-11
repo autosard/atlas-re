@@ -33,15 +33,16 @@ type Number = Int
 
 data Module a = Module {
   name :: Text,
-  modPotential :: Maybe PotentialMode,
+  modPotential :: Maybe PotentialKind,
   mutRecGroups :: [[Id]],
   defs :: Map Id (FunDef a)
 } 
 
-data PotentialMode
+data PotentialKind
   = Logarithmic
   | Polynomial
-  deriving (Eq, Show)
+  | LinLog
+  deriving (Eq, Ord, Show)
 
 fns :: Module a -> [FunDef a]
 fns = M.elems . defs
@@ -60,6 +61,13 @@ modReplaceDefs (Module {..}) newDefs = Module {defs = withIds, ..}
         withIds = M.fromList $ zip (map fnId newDefs) newDefs
 
 data FunDef a = FunDef (XFunAnn a) Id [Id] (Expr a)
+
+hasPotential :: FunDef Positioned -> Bool
+hasPotential fn = case tfCostAnn (funAnn fn) of
+                    Just (Cost True _) -> False
+                    Just _ -> True
+                    Nothing -> True
+
 
 newtype Literal = LitNum Number
   deriving (Eq, Show)
@@ -326,7 +334,8 @@ data ParsedFunAnn = ParsedFunAnn {
   pfLoc :: SourcePos,
   pfFqn :: Fqn,
   pfType :: Maybe Scheme,
-  pfCostAnn :: Maybe CostAnnotation}
+  pfCostAnn :: Maybe CostAnnotation,
+  pfPotential :: Maybe PotentialKind}
   deriving (Eq, Show)
 
 data Parsed
@@ -359,7 +368,8 @@ data TypedFunAnn = TypedFunAnn {
   tfLoc :: SourcePos,
   tfFqn :: Fqn,
   tfType :: Scheme,
-  tfCostAnn :: Maybe CostAnnotation}
+  tfCostAnn :: Maybe CostAnnotation,
+  tfPotential :: Maybe PotentialKind}
   deriving (Eq, Show)
 
 data ExprSrc = Loc SourcePos | DerivedFrom SourcePos

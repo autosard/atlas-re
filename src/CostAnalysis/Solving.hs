@@ -25,6 +25,7 @@ import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
 import Control.Monad.Extra (whenJust)
 
+import Debug.Trace
 
 class Encodeable a where
   toZ3 :: (MonadOptimize z3) => a -> z3 AST

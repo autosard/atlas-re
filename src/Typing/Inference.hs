@@ -315,6 +315,7 @@ tiProg ctx mod = do
   where extendAnn t ann = TypedFunAnn{
           tfType = t,
           tfCostAnn = pfCostAnn ann,
+          tfPotential = pfPotential ann,
           tfLoc = pfLoc ann,
           tfFqn = pfFqn ann}
         extendDef :: (ParsedFunDef, Scheme, TypedExpr) -> TypedFunDef
