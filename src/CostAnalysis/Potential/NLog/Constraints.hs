@@ -57,41 +57,16 @@ addShiftDefL q_ x q' y = extendAnn q_ $
                 Nothing -> (idx:left, right)
         (zeroIdxs, nonZeroIdxs) = foldr split ([],[]) (mixes q')
 
-  -- [eqs
-  -- | idx <- mixes q',
-  --   let (a,b,c) = facForVar3 idx y,
-  --   let a' = a - 1,
-  --   let eqs = case shiftLogs b c of
-  --        Just (b', c') -> do
-  --           q1 <- def [mix|x^(a, b', c')|]
-  --           if a > 0 then do
-  --              q2 <- def [mix|x^(a',b', c')|]
-  --              return $ concatMap (`eq` (q'!idx)) [q1, q2]
-  --           else return $ eq q1 (q'!idx)
-  --        Nothing -> return $ eq (q'!idx) (ConstTerm 0)]
+lengthOneConst :: RsrcAnn -> RsrcAnn -> Either String [Constraint]
+lengthOneConst q q' = Right $ eqSum (q!constCoeff) [
+  q'![mix|exp^(1,0,0)|],
+  q'![mix|exp^(0,0,1)|],
+  q'![mix|exp^(1,0,1)|],
+  q'![mix||]]
 
 cConst :: PositionedExpr -> RsrcAnn -> RsrcAnn -> Either String [Constraint]
--- cConst (Nil {}) q q'
---   = Right $ eq (q!constCoeff) (q'!constCoeff)
---     -- : [zero (q'!idx)
---     --   | idx <- mixes q',
---     --     idx /= constCoeff]
-cConst Leaf q q'
--- n >= 0
---  = Right $ eq (q!constCoeff) (q'!constCoeff)
--- n > 0
-    = Right $ eqSum (q!constCoeff)
-      [
-        q'![mix|exp^(1,0,0)|],
-        q'![mix|exp^(0,0,1)|],
-        q'![mix|exp^(1,0,1)|],
-        q'![mix||]
-      ]
-      -- ++ zero (q'![mix|exp^(0,1,0)|])
-      -- ++ zero (q'![mix|exp^(1,1,0)|])
-        
--- cConst (Cons {}) q q' = Right $ addShiftL q q' 
--- cConst (Tuple (Var x1) (Var x2)) q q' = Right $ annLikeUnify' q q' [x1,x2]
+cConst (Nil {}) q q' = lengthOneConst q q'
+cConst Leaf q q' = lengthOneConst q q'
 cConst (Ast.Const id _) _ _ = Left $ "Constructor '" ++ T.unpack id ++ "' not supported."
 
 cMatch :: RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint])
@@ -101,9 +76,6 @@ cMatch q r x [] = extendAnn r $
             q![mix|x^(0,0,1)|],
             q![mix|x^(1,0,1)|],
             q![mix||]]) <$> def [mix||]]
-  -- [(`eq` (q!idx)) <$> def idx
-  -- | idx <- mixes q,
-  --   onlyVarsOrConst idx (argVars r)]
 -- cons                   
 cMatch q p x [l] = addShiftDefL p l q x
 
