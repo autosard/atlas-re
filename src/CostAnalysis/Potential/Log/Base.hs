@@ -83,6 +83,6 @@ printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = "rk(" ++ T.unpack x ++ ")"
 printBasePot (Mixed factors) = "log(" ++ intercalate " + " (map printFactor (S.toDescList factors)) ++ ")"
   where printFactor (Const c) = show c
-        printFactor (Arg x [a]) = if a /= 1 then show a ++ T.unpack x else T.unpack x
+        printFactor (Arg x [a]) = if a /= 1 then show a ++ "|" ++ T.unpack x ++ "|" else "|" ++ T.unpack x ++ "|"
 
 

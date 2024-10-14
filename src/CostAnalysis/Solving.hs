@@ -16,7 +16,6 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Foldable (foldrM)
 import Lens.Micro.Platform
-import Data.Maybe (isJust)
 
 import Primitive(Id)
 import CostAnalysis.Coeff
@@ -24,8 +23,8 @@ import CostAnalysis.RsrcAnn
 import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
 import Control.Monad.Extra (whenJust)
-
-import Debug.Trace
+import Data.Containers.ListUtils (nubOrd)
+import Data.Maybe (isJust)
 
 class Encodeable a where
   toZ3 :: (MonadOptimize z3) => a -> z3 AST
@@ -70,16 +69,16 @@ evalCoeffs m qs = do
             Just r -> return (q, r)
             Nothing -> error $ "Evaluation of coefficient " ++ show q ++ " in z3 model failed."
 
-assertConstraints :: Bool -> MonadOptimize z3 => [Constraint] -> z3 (Map String Constraint)
-assertConstraints track = foldrM (go track) M.empty
+assertConstraints :: MonadOptimize z3 => Bool -> [Constraint] -> z3 (Map String Constraint)
+assertConstraints track = foldrM (go track) M.empty 
   where go :: Bool -> MonadOptimize z3 => Constraint -> Map String Constraint -> z3 (Map String Constraint)
-        go True c tracker = do
-          optimizeAssert =<< toZ3 c
-          return tracker
-        go False c@(Ge (VarTerm k) (ConstTerm 0)) tracker = do
-          optimizeAssert =<< toZ3 c
-          return tracker
         go False c tracker = do
+          optimizeAssert =<< toZ3 c
+          return tracker
+        go True c@(Ge (VarTerm k) (ConstTerm 0)) tracker = do
+          optimizeAssert =<< toZ3 c
+          return tracker
+        go True c tracker = do
           p <- mkFreshBoolVar "c"
           pS <- astToString p
           c' <- toZ3 c

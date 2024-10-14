@@ -173,7 +173,8 @@ infixl 9 !!
 data FunRsrcAnn = FunRsrcAnn {
   withCost :: (RsrcAnn, RsrcAnn),
   withoutCost :: (RsrcAnn, RsrcAnn),
-  potentialKind :: PotentialKind}
+  potentialKind :: PotentialKind,
+  worstCase :: Bool}
   deriving(Show)
 
 type RsrcSignature = Map Id FunRsrcAnn

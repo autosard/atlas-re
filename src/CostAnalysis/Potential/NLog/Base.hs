@@ -61,10 +61,10 @@ printBasePot (Pure x) = error "pure coefficients are not supported with linear l
 printBasePot (Mixed factors) = printBasePot' $ S.toDescList factors
 
 printBasePot' :: [Factor] -> String
-printBasePot' [Arg x [a1, a2, a3]] = printA1 ++ " * " ++ printA2 ++ printA3
+printBasePot' [Arg x [a1, a2, a3]] = printA1 ++ printA2 ++ printA3
   where printIfPos a s = if a > 0 then s else ""
-        printA1 = printIfPos a1 $ T.unpack x
-        printA2 = printIfPos a2 $ "log(" ++ T.unpack x ++ ")"
-        printA3 = printIfPos a3 $ "log(" ++ T.unpack x ++ " + 1" ++ ")"
+        printA1 = printIfPos a1 $ "|" ++ T.unpack x ++ "|"
+        printA2 = printIfPos a2 $ " * log(|" ++ T.unpack x ++ "|)"
+        printA3 = printIfPos a3 $ " * log(|" ++ T.unpack x ++ "| + 1" ++ ")"
 
  

@@ -303,10 +303,10 @@ proveApp' tactic cf ctx e@(App id _) q q' = do
   pot <- kind <$> use potential
   let f = fnSig M.! id
   let otherPot = potentialKind f
-  if pot == otherPot then
-    proveApp tactic cf ctx e q q'
-  else
+  if pot /= otherPot || worstCase f then
     proveAppForeign tactic cf ctx e q q'
+  else
+    proveApp tactic cf ctx e q q'
 
 proveExpr :: Prove PositionedExpr Derivation
 -- manual tactic

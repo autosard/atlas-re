@@ -59,5 +59,5 @@ printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = error "pure coefficients are not supported with polynomial potential."
 printBasePot (Mixed factors) = concatMap printFactor (S.toDescList factors)
   where printFactor (Arg x [a]) = if a > 1 then
-          "[" ++ T.unpack x ++ " " ++ show a ++  "]" else
-          T.unpack x
+          "[|" ++ T.unpack x ++ "| " ++ show a ++  "]" else
+          "|" ++ T.unpack x ++ "|"

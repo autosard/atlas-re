@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module CostAnalysis.Analysis where
 
@@ -138,7 +139,7 @@ coeffsMatchAnnotation :: Id -> (Ast.FunRsrcAnn, Maybe Ast.FunRsrcAnn) -> ProveMo
 coeffsMatchAnnotation fn (annWithCost, annWithoutCost) = do
   ann <- (M.! fn) <$> use sig
   let (p, p') = withoutCost ann
-  let (q, q') = withCost ann  
+  let (q, q') = withCost ann
   tellSigCs (annLikeConstEq q $ fst annWithCost)
   tellSigCs (annLikeConstEq q' $ snd annWithCost)
   tellSigCs . concat . maybeToList $ (annLikeConstEq p . fst <$> annWithoutCost)
@@ -170,7 +171,10 @@ genFunRsrcAnn kind rhs fun = do
   from <- defaultAnn "Q" "fn" argsFrom
   fromCf <- defaultAnn "P" "fn cf" argsFrom
   toCf <- defaultAnn "P'" "fn cf" argsTo
-  return $ FunRsrcAnn (from, to) (fromCf, toCf) kind
+  let wc = case  (tfCostAnn . funAnn) fun of
+        Just (Cost {worstCase,..}) -> worstCase
+        _coeffs -> False
+  return $ FunRsrcAnn (from, to) (fromCf, toCf) kind wc
 
   
 addSigCs :: [Id] -> Solution -> ProveMonad ()
