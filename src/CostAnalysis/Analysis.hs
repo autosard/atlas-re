@@ -29,7 +29,7 @@ import CostAnalysis.RsrcAnn (RsrcAnn, RsrcSignature,
                              FunRsrcAnn(..), annLikeConstEq,
                              annLikeConstLe, PointWiseOp,
                              opCoeffs, annLikeGeZero)
-import CostAnalysis.Potential(symbolicCost, cOptimize, Potential (cExternal))
+import CostAnalysis.Potential(symbolicCost, cOptimize, Potential (cExternal, bearesPotential))
 import CostAnalysis.Potential.Kind (fromKind)
 import Data.List (sortBy, groupBy)
 import Data.Ord (comparing)
@@ -72,8 +72,8 @@ groupFnsByPotential mod = map (\l -> (fst . head $ l, map snd l)) . groupBy ((==
 instantiatePotFns :: [(PotentialKind, [FunDef Positioned])] -> ProveMonad PotFnMap
 instantiatePotFns groups = M.fromList <$> mapM go groups
   where go (kind, fns) = do
-          args <- liftEither $ argsForRHS fns
           let pot = fromKind kind
+          args <- liftEither $ argsForRHS fns pot
           ann <- defaultAnn' pot "Q'" "fn" args
           return (kind, (pot, ann))
 
@@ -186,15 +186,16 @@ addSigCs fns solution = do
 
 
 -- TODO this breaks RandSplayTree.delete because splay max returns a tuple not a single tree.  
-argsForRHS :: [FunDef Positioned] -> Either ProofErr [(Id, Type)]
-argsForRHS fns = if sameLength args then
+argsForRHS :: [FunDef Positioned] -> Potential -> Either ProofErr [(Id, Type)]
+argsForRHS fns pot = if sameLength args then
                    case args of
                      [] -> Right []
                      arg:args -> Right arg
                  else
                    Left . DerivErr $ SourceError (tfLoc $ funAnn (head fns))
                    "Cost analysis requries all involved functions to have the same return type to guarantee a consistent potential function."
-  where args = [ snd . ctxFromFn $ fn
+  where args = [ filter (bearesPotential pot . snd) $
+                 snd . ctxFromFn $ fn
                | fn <- fns,
                  hasPotential fn]
         sameLength l = and [length l1 == length l2

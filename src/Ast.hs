@@ -404,11 +404,9 @@ ctxFromFn (FunDef ann _ args _) =
   let (tFrom, tTo) = splitFnType . toType . tfType $ ann
       tsFrom = splitProdType tFrom
       tsTo = splitProdType tTo
-      ctxFrom = zip args tsFrom in
-    case tsTo of
-      [t] -> (ctxFrom, [("e", tTo)])
-      ts -> let ctxTo = zip (map (\n -> T.pack $ "e" ++ show n) [1..]) ts in
-        (ctxFrom, ctxTo)
+      ctxFrom = zip args tsFrom 
+      ctxTo = zip (map (\n -> T.pack $ "e" ++ show n) [1..]) tsTo in
+    (ctxFrom, ctxTo)
       
     
 

@@ -14,7 +14,7 @@ import CostAnalysis.Coeff
 import Ast 
 
 exp :: Id
-exp = "e"
+exp = "e1"
 
 -- additative shift
 addShiftL :: Int -> RsrcAnn -> RsrcAnn -> [Constraint] 

@@ -16,4 +16,4 @@ cOptimize q q' = sum $ M.elems $ M.mapWithKey weighted (opCoeffs (symbolicCost (
 coeffWeight :: CoeffIdx -> Rational
 coeffWeight (Mixed factors) = Prelude.product $ map facWeight (S.toList factors)
   where facWeight :: Factor -> Rational
-        facWeight (Arg _ [a]) = 1 --(a+1) ^ 2
+        facWeight (Arg _ [a]) = 1 --fromIntegral (a+1) ^ 2

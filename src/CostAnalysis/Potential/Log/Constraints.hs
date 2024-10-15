@@ -19,7 +19,7 @@ import qualified Data.Text as T
 
 
 exp :: Id
-exp = "e"
+exp = "e1"
 
 cConst :: PositionedExpr -> RsrcAnn -> RsrcAnn -> Either String [Constraint]
 cConst (Leaf {}) q q'
@@ -138,7 +138,7 @@ cLetBinding q p = extendAnn p $
 cLetBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> AnnArray -> Id -> [CoeffIdx] -> (RsrcAnn, [Constraint])
 cLetBody q r p p' ps' x bdes = extendAnn r $
   [(`eq` (q!y)) <$> def y | y <- ys]
-  ++ [(`eq` (p'!("e" :: Id))) <$> def x]
+  ++ [(`eq` (p'!exp)) <$> def x]
   -- move const
   ++ [(`eq` sum [p'![mix|2|], minus (p![mix|2|]), q![mix|2|]]) <$> def [mix|2|]]
   ++ [(`eq` (p'!pIdx)) <$> def [mix|x^d,e|]

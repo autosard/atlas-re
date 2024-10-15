@@ -23,8 +23,8 @@ import CostAnalysis.RsrcAnn
 import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
 import Control.Monad.Extra (whenJust)
-import Data.Containers.ListUtils (nubOrd)
-import Data.Maybe (isJust)
+import Data.Maybe (isNothing)
+
 
 class Encodeable a where
   toZ3 :: (MonadOptimize z3) => a -> z3 AST
@@ -118,7 +118,7 @@ solve fns = do
 createSolverZ3 :: MonadOptimize z3 => RsrcSignature -> [Constraint] -> [Constraint] -> Maybe Term -> z3 (Map String Constraint)
 createSolverZ3 sig typingCs extCs optiTarget = do
   assertCoeffsPos (typingCs ++ extCs)
-  tracker <- assertConstraints (isJust optiTarget) $ typingCs ++ extCs
+  tracker <- assertConstraints (isNothing optiTarget) $ typingCs ++ extCs
   case optiTarget of
     Just target -> do
       target' <- toZ3 target

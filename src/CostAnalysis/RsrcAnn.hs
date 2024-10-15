@@ -141,8 +141,11 @@ annLikeEq q op = concat [eq (q!?idx) (op!?idx)
 
 
 annLikeUnify :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
-annLikeUnify q p = concat [eq (q!?idx) (p!?substitute (argVars q) (argVars p) idx)
-                          | idx <- S.toList $ definedIdxs q]
+annLikeUnify q p = concat [eq (q!?idx) p'
+                          | idx <- S.toList $ definedIdxs q,
+                            let p' = if length (argVars q) == length (argVars p)
+                                  then p!?substitute (argVars q) (argVars p) idx
+                                  else ConstTerm 0]
 
 annLikeMap :: (AnnLike a, AnnLike b) => a -> b -> (CoeffIdx -> Maybe CoeffIdx) -> PointWiseOp
 annLikeMap q p unifier = PointWiseOp (argVars p) (M.fromList coeffs')

@@ -135,7 +135,7 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf ctx e@(Let x e1 e2) q q' = do
     let ctxE2' = M.insert x (getType e1) ctxE2
       
     p_ <- emptyAnn "P" "let:base e1" gamma
-    p' <- defaultAnn  "P'"  "let:base e1" [("e", getType e1)]
+    p' <- defaultAnn  "P'"  "let:base e1" [("e1", getType e1)]
     r_ <- emptyAnn "R" "let:base e2" (M.toAscList ctxE2')
       
     let rangeD = rangeA . ranges $ pot
@@ -145,7 +145,7 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf ctx e@(Let x e1 e2) q q' = do
     let combis = forAllCombinations pot q (M.keys ctxE2) (rangeD, rangeE) x
       
     ps_ <- annArrayFromIdxs combis "P" (M.toAscList ctxE1)
-    ps'_ <- annArrayFromIdxs combis "P'" [("e", getType e1)]
+    ps'_ <- annArrayFromIdxs combis "P'" [("e1", getType e1)]
 
     let (p, pCs) = cLetBinding pot q p_ 
     deriv1 <- proveExpr t1 cf ctxE1 e1 p p'
