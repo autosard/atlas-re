@@ -3,6 +3,7 @@ module CostAnalysis.Weakening where
 import Prelude hiding (sum)
 import Data.Set(Set)
 import qualified Data.Set as S
+import qualified Data.Map as M
 import qualified Data.Vector as V
 import Lens.Micro.Platform
 import Data.Maybe(catMaybes)
@@ -14,10 +15,11 @@ import CostAnalysis.Potential
 import CostAnalysis.ProveMonad
 import CostAnalysis.Rules
 import CostAnalysis.Coeff
+import Control.Monad.Extra (concatMapM)
 
 farkas :: Potential -> Set WeakenArg -> Set CoeffIdx -> RsrcAnn -> RsrcAnn -> ProveMonad [Constraint]
 farkas pot wArgs idxs p q = do
-  let (as, bs) = genExpertKnowledge pot wArgs (map fst (p^.args)) idxs
+  let (as, bs) = genExpertKnowledge pot wArgs (p^.args) idxs
       ps = V.fromList [p!?idx | idx <- S.toList idxs]
       qs = V.fromList [q!?idx | idx <- S.toList idxs]
   fs <- mapM (const freshVar) bs
@@ -27,6 +29,13 @@ farkas pot wArgs idxs p q = do
   return $ concatMap concat [fsPos, farkasA, farkasB]
   where prods fs as = zipWith prod2 fs (map (ConstTerm . fromIntegral) as)
         fas fs as i = prods fs ([row V.! i | row <- V.toList as])
+
+ctxFarkas :: Set WeakenArg -> AnnCtx -> AnnCtx -> ProveMonad [Constraint]
+ctxFarkas wArgs ps qs = concatMapM go $ M.toAscList qs
+  where go (t, p) = do
+          pot <- potForType t <$> use potentials
+          let q = qs M.! t
+          farkas pot wArgs (p^.coeffs) q p
         
 merge :: [ExpertKnowledge] -> ExpertKnowledge
 merge ks = let (vs1, vs2) = unzip ks in (V.concat vs1, concat vs2)

@@ -21,6 +21,7 @@ import Control.Monad.Extra
 
 import Primitive(Id)
 import Ast
+import Typing.Type
 import StaticAnalysis(calledFunctions)
 import qualified Parsing.Program(parseModule)
 import qualified System.FilePath.Glob as Glob
@@ -39,12 +40,12 @@ load :: FilePath -> Text -> Maybe Text -> IO (ParsedModule, Text)
 load loadPath modName fn = do
   moduleFile <- findModule loadPath (T.unpack modName)
   contents <- TextIO.readFile moduleFile
-  let (potential, parsedDefs) = Parsing.Program.parseModule moduleFile modName contents
+  let (potentials, parsedDefs) = Parsing.Program.parseModule moduleFile modName contents
   let defsWithFqn = M.fromList $ zip (map (pfFqn . funAnn) parsedDefs) parsedDefs
   let todos = case fn of
         Just id -> [(modName, id)]
         Nothing -> M.keys defsWithFqn
-  parsedMod <- evalStateT (buildModule loadPath modName potential) $
+  parsedMod <- evalStateT (buildModule loadPath modName potentials) $
     LoaderState
     M.empty
     defsWithFqn
@@ -52,8 +53,8 @@ load loadPath modName fn = do
     todos
   return (parsedMod, contents)
 
-buildModule :: FilePath -> Text -> Maybe PotentialKind -> StateT LoaderState IO ParsedModule
-buildModule loadPath modName potential = do
+buildModule :: FilePath -> Text -> Map Type PotentialKind -> StateT LoaderState IO ParsedModule
+buildModule loadPath modName potentials = do
   fqn@(moduleName, definitionName) <- popTodo
   def <- retrieveDefinition fqn
   addVertex fqn
@@ -63,9 +64,9 @@ buildModule loadPath modName potential = do
   pushTodos $ dependencies `S.difference` processed
   markAsProcessed fqn
 
-  ifM someTodos (buildModule loadPath modName potential) (moduleFromLoaderState modName potential)
+  ifM someTodos (buildModule loadPath modName potentials) (moduleFromLoaderState modName potentials)
 
-moduleFromLoaderState :: Text -> Maybe PotentialKind -> StateT LoaderState IO ParsedModule
+moduleFromLoaderState :: Text -> Map Type PotentialKind -> StateT LoaderState IO ParsedModule
 moduleFromLoaderState modName potential = do
   LoaderState{..} <- get
   let edgeList = map (\(key, keys) -> (key, key, S.toList keys)) $ M.toList dependents

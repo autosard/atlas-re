@@ -77,7 +77,7 @@ run Options{..} RunOptions{..} = do
         (Right (mod, fn)) -> (mod, Just fn)
   (normalizedProg, contents) <- liftIO $ loadMod searchPath target
   let positionedProg = contextualizeMod normalizedProg
-  --liftIO $ putStrLn (printProg positionedProg)
+  liftIO $ putStrLn (printProg positionedProg)
   when (null . mutRecGroups $ positionedProg) $ do
     logError $ "Module does not define the requested function."
     liftIO exitFailure
@@ -112,9 +112,8 @@ printSolution sig potFns solution = do
   mapM_ printFnBound (M.keys sig)
   where printFnBound fn = do
           let fnSig = sig M.! fn
-          let pot = fst $ potFns M.! potentialKind fnSig
           putStrLn $ T.unpack fn ++ ":"
-          putStrLn $ "\t" ++ printBound pot (withCost fnSig) solution
+          putStrLn $ "\t" ++ printBound potFns (withCost fnSig) solution
         printPotFn (kind, (pot, rhs)) = do
           putStrLn $ "\t" ++ printRHS pot rhs solution ++ " (" ++ show kind ++ ")"
           

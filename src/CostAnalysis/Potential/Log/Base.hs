@@ -8,6 +8,7 @@ import Data.List(intercalate)
 import qualified Data.Set as S
 import Data.Text(Text)
 import qualified Data.Text as T
+import qualified Data.Map as M
 
 import Primitive(Id)
 import CostAnalysis.Coeff
@@ -16,20 +17,19 @@ import CostAnalysis.RsrcAnn
 import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential (AnnRanges(..))
-import Constants
 import CostAnalysis.Constraint
 
 data Args = Args {
   aRange :: ![Int],
   bRange :: ![Int]}
 
-types = [TreeType]
+potType = TreeType
 
-bearesPotential :: Type -> Bool
-bearesPotential (TupleT x y) = if matchesTypes x types && matchesTypes y types
-  then error "Tuples with two tree types are not supported."
-  else matchesTypes x types /= matchesTypes y types
-bearesPotential t = matchesTypes t types
+-- bearesPotential :: Type -> Bool
+-- bearesPotential (TupleT x y) = if matchesTypes x types && matchesTypes y types
+--   then error "Tuples with two tree types are not supported."
+--   else matchesTypes x types /= matchesTypes y types
+-- bearesPotential t = matchesTypes t types
 
 ranges :: Args -> AnnRanges
 ranges potArgs = AnnRanges (aRange potArgs) (bRange potArgs) (-1:bRange potArgs)
@@ -46,16 +46,14 @@ combi' _ z [] = z
 combi' rangeA z (x:xs) = [if a > 0 then x^a:y else y
                        | a <- rangeA, y <- combi' rangeA z xs]
 
-rsrcAnn :: Int -> Text -> Text -> [(Id, Type)] -> ([Int], [Int]) -> RsrcAnn
+rsrcAnn :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> RsrcAnn
 rsrcAnn id label comment args ranges =
-  RsrcAnn id args' label comment $ S.fromList (rankCoeffs ++ logCoeffs)
-  where rankCoeffs = [Pure x | (x,i) <- zip vars [1..]]
+  RsrcAnn id args label comment $ S.fromList (rankCoeffs ++ logCoeffs)
+  where rankCoeffs = [Pure x | (x,i) <- zip args [1..]]
         logCoeffs = [idx
-                    | idx <- combi ranges vars,
+                    | idx <- combi ranges args,
                       idxSum idx > 0,
                       idx /= [mix|1|]]
-        args' = filter (\(x, t) -> bearesPotential t) args
-        vars = map fst args'
 
                
 constCoeff :: CoeffIdx
@@ -73,11 +71,9 @@ forAllCombinations q xs (rangeA, rangeB) x =
     let xIdx = S.singleton $ x^d]
 
 -- equal ranks
-cExternal :: FunRsrcAnn -> [Constraint]
-cExternal funAnn = let (q, q') = withCost funAnn in
-  concat [eq (q!idx) (q'!substitute (argVars q) (argVars q') idx)
-         | idx <- pures q]
-
+cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
+cExternal q q' = concat [eq (q!idx) (q'!substitute (argVars q) (argVars q') idx)
+                        | idx <- pures q]
 
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = "rk(" ++ T.unpack x ++ ")"

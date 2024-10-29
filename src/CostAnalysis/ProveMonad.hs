@@ -5,6 +5,7 @@
 
 module CostAnalysis.ProveMonad where
 
+import Prelude hiding (sum)
 import Control.Monad.RWS
 import Control.Monad.Except
 import Lens.Micro.Platform
@@ -19,7 +20,7 @@ import qualified Data.Tree as T
 
 import Primitive(Id)
 import CostAnalysis.RsrcAnn
-import CostAnalysis.Potential hiding (rsrcAnn, emptyAnn)
+import CostAnalysis.Potential hiding (rsrcAnn, emptyAnn, defaultAnn)
 import CostAnalysis.Rules
 import qualified CostAnalysis.Potential as P
 import qualified CostAnalysis.RsrcAnn as R
@@ -30,8 +31,13 @@ import Typing.Type
 import Ast
 import CostAnalysis.Coeff
 import Data.List(intercalate)
+import Data.Foldable (foldrM)
+
+import Debug.Trace
 
 type Derivation = Tree RuleApp
+
+
 
 data ProofState = ProofState {
   _sig :: RsrcSignature,
@@ -42,7 +48,7 @@ data ProofState = ProofState {
   _constraints :: [Constraint],
   _fnDerivs :: [Derivation],
   _solution :: Map Coeff Rational,
-  _potential :: Potential}
+  _potentials :: P.PotFnMap}
 
 makeLenses ''ProofState
 
@@ -73,7 +79,7 @@ runProof env state proof = let rws = runExceptT proof in
 
 
 
-conclude :: Rule -> Bool -> RsrcAnn -> RsrcAnn -> [Constraint] -> PositionedExpr -> [Derivation] -> ProveMonad Derivation
+conclude :: Rule -> Bool -> AnnCtx -> AnnCtx -> [Constraint] -> PositionedExpr -> [Derivation] -> ProveMonad Derivation
 conclude rule cf q q' cs e derivs = do
   tellCs cs
   return $ T.Node (ExprRuleApp rule cf q q' cs e) derivs
@@ -111,49 +117,113 @@ genVarId = do
 freshVar :: ProveMonad Term
 freshVar = VarTerm <$> genVarId
 
-withPotAndId :: (Potential -> Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn)
-  -> (Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn)
-withPotAndId f label comment args = do
-  pot <- use potential
+potForType :: Type -> Map Type (Potential, RsrcAnn) -> Potential
+potForType t m = fst $ m M.! t
+
+annForType :: Type -> Map Type (Potential, RsrcAnn) -> RsrcAnn
+annForType t m = snd $ m M.! t
+
+withPotAndId :: Type -> (Potential -> Int -> Text -> Text -> [Id] -> RsrcAnn)
+  -> (Text -> Text -> [Id] -> ProveMonad RsrcAnn)
+withPotAndId t f label comment args = do
+--  pots <- use potentials 
+--  let (pot, _) = pots M.! t
+  pot <- potForType t <$> use potentials
   id <- genAnnId
   return $ f pot id label comment args
 
-withId :: (Potential -> Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn)
-  -> (Potential -> Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn)
+withId :: (Potential -> Int -> Text -> Text -> [Id] -> RsrcAnn)
+  -> (Potential -> Text -> Text -> [Id] -> ProveMonad RsrcAnn)
 withId f pot label comment args = do
   id <- genAnnId
   return $ f pot id label comment args
 
-emptyAnn :: Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn
-emptyAnn = withPotAndId P.emptyAnn
+emptyAnn :: Type -> Text -> Text -> [Id] -> ProveMonad RsrcAnn
+emptyAnn t = withPotAndId t P.emptyAnn
+
+emptyAnnCtx :: Map Type [Id] -> Text -> Text -> ProveMonad AnnCtx
+emptyAnnCtx args label comment = do
+  anns <- mapM (\(t, vars) -> (t, ) <$> emptyAnn t label comment vars) $ M.toAscList args
+  return $ M.fromList anns
 
 fromAnn :: Text -> Text -> RsrcAnn -> ProveMonad RsrcAnn
 fromAnn label comment ann = do
   id <- genAnnId
   return $ R.fromAnn id label comment ann
 
-enrichWithDefaults :: Bool -> Text -> Text -> RsrcAnn -> ProveMonad RsrcAnn
-enrichWithDefaults neg label comment ann = do
-  pot <- use potential
-  id <- genAnnId
-  return $ P.enrichWithDefaults pot neg id label comment ann
-  
-defaultAnn :: Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn
-defaultAnn = withPotAndId P.defaultAnn
+enrichWithDefaults :: Bool -> Text -> Text -> AnnCtx -> ProveMonad AnnCtx
+enrichWithDefaults neg label comment ctx = do
+  let qs = M.toAscList ctx
+  M.fromList <$> mapM (enrichAnnWithDefaults neg label comment) qs
 
-defaultAnn' :: Potential -> Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn
+enrichAnnWithDefaults :: Bool -> Text -> Text -> (Type, RsrcAnn) -> ProveMonad (Type, RsrcAnn)
+enrichAnnWithDefaults neg label comment (t, ann) = do
+  pot <- potForType t <$> use potentials
+  id <- genAnnId
+  return (t, P.enrichWithDefaults pot neg id label comment ann)
+
+defaultAnnCtx :: Map Type [Id] -> Text -> Text -> ProveMonad AnnCtx
+defaultAnnCtx args label comment = do
+  anns <- mapM (\(t, vars) -> (t, ) <$> defaultAnn t label comment vars) $ M.toAscList args
+  return $ M.fromList anns
+  
+defaultAnn :: Type -> Text -> Text -> [Id] -> ProveMonad RsrcAnn
+defaultAnn t = withPotAndId t P.defaultAnn
+
+defaultAnn' :: Potential -> Text -> Text -> [Id] -> ProveMonad RsrcAnn
 defaultAnn' = withId P.defaultAnn
 
-defaultNegAnn :: Text -> Text -> [(Id, Type)] -> ProveMonad RsrcAnn
-defaultNegAnn = withPotAndId P.defaultNegAnn
+defaultNegAnn :: Type -> Text -> Text -> [Id] -> ProveMonad RsrcAnn
+defaultNegAnn t = withPotAndId t P.defaultNegAnn
 
-
-
-annArrayFromIdxs :: [CoeffIdx] -> Text -> [(Id, Type)] -> ProveMonad AnnArray
-annArrayFromIdxs idxs label args = do
+annArrayFromIdxs :: Type -> [CoeffIdx] -> Text -> [Id] -> ProveMonad AnnArray
+annArrayFromIdxs t idxs label args = do
   anns <- mapM annFromIdx idxs
   return $ M.fromList anns
-  where annFromIdx idx = (idx,) <$> emptyAnn (label' idx) "" args
+  where annFromIdx idx = (idx,) <$> emptyAnn t (label' idx) "" args
         printIdx idx = "(" ++ intercalate "," (map show (S.toAscList idx)) ++ ")"
-        label' idx = Te.concat [label, "_", Te.pack $ show idx]
-  
+        label' idx = Te.concat [label, "_", Te.pack $ show idx]  
+
+ctxCLetBindingBase :: AnnCtx -> AnnCtx -> ProveMonad (AnnCtx, [Constraint])
+ctxCLetBindingBase qs ps_ = foldrM go (M.empty, []) (M.keys qs)
+  where go :: Type -> (AnnCtx, [Constraint]) -> ProveMonad (AnnCtx, [Constraint])
+        go t (ps, css) = do
+          pot <- potForType t <$> use potentials
+          let (p', cs) = cLetBindingBase pot (qs M.! t) (ps_ M.! t)
+          return (M.insert t p' ps, css ++ cs)
+
+ctxCLetBodyBase :: AnnCtx -> AnnCtx -> AnnCtx -> ProveMonad (AnnCtx, [Constraint])
+ctxCLetBodyBase qs rs_ ps' = foldrM go (M.empty, []) (M.keys qs)
+  where go :: Type -> (AnnCtx, [Constraint]) -> ProveMonad (AnnCtx, [Constraint])
+        go t (ps, css) = do
+          pot <- potForType t <$> use potentials
+          let (p', cs) = cLetBodyBase pot (qs M.! t) (rs_ M.! t) (ps' M.! t)
+          return (M.insert t p' ps, css ++ cs)
+
+ctxEqPlus :: AnnCtx -> AnnCtx -> Term -> ProveMonad (AnnCtx, [Constraint])
+ctxEqPlus qs_ ps t = do
+  pots <- use potentials
+  let annsWithPot = map (\(t, q) -> (t, potForType t pots, q, ps M.! t)) $ M.toAscList qs_
+  let (qs, css) = unzip $ map eqExceptConst' annsWithPot
+  let qConsts = map (\(t, q) -> (t, constCoeff (potForType t pots))) qs
+  let pConstTerms = M.elems $ M.mapWithKey (\t p -> p!?constCoeff (potForType t pots)) ps
+  let (qs', cs) = extendCtx (M.fromList qs) $ (`sumEqSum` (t:pConstTerms)) <$> defMulti qConsts
+  return (qs', concat css ++ cs)
+  where eqExceptConst' (t, pot, q, p) = let (q', cs) = eqExceptConst pot q p in
+          ((t, q'), cs)
+        sumEqSum ts rs = eq (sum ts) (sum rs)
+
+ctxCExternal :: AnnCtx -> AnnCtx -> ProveMonad [Constraint]
+ctxCExternal qs qs' = foldrM go [] $ zip (M.assocs qs) (M.assocs qs')
+  where go :: ((Type, RsrcAnn), (Type, RsrcAnn)) -> [Constraint] -> ProveMonad [Constraint]
+        go ((t, q), (_, q')) css = do
+          pot <- potForType t <$> use potentials
+          let cs = cExternal pot q q'
+          return $ css ++ cs
+
+ctxCOptimize :: AnnCtx -> AnnCtx -> ProveMonad Term
+ctxCOptimize qs qs' = sum <$> mapM go (zip (M.assocs qs) (M.assocs qs'))
+  where go :: ((Type, RsrcAnn), (Type, RsrcAnn)) -> ProveMonad Term
+        go ((t, q), (_, q')) = do
+          pot <- potForType t <$> use potentials
+          return $ cOptimize pot q q'

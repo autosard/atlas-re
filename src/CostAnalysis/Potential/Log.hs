@@ -10,7 +10,6 @@ import Ast (PotentialKind(Logarithmic))
 pot :: Args -> Potential
 pot args = Potential
   Logarithmic
-  bearesPotential
   (ranges args)
   rsrcAnn
   constCoeff

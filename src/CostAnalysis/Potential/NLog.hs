@@ -10,7 +10,6 @@ import Ast (PotentialKind(LinLog))
 pot :: Args -> Potential
 pot args = Potential
   LinLog
-  bearesPotential
   ranges
   rsrcAnn
   constCoeff

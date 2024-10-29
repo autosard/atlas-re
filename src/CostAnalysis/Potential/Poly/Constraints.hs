@@ -18,8 +18,8 @@ exp = "e1"
 
 -- additative shift
 addShiftL :: Int -> RsrcAnn -> RsrcAnn -> [Constraint] 
-addShiftL k q q' = let [x] = map fst $ _args q
-                       [y] = map fst $ _args q' in
+addShiftL k q q' = let [x] = _args q
+                       [y] = _args q' in
   concat [if idxSum idx < k then
              eqSum (q!idx) [q'!?[mix|_is,y^j|], q'!?[mix|_is,y^j'|]]
           else
@@ -40,12 +40,12 @@ addShiftDefL k q_ x q' y = extendAnn q_ $
     let j' = j+1,
     let is = varsExcept idx [y]]
 
-cConst :: Args -> PositionedExpr -> RsrcAnn -> RsrcAnn -> Either String [Constraint]
+cConst :: Args -> PositionedExpr -> RsrcAnn -> RsrcAnn -> [Constraint]
 cConst potArgs (Nil {}) q q'
-  = Right $ eq (q![mix||]) (q'!?[mix||])
+  = eq (q![mix||]) (q'!?[mix||])
   -- cons
-cConst potArgs (Cons {}) q q' = Right $ addShiftL (degree potArgs) q q' 
-cConst _ (Tuple (Var x1) (Var x2)) q q' = Right $ annLikeUnify' q q' [x1,x2]
+cConst potArgs (Cons {}) q q' = addShiftL (degree potArgs) q q' 
+cConst _ (Tuple (Var x1) (Var x2)) q q' = annLikeUnify' q q' [x1,x2]
 cConst _ constr _ _ = error $ show constr
 
 cMatch :: Args -> RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint])

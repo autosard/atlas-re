@@ -10,8 +10,7 @@ import Data.Map(Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Tree as T
-import Data.Maybe(maybeToList, fromMaybe)
-import Data.Function(on)
+import Data.Maybe(maybeToList, mapMaybe)
 import Lens.Micro.Platform
 
 import Primitive(Id)
@@ -21,89 +20,79 @@ import CostAnalysis.ProveMonad
 import CostAnalysis.Constraint hiding (and)
 import SourceError
 import CostAnalysis.Rules
-import Control.Monad.Except (liftEither)
+import Control.Monad.Except (MonadError (throwError))
 import CostAnalysis.Deriv
 import CostAnalysis.Coeff
 import Typing.Type
-import CostAnalysis.RsrcAnn (RsrcAnn, RsrcSignature,
-                             FunRsrcAnn(..), annLikeConstEq,
-                             annLikeConstLe, PointWiseOp,
-                             opCoeffs, annLikeGeZero)
-import CostAnalysis.Potential(symbolicCost, cOptimize, Potential (cExternal, bearesPotential))
+import CostAnalysis.RsrcAnn ( RsrcSignature,
+                             FunRsrcAnn(..), ctxConstEq,
+                             ctxConstLe, PointWiseOp,
+                             opCoeffs, ctxGeZero)
+import CostAnalysis.Potential(ctxSymbolicCost, PotFnMap)
 import CostAnalysis.Potential.Kind (fromKind)
-import Data.List (sortBy, groupBy)
-import Data.Ord (comparing)
+
+import Debug.Trace hiding (traceShow)
+
+traceShow x = trace (show x) x
+
+defaultPotentialMap = M.fromList
+  [
+    (ListType, Polynomial),
+    (TreeType, Logarithmic)
+  ]
 
 
 
+initPotentials :: PositionedModule -> Map Type PotentialKind -> ProveMonad PotFnMap
+initPotentials mod kinds = do 
+  potFnArgs <- argsForRHS (M.elems $ defs mod) (M.keys kinds)
+  M.fromList <$> mapM go (M.toAscList potFnArgs)
+  where go (t, args) = do
+          let pot = fromKind (kinds M.! t)
+          potFn <- defaultAnn' pot "Q'" "fn" args
+          return (t, (pot, potFn))
+                         
 
 analyzeModule :: ProofEnv -> PositionedModule
   -> IO (Either SourceError (Derivation, RsrcSignature, Either [Constraint] (Solution, PotFnMap)))
 analyzeModule env mod = do
-  let state = ProofState M.empty [] [] 0 0 [] [] M.empty (fromKind $ fallbackPot mod)
+  
+  let state = ProofState M.empty [] [] 0 0 [] [] M.empty M.empty
   (result, state', solution) <- runProof env state (analyzeModule' mod)
   let deriv = T.Node (ProgRuleApp mod) (state'^.fnDerivs)
   case result of
     Left (DerivErr srcErr) -> return (Left srcErr)
     Left (UnsatErr core) -> return (Right (deriv, state'^.sig, Left core))
-    Right potFns -> return (Right (deriv, state'^.sig, Right (solution, potFns)))
+    Right _ -> return (Right (deriv, state'^.sig, Right (solution, state'^.potentials)))
 
-type PotFnMap = Map PotentialKind (Potential, RsrcAnn)
 
-analyzeModule' :: PositionedModule -> ProveMonad PotFnMap
+
+analyzeModule' :: PositionedModule -> ProveMonad ()
 analyzeModule' mod = do
-  potentials <- instantiatePotFns . groupFnsByPotential $ mod
+  pots <- initPotentials mod $ modPotentialMap mod `M.union` defaultPotentialMap
+  potentials %= const pots
   incr <- view incremental
   if incr then
-    mapM_ (analyzeBindingGroup mod potentials) (mutRecGroups mod)
+    mapM_ (analyzeBindingGroup mod) (mutRecGroups mod)
   else
-    analyzeBindingGroup mod potentials (concat $ mutRecGroups mod)
-  return potentials
+    analyzeBindingGroup mod (concat $ mutRecGroups mod)
 
-fallbackPot mod = fromMaybe Logarithmic (modPotential mod) 
-
-groupFnsByPotential :: PositionedModule -> [(PotentialKind, [FunDef Positioned])]
-groupFnsByPotential mod = map (\l -> (fst . head $ l, map snd l)) . groupBy ((==) `on` fst) . sortBy (comparing fst) $ fnsWithPot
-  where fnsWithPot = map (\fn -> (getPot fn, fn)) (M.elems . defs $ mod)
-        getPot fn = case (tfPotential . funAnn) fn of
-                      Nothing -> fallbackPot mod
-                      Just pot -> pot
-
-instantiatePotFns :: [(PotentialKind, [FunDef Positioned])] -> ProveMonad PotFnMap
-instantiatePotFns groups = M.fromList <$> mapM go groups
-  where go (kind, fns) = do
-          let pot = fromKind kind
-          args <- liftEither $ argsForRHS fns pot
-          ann <- defaultAnn' pot "Q'" "fn" args
-          return (kind, (pot, ann))
-
-analyzeBindingGroup :: PositionedModule -> PotFnMap -> [Id]  -> ProveMonad ()
-analyzeBindingGroup mod pots fns = do
-  derivs <- mapM (analyzeFn mod pots . (defs mod M.!)) fns
+analyzeBindingGroup :: PositionedModule -> [Id]  -> ProveMonad ()
+analyzeBindingGroup mod fns = do
+  derivs <- mapM (analyzeFn mod . (defs mod M.!)) fns
   fnDerivs %= (++derivs)
   solution <- solve fns
   addSigCs fns solution
   tell solution
 
-analyzeFn :: PositionedModule -> PotFnMap -> PositionedFunDef -> ProveMonad Derivation
-analyzeFn mod pots fn = do
-  let kind = fromMaybe (fallbackPot mod) $ tfPotential $ funAnn fn
-  let pot = pots M.! kind
-  potential .= fst pot
-  createAnn kind (snd pot) fn
+analyzeFn :: PositionedModule -> PositionedFunDef -> ProveMonad Derivation
+analyzeFn mod fn@(Fn id _ _) = do
+  ann <- genFunRsrcAnn fn
+  sig %= M.insert id ann
   analyzeFn' fn
-         
-createAnn :: PotentialKind -> RsrcAnn -> PositionedFunDef -> ProveMonad ()
-createAnn kind rhs def@(Fn fn _ _) = do
-  let rhs' = case tfCostAnn $ funAnn def of
-        Just (Cost True _) -> Nothing
-        _notWorstCase -> Just rhs
-  ann <- genFunRsrcAnn kind rhs' def
-  sig %= M.insert fn ann
 
 analyzeFn' :: PositionedFunDef -> ProveMonad Derivation
 analyzeFn' def@(FunDef funAnn fnId _ body) = do
-  pot <- use potential
   mode <- view analysisMode
   
   case mode of
@@ -112,27 +101,28 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
       Just (Cost True cost) -> coeffsMatchAnnotation fnId ((cost, M.empty) , Nothing)
       _noCoeff -> errorFrom (SynExpr body) "Missing resource coefficient annotation for check-coeffs mode."
     CheckCost -> case tfCostAnn funAnn of
-      Just Cost {..} -> cmpCostWithAnn annLikeConstEq fnId costCoeffs
+      Just Cost {..} -> cmpCostWithAnn ctxConstEq fnId costCoeffs
       _noCost -> errorFrom (SynExpr body) "Missing cost annotation for check-cost mode."
     ImproveCost -> case tfCostAnn funAnn of
       Just Cost {..} -> do
-        cmpCostWithAnn annLikeConstLe fnId costCoeffs
+        cmpCostWithAnn ctxConstLe fnId costCoeffs
         addSimpleCostOptimization fnId
       noCost_ -> errorFrom (SynExpr body) "Missing cost annotation for improve-cost mode."
     Infer -> do
       s <- use sig
-      tellCs (cExternal pot $ s M.! fnId)
+      let (q, q') = withCost $ s M.! fnId
+      tellCs <$> ctxCExternal q q'
       addFullCostOptimization fnId
   proveFun def
 
 
-type CostComparision = PointWiseOp -> Map CoeffIdx Rational -> [Constraint]
+type CostComparision = Map Type PointWiseOp -> Map Type CoeffAnnotation -> [Constraint]
 
-cmpCostWithAnn :: CostComparision -> Id -> Map CoeffIdx Rational -> ProveMonad ()
+cmpCostWithAnn :: CostComparision -> Id -> Map Type CoeffAnnotation -> ProveMonad ()
 cmpCostWithAnn cmp fn costAnn = do
   ann <- (M.! fn) <$> use sig
-  let cost = symbolicCost (withCost ann)
-  tellSigCs $ annLikeGeZero cost
+  let cost = ctxSymbolicCost (withCost ann)
+  tellSigCs $ ctxGeZero cost
   tellSigCs $ cmp cost costAnn
 
 coeffsMatchAnnotation :: Id -> (Ast.FunRsrcAnn, Maybe Ast.FunRsrcAnn) -> ProveMonad ()
@@ -140,41 +130,45 @@ coeffsMatchAnnotation fn (annWithCost, annWithoutCost) = do
   ann <- (M.! fn) <$> use sig
   let (p, p') = withoutCost ann
   let (q, q') = withCost ann
-  tellSigCs (annLikeConstEq q $ fst annWithCost)
-  tellSigCs (annLikeConstEq q' $ snd annWithCost)
-  tellSigCs . concat . maybeToList $ (annLikeConstEq p . fst <$> annWithoutCost)
-  tellSigCs . concat . maybeToList $ (annLikeConstEq p' . snd <$> annWithoutCost)
+  tellSigCs (ctxConstEq q $ fst annWithCost)
+  tellSigCs (ctxConstEq q' $ snd annWithCost)
+  tellSigCs . concat . maybeToList $ (ctxConstEq p . fst <$> annWithoutCost)
+  tellSigCs . concat . maybeToList $ (ctxConstEq p' . snd <$> annWithoutCost)
 
 addSimpleCostOptimization :: Id -> ProveMonad ()
 addSimpleCostOptimization fn = do
   ann <- (M.! fn) <$> use sig
-  let cost = symbolicCost (withCost ann)
-  let costTerm = sum $ M.elems (opCoeffs cost)
+  let cost = ctxSymbolicCost (withCost ann)
+  let costTerm = sum $ map (sum . M.elems . opCoeffs) $ M.elems cost
   optiTargets %= (costTerm:)
 
   
 addFullCostOptimization :: Id -> ProveMonad ()
 addFullCostOptimization fn = do
-  pot <- use potential
   ann <- (M.! fn) <$> use sig
   let (q, q') = withCost ann
-  let costTerm = cOptimize pot q q'
+  costTerm <- ctxCOptimize q q'
   optiTargets %= (costTerm:)
-  
 
-genFunRsrcAnn :: PotentialKind -> Maybe RsrcAnn -> PositionedFunDef -> ProveMonad CostAnalysis.RsrcAnn.FunRsrcAnn
-genFunRsrcAnn kind rhs fun = do
-  let (argsFrom, argsTo) = ctxFromFn fun
-  to <- case rhs of
-    Just ann -> return ann
-    Nothing -> emptyAnn "Q'" "fn" argsTo
-  from <- defaultAnn "Q" "fn" argsFrom
-  fromCf <- defaultAnn "P" "fn cf" argsFrom
-  toCf <- defaultAnn "P'" "fn cf" argsTo
-  let wc = case  (tfCostAnn . funAnn) fun of
-        Just (Cost {worstCase,..}) -> worstCase
-        _coeffs -> False
-  return $ FunRsrcAnn (from, to) (fromCf, toCf) kind wc
+argsWithPot :: (Map Type [Id], Map Type [Id]) -> ProveMonad (Map Type [Id], Map Type [Id])
+argsWithPot (from, to) = do
+  pots <- use potentials
+  let from' = M.restrictKeys from $ M.keysSet pots
+  let to' = M.restrictKeys to $ M.keysSet pots
+  return (from', to')
+
+genFunRsrcAnn :: PositionedFunDef -> ProveMonad CostAnalysis.RsrcAnn.FunRsrcAnn
+genFunRsrcAnn fn = do
+  (argsFrom, argsTo) <- argsWithPot $ fnArgsByType fn
+  pots <- use potentials
+  to <- if hasPotential fn then
+          return $ M.mapWithKey (\t _ -> annForType t pots) argsTo
+        else
+          emptyAnnCtx argsTo "Q'" "fn" 
+  from <- defaultAnnCtx argsFrom "Q" "fn" 
+  fromCf <- defaultAnnCtx argsFrom "P" "fn cf" 
+  toCf <- defaultAnnCtx argsTo "P'" "fn cf" 
+  return $ FunRsrcAnn (from, to) (fromCf, toCf) (hasPotential fn)
 
   
 addSigCs :: [Id] -> Solution -> ProveMonad ()
@@ -184,20 +178,21 @@ addSigCs fns solution = do
   sigCs %= (++cs)
   where go coeff = eq (CoeffTerm coeff) (ConstTerm (solution M.! coeff))
 
-
--- TODO this breaks RandSplayTree.delete because splay max returns a tuple not a single tree.  
-argsForRHS :: [FunDef Positioned] -> Potential -> Either ProofErr [(Id, Type)]
-argsForRHS fns pot = if sameLength args then
-                   case args of
-                     [] -> Right []
-                     arg:args -> Right arg
-                 else
-                   Left . DerivErr $ SourceError (tfLoc $ funAnn (head fns))
-                   "Cost analysis requries all involved functions to have the same return type to guarantee a consistent potential function."
-  where args = [ filter (bearesPotential pot . snd) $
-                 snd . ctxFromFn $ fn
-               | fn <- fns,
-                 hasPotential fn]
+argsForRHS :: [FunDef Positioned] -> [Type] -> ProveMonad (Map Type [Id])
+argsForRHS fns ts = M.fromList <$> mapM checkArgs ts
+  where checkArgs :: Type -> ProveMonad (Type, [Id])
+        checkArgs t = do
+          let args = mapMaybe (M.!? t) rhsArgsByType
+          if sameLength args then
+            case args of
+              [] -> return (t, [])
+              sample:_ -> return (t, sample)
+          else throwError $ DerivErr $ SourceError (tfLoc $ funAnn (head fns))
+               "Cost analysis requries all involved functions to have the same return type to guarantee a consistent potential function."
+        rhsArgsByType :: [Map Type [Id]]
+        rhsArgsByType = [ snd $ fnArgsByType fn
+                        | fn <- fns,
+                          hasPotential fn]
         sameLength l = and [length l1 == length l2
                            | l1 <- l, l2 <- l]
 

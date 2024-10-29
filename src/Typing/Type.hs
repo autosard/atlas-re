@@ -12,18 +12,19 @@ newtype Tyvar = Tyvar Id
   deriving (Eq, Ord, Show)
 
 data Tycon = Num
+  | Base
   | Bool
   | Tree
   | List
   | Prod
   | Arrow
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 data Type
   = TVar Tyvar
   | TAp Tycon [Type]
   | TGen Int
-  deriving (Eq)
+  deriving (Eq, Ord)
 
 instance Show Type where
   show (TVar (Tyvar var)) = T.unpack var
@@ -57,6 +58,15 @@ countTrees (TAp Tree _) = 1
 countTrees (TAp Prod ts) = sum . map countTrees $ ts
 countTrees _ = 0
 
+isProd :: Type -> Bool
+isProd (TAp Prod _) = True
+isProd _ = False
+
+isSimpleProd :: Type -> Bool
+isSimpleProd (TAp Prod ts) = (not . any isProd) ts
+isSimpleProd _ = False
+
+
 isTree :: Type -> Bool
 isTree (TAp Tree _) = True
 isTree _ = False
@@ -83,9 +93,9 @@ matchesTypes :: Type -> [Type] -> Bool
 matchesTypes t = any (matchesType t)
 
 pattern TreeType :: Type
-pattern TreeType <- TAp Tree _
-  where TreeType = TAp Tree [TGen 0]
+pattern TreeType <- TAp Tree [TAp Base []]
+  where TreeType = TAp Tree [TAp Base []]
 
 pattern ListType :: Type
-pattern ListType <- TAp List _
-  where ListType = TAp List [TGen 0]
+pattern ListType <- TAp List [TAp Base []]
+  where ListType = TAp List [TAp Base []]

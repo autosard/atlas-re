@@ -18,7 +18,7 @@ import qualified Data.Map as M
 import Data.Map(Map)
 import qualified Data.Set as S
 import Data.Ratio((%))
-import Data.Maybe(isJust)
+import Data.Maybe(isJust, fromMaybe)
 import Data.Functor(($>))
 
 import Prelude hiding (LT, EQ, GT, LE)
@@ -59,13 +59,20 @@ quantifyTypeVar id = do
 type Parser = ParsecT Void Text (RWS ParserContext () ParserState)
 
 
-pModule :: Parser (Maybe PotentialKind, [ParsedFunDef])
+pModule :: Parser (Map Type PotentialKind, [ParsedFunDef])
 pModule = sc *> do
-  pot <- optional $ pPragma "POTENTIAL" pPotentialMode
-  (pot,) <$> manyTill pFunc eof
+  pots <- optional $ pPragma "POTENTIAL" pPotentialMapping
+  (fromMaybe M.empty pots,) <$> manyTill pFunc eof
 
 pPragma :: Text -> Parser a -> Parser a
 pPragma word p = between (symbol "{-#") (symbol "#-}") $ symbol word *> p
+
+pPotentialMapping :: Parser (Map Type PotentialKind)
+pPotentialMapping = M.fromList <$> pParens (sepBy (do
+  t <- pType
+  symbol ":"
+  pot <- pPotentialMode
+  return (t, pot)) (symbol ","))
 
 pPotentialMode :: Parser PotentialKind
 pPotentialMode = symbol "logarithmic" $> Logarithmic
@@ -80,7 +87,6 @@ data Signature = Signature
 
 pFunc :: Parser ParsedFunDef
 pFunc = do
-  potential <- optional $ pPragma "POTENTIAL" pPotentialMode
   pos <- getSourcePos
   sig <- optional pSignature
   funName <- pIdentifier
@@ -92,7 +98,7 @@ pFunc = do
   modName <- asks ctxModuleName
   let funFqn = (modName, funName)
   args <- manyTill pIdentifier (symbol "=")
-  FunDef (ParsedFunAnn pos funFqn _type cost potential) funName args <$> pExpr
+  FunDef (ParsedFunAnn pos funFqn _type cost) funName args <$> pExpr
 
 pSignature :: Parser Signature
 pSignature = do
@@ -104,16 +110,17 @@ pSignature = do
   return $ Signature name _type costAnn
 
 pCoeffAnn :: Parser CostAnnotation
-pCoeffAnn = symbol "|" *> pSqParens (do
+pCoeffAnn = do
+  symbol "|" 
   withCost <- pFunResourceAnn
-  costFree <- optional $ symbol "," *> pCurlyParens pFunResourceAnn
-  return $ Coeffs withCost costFree)
+  costFree <- optional $ pCurlyParens pFunResourceAnn
+  return $ Coeffs withCost costFree
 
 pCostAnn :: Parser CostAnnotation
 pCostAnn = do
   symbol "@"
   worstCase <- isJust <$> optional (symbol ">")
-  Cost worstCase . M.fromList <$> pCoefficients
+  Cost worstCase <$> pTypedResourceAnn
   
 pConstraints :: Parser ()
 pConstraints = void (try $ pParens (some pConstraint))
@@ -153,16 +160,23 @@ pTypeConst :: Parser Type
 pTypeConst
   = (`TAp` []) <$> (Bool <$ symbol "Bool")
   <|> (`TAp` []) <$> (Num <$ symbol "Num")
+  <|> (`TAp` []) <$> (Base <$ symbol "Base")
   <|> TAp <$> (Tree <$ symbol "Tree") <*> (singleton <$> pType)
   <|> TAp <$> (List <$ symbol "List") <*> (singleton <$> pType)
   <|> TAp Prod <$> pParens (sepBy1 pType pCross)
 
 
 pFunResourceAnn :: Parser FunRsrcAnn
-pFunResourceAnn = (,) <$> pResourceAnn <* pArrow <*> pResourceAnn
+pFunResourceAnn = (,) <$> pTypedResourceAnn <* pArrow <*> pTypedResourceAnn
 
-pResourceAnn :: Parser (Map Coeff.CoeffIdx Rational)
-pResourceAnn = M.fromList <$> pSqParens pCoefficients
+pTypedResourceAnn :: Parser (Map Type (Map Coeff.CoeffIdx Rational))
+pTypedResourceAnn = M.fromList <$> sepBy pResourceAnn (symbol ",")
+
+pResourceAnn :: Parser (Type, Map Coeff.CoeffIdx Rational)
+pResourceAnn = do
+  t <- pType
+  coeffs <- M.fromList <$> pSqParens pCoefficients
+  return (t, coeffs)
 
 pCoefficients :: Parser [(Coeff.CoeffIdx, Rational)]
 pCoefficients =  sepBy pCoefficient (symbol ",")
@@ -337,7 +351,7 @@ sc = L.space
 initState = ParserState 0 M.empty
 
 
-parseModule :: String -> Text -> Text -> (Maybe PotentialKind, [ParsedFunDef])
+parseModule :: String -> Text -> Text -> (Map Type PotentialKind, [ParsedFunDef])
 parseModule fileName moduleName contents = case fst $ evalRWS rws initEnv initState of
   Left errs -> error $ errorBundlePretty errs
   Right prog -> prog

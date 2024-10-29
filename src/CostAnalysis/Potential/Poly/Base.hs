@@ -21,12 +21,12 @@ types = [ListType]
 
 nestedError = error "Polynomial potential only supports simple (non-nested) inductive data types."
 
-bearesPotential :: Type -> Bool
-bearesPotential (TAp Prod ts) | all notNested ts = any bearesPotential ts
-                              | otherwise = nestedError
-bearesPotential (TAp List [t]) | notNested t = True
-                               | otherwise = nestedError
-bearesPotential _ = False
+-- bearesPotential :: Type -> Bool
+-- bearesPotential (TAp Prod ts) | all notNested ts = any bearesPotential ts
+--                               | otherwise = nestedError
+-- bearesPotential (TAp List [t]) | notNested t = True
+--                                | otherwise = nestedError
+-- bearesPotential _ = False
 
 ranges :: Args -> P.AnnRanges
 ranges potArgs = P.AnnRanges [0..degree potArgs] [] []
@@ -38,13 +38,11 @@ idxs d l = do
   nxt <- [0..d]
   (nxt :) <$> idxs (d - nxt) (l - 1) 
 
-rsrcAnn :: Int -> Text -> Text -> [(Id, Type)] -> ([Int], [Int]) -> RsrcAnn
+rsrcAnn :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> RsrcAnn
 rsrcAnn id label comment args (degrees, _) =
-  RsrcAnn id args' label comment $ S.fromList coeffs
-  where coeffs = map (mixed . S.fromList . zipWith (^) vars)
-          $ idxs (last degrees) (length vars)
-        args' = filter (\(x, t) -> bearesPotential t) args
-        vars = map fst args'
+  RsrcAnn id args label comment $ S.fromList coeffs
+  where coeffs = map (mixed . S.fromList . zipWith (^) args)
+          $ idxs (last degrees) (length args)
           
 constCoeff :: CoeffIdx
 constCoeff = [mix||]
@@ -52,8 +50,8 @@ constCoeff = [mix||]
 forAllCombinations :: Args -> RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 forAllCombinations potArgs q xs (rangeA, rangeB) x = filter (not . null . idxToSet ) $ varsRestrictMixes q xs
 
-cExternal :: FunRsrcAnn -> [Constraint]
-cExternal _ = []
+cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
+cExternal _ _ = []
 
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = error "pure coefficients are not supported with polynomial potential."

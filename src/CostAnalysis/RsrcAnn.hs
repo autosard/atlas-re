@@ -22,18 +22,24 @@ import CostAnalysis.Coeff
 import Typing.Type
 import Control.Monad.State
 import CostAnalysis.Constraint
-import Ast (PotentialKind)
+import Ast (PotentialKind, CoeffAnnotation)
+import Data.List.Extra (groupSort)
+import Data.Tuple (swap)
+import Data.Map.Merge.Strict (dropMissing, merge, zipWithMatched)
+import Data.Vector.Internal.Check (HasCallStack)
 
 data RsrcAnn = RsrcAnn {
   _annId :: Int,
-  _args :: [(Id, Type)],
+  _args :: [Id],
   _label :: Text, -- ^ Human readable label, e.g. \"Q\", \"P\", ...
-  _comment ::  Text, -- ^ Human readable comment, to trace the origin of the coefficient, e.g. "log".
+  _comment ::  Text, -- ^ Human readable comment, to trace the origin of the coefficient.
   _coeffs :: Set CoeffIdx -- ^ non zero coefficients
   }
   deriving (Eq, Show)
 
 makeLenses ''RsrcAnn
+
+type AnnCtx = Map Type RsrcAnn
 
 fromAnn :: Int -> Text -> Text -> RsrcAnn -> RsrcAnn
 fromAnn id label comment ann = RsrcAnn id (ann^.args) label comment (ann^.coeffs)
@@ -57,7 +63,7 @@ constRange q = S.toList $ foldr go S.empty (q^.coeffs)
         go coeff@(Mixed _) consts = S.insert (constFactor coeff) consts
 
 annVars :: RsrcAnn -> [Id]
-annVars = map fst . _args
+annVars = _args
 
 class AnnLike a where
   infixl 9 !
@@ -103,7 +109,7 @@ instance Index [Factor] where
   toIdx = mixed . S.fromList
 
 instance Index (Set Factor) where
-  toIdx factors = mixed factors
+  toIdx = mixed
 
 data PointWiseOp = PointWiseOp {
   opArgs :: [Id] ,
@@ -117,15 +123,16 @@ instance AnnLike PointWiseOp where
   (!) op idx = opCoeffs op M.! toIdx idx
   (!?) op idx = fromMaybe (ConstTerm 0) $ opCoeffs op M.!? toIdx idx
 
-annScalarMul :: RsrcAnn -> Term -> PointWiseOp
-annScalarMul q k = PointWiseOp (annVars q) $
-  M.fromList [(idx, prod2 (q!idx) k) | idx <- S.toList (q^.coeffs)]
 
-annAdd :: RsrcAnn -> PointWiseOp -> PointWiseOp
-annAdd q op | annVars q == opArgs op = PointWiseOp (annVars q) $
-  M.fromList [(idx, sum [q!?idx, op!?idx])
-             | idx <- S.toList $ (q^.coeffs) `S.union` definedIdxs op]
-            | otherwise = error $ "point wise operation not valid for annotation likes with different arguments." ++ show q ++ show (opCoeffs op)
+ctxScalarMul :: (AnnLike a) => Map Type a -> Term -> Map Type PointWiseOp
+ctxScalarMul qs k = M.map (`annLikeScalarMul` k) qs
+
+annLikeScalarMul :: (AnnLike a) => a -> Term -> PointWiseOp
+annLikeScalarMul q k = PointWiseOp (argVars q) $
+  M.fromList [(idx, prod2 (q!idx) k) | idx <- S.toList (definedIdxs q)]
+
+ctxAdd :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> Map Type PointWiseOp
+ctxAdd = merge dropMissing dropMissing (zipWithMatched (const annLikeAdd))
 
 annLikeAdd :: (AnnLike a, AnnLike b) => a -> b -> PointWiseOp
 annLikeAdd q p | argVars q == argVars p = PointWiseOp (argVars q) $
@@ -133,12 +140,15 @@ annLikeAdd q p | argVars q == argVars p = PointWiseOp (argVars q) $
                         | idx <- S.toList $ definedIdxs q `S.union` definedIdxs p]
                | otherwise = error "point wise operation not valid for annotation likes with different arguments."
 
+ctxEq :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> [Constraint]
+ctxEq qs ps = concat $ zipWith annLikeEq (M.elems qs) (M.elems ps)
 
 annLikeEq :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
 annLikeEq q op = concat [eq (q!?idx) (op!?idx)
                         | idx <- S.toList $ definedIdxs q `S.union` definedIdxs op]
 
-
+ctxUnify :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> [Constraint]
+ctxUnify qs ps = concat $ zipWith annLikeUnify (M.elems qs) (M.elems ps)
 
 annLikeUnify :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
 annLikeUnify q p = concat [eq (q!?idx) p'
@@ -158,9 +168,12 @@ annLikeUnify' :: (AnnLike a, AnnLike b) => a -> b -> [Id] -> [Constraint]
 annLikeUnify' q p qArgs = concat [eq (q!?idx) (p!?substitute qArgs (argVars p) idx)
                                  | idx <- S.toList $ definedIdxs q]
 
-annEq :: RsrcAnn -> RsrcAnn -> [Constraint]
-annEq q p | (length . _args $ q) /= (length . _args $ p) = error "Annotations with different lengths can not be equal."
-          | otherwise = annLikeEq q p
+ctxUnify' :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> [(Id, Type)] -> [Constraint]
+ctxUnify' qs ps' args = let x = groupSort $ map swap args in
+  concat $ zipWith3 annLikeUnify'
+  (map snd $ M.toAscList qs)
+  (map snd $ M.toAscList ps')
+  (map snd x)
 
 type AnnArray = Map CoeffIdx RsrcAnn
 
@@ -174,9 +187,8 @@ infixl 9 !!
   Nothing -> error $ "Invalid index '" ++ show k ++ "' for annotation array."
 
 data FunRsrcAnn = FunRsrcAnn {
-  withCost :: (RsrcAnn, RsrcAnn),
-  withoutCost :: (RsrcAnn, RsrcAnn),
-  potentialKind :: PotentialKind,
+  withCost :: (AnnCtx, AnnCtx),
+  withoutCost :: (AnnCtx, AnnCtx),
   worstCase :: Bool}
   deriving(Show)
 
@@ -190,6 +202,16 @@ def i = do
   coeffs %= (idx `S.insert`)
   ann <- get
   return $ ann!idx
+
+defMulti :: Index i => [(Type, i)] -> CoeffDef AnnCtx [Term]
+defMulti = mapM go
+  where go :: Index i => (Type, i) -> CoeffDef AnnCtx Term
+        go (t, i) = do
+          let idx = toIdx i
+          ix t . coeffs %= (idx `S.insert`)
+          ann <- gets (M.! t)
+          return $ ann!idx
+  
 
 defEntry :: CoeffIdx -> CoeffIdx -> CoeffDef AnnArray Term
 defEntry arrIdx coeffIdx = do
@@ -207,17 +229,30 @@ extendAnns arr defs = (arr', concat cs)
   where (cs, arr') = runState def arr
         def = sequence defs
 
+extendCtx :: AnnCtx -> CoeffDef AnnCtx [a] -> (AnnCtx, [a])
+extendCtx ctx def = (ctx', cs)
+  where (cs, ctx') = runState def ctx
+
 
 annLikeGeZero :: AnnLike a => a -> [Constraint]
-annLikeGeZero ann = concat [ge (ann!idx) $ ConstTerm 0 | idx <- S.toList $ definedIdxs ann]                   
+annLikeGeZero ann = concat [ge (ann!idx) $ ConstTerm 0 | idx <- S.toList $ definedIdxs ann]
 
-annLikeConstLe :: AnnLike a => a -> Map CoeffIdx Rational -> [Constraint]
+ctxGeZero :: (AnnLike a) => Map Type a -> [Constraint]
+ctxGeZero = M.foldr go []
+  where go ann cs = cs ++ annLikeGeZero ann 
+
+annLikeConstLe :: AnnLike a => a -> CoeffAnnotation -> [Constraint]
 annLikeConstLe ann values = concat [le (ann!idx) $ ConstTerm (M.findWithDefault 0 idx values)
                                    | idx <- S.toList $ definedIdxs ann]                   
 
-annLikeConstEq :: AnnLike a => a -> Map CoeffIdx Rational -> [Constraint]
+ctxConstLe :: AnnLike a => Map Type a -> Map Type CoeffAnnotation -> [Constraint]
+ctxConstLe ctx values = concat $ zipWith annLikeConstLe (M.elems ctx) (M.elems values)
+
+annLikeConstEq :: AnnLike a => a -> CoeffAnnotation -> [Constraint]
 annLikeConstEq ann values = concat [eq (ann!idx) $ ConstTerm (M.findWithDefault 0 idx values)
                                    | idx <- S.toList $ definedIdxs ann]
+ctxConstEq :: AnnLike a => Map Type a -> Map Type CoeffAnnotation -> [Constraint]
+ctxConstEq ctx values = concat $ zipWith annLikeConstEq (M.elems ctx) (M.elems values)
                         
 instance HasCoeffs RsrcAnn where
   getCoeffs ann = map (coeffFromAnn ann) $ S.toList (ann^.coeffs)
@@ -225,6 +260,9 @@ instance HasCoeffs RsrcAnn where
 instance (HasCoeffs a, HasCoeffs b) => HasCoeffs (a,b) where
   getCoeffs (x,y) = getCoeffs x ++ getCoeffs y
   
+instance HasCoeffs (Map Type RsrcAnn) where
+  getCoeffs = M.foldr (\q coeffs -> coeffs ++ getCoeffs q) []
+
 instance HasCoeffs FunRsrcAnn where
   getCoeffs ann = (getCoeffs . withCost) ann ++ (getCoeffs . withoutCost) ann
 

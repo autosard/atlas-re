@@ -5,7 +5,7 @@
 module CostAnalysis.Potential where
 
 import Prelude hiding (sum, (!))
-import Data.Text(Text)
+import Data.Text(Text, intercalate)
 import Data.Map(Map)
 import qualified Data.Map as M
 import qualified Data.List as L
@@ -26,9 +26,9 @@ import Ast hiding (FunRsrcAnn)
 
 import Data.Bifunctor (Bifunctor(first))
 
-
-
 type ExpertKnowledge = (V.Vector (V.Vector Int), [Int])
+
+type PotFnMap = Map Type (Potential, RsrcAnn)
 
 data AnnRanges = AnnRanges {
   rangeA :: ![Int],
@@ -39,14 +39,14 @@ data AnnRanges = AnnRanges {
 data Potential = Potential {
   kind :: PotentialKind,
 
-  bearesPotential :: Type -> Bool,
+--  bearesPotential :: Type -> Bool,
   
   ranges :: AnnRanges,
   
   -- Annotation manipulation
   
   -- | @ 'rsrcAnn' id label comment vars (rangeA, rangeB) @ constructs a fresh resource annotation with arguments from @vars@ (types are considered). @rangeA@, @rangeB@ are used to define non-zero coefficients. @id@ specifies a unique identifier for the annotation and @label@ is the human readable label, e.g \"Q\", \"Q\'\" or \"P\".
-  rsrcAnn :: Int -> Text -> Text -> [(Id, Type)] -> ([Int], [Int]) -> RsrcAnn, 
+  rsrcAnn :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> RsrcAnn, 
 
   -- | @ 'constCoeff'@ returns the coefficient index for the constant basic potential function.
   constCoeff :: CoeffIdx,
@@ -57,7 +57,7 @@ data Potential = Potential {
   -- Constraint generation
   
   -- | @ 'cConst' q q'@ returns constraints that guarantee \[\phi(\Gamma \mid Q) = \phi(\Delta \mid Q') \text{ where } |\Gamma| = |Q|, |\Delta| = |Q'|\]  
-  cConst :: PositionedExpr -> RsrcAnn -> RsrcAnn -> Either String [Constraint],
+  cConst :: PositionedExpr -> RsrcAnn -> RsrcAnn -> [Constraint],
   -- | @ 'cMatch' q p_ x ys = (p, cs)@ defines @p@ with the empty annotation @p_@ from @q@ by constraints @cs@, guaranteeing \[\phi(\Gamma, x \mid Q) = \phi(\Gamma, \vec{y} \mid P)\] where @x@ is the variable that matched and @ys@ is the pattern variables.
   cMatch :: RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint]),
 
@@ -84,21 +84,20 @@ data Potential = Potential {
   -- | @ 'cOptimize' q q' @ returns a cost function that minimizes \[\Phi(\Gamma\mid Q) - \Phi(\Gamma\mid Q')\] as a term.
   cOptimize :: RsrcAnn -> RsrcAnn -> Term,
 
-  cExternal :: FunRsrcAnn -> [Constraint],
+  cExternal :: RsrcAnn -> RsrcAnn -> [Constraint],
   
   printBasePot :: CoeffIdx -> String}
 
-defaultNegAnn :: Potential -> Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn
+defaultNegAnn :: Potential -> Int -> Text -> Text -> [Id] -> RsrcAnn
 defaultNegAnn pot id label comment args = rsrcAnn pot id label comment args abRanges
   where abRanges = (rangeA (ranges pot), rangeBNeg (ranges pot))
   
-defaultAnn :: Potential -> Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn
+defaultAnn :: Potential -> Int -> Text -> Text -> [Id] -> RsrcAnn
 defaultAnn pot id label comment args = rsrcAnn pot id label comment args abRanges 
   where abRanges = (rangeA (ranges pot), rangeB (ranges pot))
 
-emptyAnn :: Potential -> Int -> Text -> Text -> [(Id, Type)] -> RsrcAnn
-emptyAnn pot id label comment args = RsrcAnn id args' label comment S.empty
-  where args' = filter (\(x, t) -> bearesPotential pot t) args
+emptyAnn :: Potential -> Int -> Text -> Text -> [Id] -> RsrcAnn
+emptyAnn pot id label comment args = RsrcAnn id args label comment S.empty
 
 enrichWithDefaults :: Potential -> Bool -> Int -> Text -> Text -> RsrcAnn -> RsrcAnn
 enrichWithDefaults pot neg id label comment origin =
@@ -151,6 +150,7 @@ calculateBound (from, to) solution = M.fromList $ map subtract (getCoeffs from)
                   Nothing -> error $ "No such base term on the left hand side for '" ++ show right ++ "'."
                 Nothing -> solutionOrZero left
             (ConstTerm 0) -> solutionOrZero left
+
   
 symbolicCost :: (RsrcAnn, RsrcAnn) -> PointWiseOp
 symbolicCost (from, to) = PointWiseOp (annVars from) $
@@ -159,14 +159,23 @@ symbolicCost (from, to) = PointWiseOp (annVars from) $
                let idx' = if length (annVars from) == length (annVars to) then
                      substitute (annVars from) (annVars to) idx else idx]
 
+ctxSymbolicCost :: (AnnCtx, AnnCtx) -> Map Type PointWiseOp
+ctxSymbolicCost (from, to) = M.fromList $
+  zipWith go (M.assocs from) (M.assocs to)
+  where go (t, from) (_, to) = (t, symbolicCost (from, to))
+
 printRHS :: Potential -> RsrcAnn -> Map Coeff Rational -> String
 printRHS pot rhs solution = printPotential pot $ M.toList (M.restrictKeys solution (S.fromList (getCoeffs rhs)))
 
 
-printBound :: Potential -> (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> String
-printBound pot sig solution = printPotential pot terms
-  where terms = M.toList $ M.filter (0 /=) solution'
-        solution' = calculateBound sig solution
+printBound :: PotFnMap -> (AnnCtx, AnnCtx) -> Map Coeff Rational -> String
+printBound pots (from, to) solution = unwords $ map costForType (M.keys from)
+  where costForType :: Type -> String
+        costForType t = let solution' = calculateBound (from M.! t, to M.! t) solution
+                            terms = M.toList $ M.filter (0 /=) solution'
+                            pot = fst $ pots M.! t in
+                        printPotential pot terms
+        
 
 printPotential :: Potential -> [(Coeff, Rational)] -> String
 printPotential pot coeffs = if L.null coeffs' then "0" else

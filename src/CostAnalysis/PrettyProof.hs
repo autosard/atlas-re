@@ -1,7 +1,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 module CostAnalysis.PrettyProof where
 
-import Data.Text.Lazy(Text, intercalate)
+import Data.Text.Lazy(Text)
 import Data.Set(Set)
 import Text.Blaze.Html.Renderer.Text(renderHtml)
 import Text.Blaze.Html(Html, toHtml)
@@ -9,6 +9,7 @@ import Text.Hamlet (shamlet)
 import Text.Lucius 
 import qualified Data.Tree as T
 import qualified Data.Set as S
+import qualified Data.Map as M
 import qualified Data.Text as Text
 import Text.Julius
 import Data.Char(toLower)
@@ -216,15 +217,13 @@ hamRuleApp unsat (ExprRuleApp rule cf q q' cs e) = [shamlet|
       <mtext>#{printRule cf rule}
       <mo form="postfix" stretchy="false">)
       <mspace width="1em">
-      ^{hamAnnArgs (_args q)}
-      <mo lspace="0.22em" rspace="0.22em" stretchy="false">|
-      ^{hamAnn q}
+      ^{hamAnnCtx q}
       <mo>⊢
       <mtext>
           <code>#{printExprHead e}
           (#{printPos srcPos})  
       <mo lspace="0.22em" rspace="0.22em" stretchy="false">|
-      ^{hamAnn q'}
+      ^{hamAnnCtx q'}
 <div class="constraints">
     <math class="constraintsBlock" display="block">
         <mtable columnalign="left">
@@ -248,15 +247,25 @@ printRule :: Bool -> Rule -> String
 printRule cf rule = map toLower (show rule)
   ++ if cf then ", cf" else ""
 
-hamAnnArgs :: [(Id, Type)] -> Html
-hamAnnArgs args = toHtml $ intersperse
+hamAnnCtx :: AnnCtx -> Html
+hamAnnCtx ctx = toHtml $ intersperse
+  [shamlet|<mo separator="true">,|]
+  (map hamAnnType (M.toAscList ctx))  
+
+hamAnnType :: (Type, RsrcAnn) -> Html
+hamAnnType (t, q) = [shamlet|
+^{hamArgs (_args q)}
+<mo>:
+<mtext> #{show t}
+<mo>|
+^{hamAnn q}|]
+
+hamArgs :: [Id] -> Html
+hamArgs args = toHtml $ intersperse
   [shamlet|<mo separator="true">,|]
   (map hamArg args)
-  where hamArg arg = [shamlet|
-<mi>#{Text.unpack (fst arg)}
-<mo>:
-<mtext>#{show (snd arg)}                         
-|]
+  where hamArg arg = [shamlet|<mi>#{Text.unpack arg}|]
+        
   
 hamAnn :: RsrcAnn -> Html
 hamAnn q = [shamlet|

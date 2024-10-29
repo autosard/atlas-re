@@ -30,12 +30,10 @@ bearesPotential _ = False
 ranges :: P.AnnRanges
 ranges = P.AnnRanges [0..1] [0..2] [0..2]
 
-rsrcAnn :: Int -> Text -> Text -> [(Id, Type)] -> ([Int], [Int]) -> RsrcAnn
+rsrcAnn :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> RsrcAnn
 rsrcAnn id label comment args ranges =
-  RsrcAnn id args' label comment $ S.fromList coeffs
-  where coeffs = defaultCoeffs vars ranges
-        args' = filter (\(x, t) -> bearesPotential t) args
-        vars = map fst args'
+  RsrcAnn id args label comment $ S.fromList coeffs
+  where coeffs = defaultCoeffs args ranges
 
 defaultCoeffs :: [Id] -> ([Int], [Int]) -> [CoeffIdx]
 defaultCoeffs args (aRange, _) =
@@ -53,8 +51,8 @@ constCoeff = [mix||]
 forAllCombinations :: Args -> RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 forAllCombinations potArgs q xs (rangeA, rangeB) x = filter (not . null . idxToSet ) $ varsRestrictMixes q xs
 
-cExternal :: FunRsrcAnn -> [Constraint]
-cExternal _ = []
+cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
+cExternal _ _ = []
 
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = error "pure coefficients are not supported with linear logarithmic potential."

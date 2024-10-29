@@ -10,7 +10,6 @@ import Ast (PotentialKind(Polynomial))
 pot :: Args -> Potential
 pot args = Potential
   Polynomial
-  bearesPotential
   (ranges args)
   rsrcAnn
   constCoeff

@@ -26,8 +26,8 @@ shiftLogs 0 1 = Nothing
 
 addShiftL :: RsrcAnn -> RsrcAnn -> [Constraint] 
 addShiftL q q' =
-  let [x] = map fst $ _args q
-      [y] = map fst $ _args q' in
+  let [x] = _args q
+      [y] = _args q' in
     concat $ [eqs
              | idx <- mixes q,
                let (a,b,c) = facForVar3 idx x,
@@ -57,17 +57,16 @@ addShiftDefL q_ x q' y = extendAnn q_ $
                 Nothing -> (idx:left, right)
         (zeroIdxs, nonZeroIdxs) = foldr split ([],[]) (mixes q')
 
-lengthOneConst :: RsrcAnn -> RsrcAnn -> Either String [Constraint]
-lengthOneConst q q' = Right $ eqSum (q!constCoeff) [
+lengthOneConst :: RsrcAnn -> RsrcAnn -> [Constraint]
+lengthOneConst q q' = eqSum (q!constCoeff) [
   q'![mix|exp^(1,0,0)|],
   q'![mix|exp^(0,0,1)|],
   q'![mix|exp^(1,0,1)|],
   q'![mix||]]
 
-cConst :: PositionedExpr -> RsrcAnn -> RsrcAnn -> Either String [Constraint]
+cConst :: PositionedExpr -> RsrcAnn -> RsrcAnn -> [Constraint]
 cConst (Nil {}) q q' = lengthOneConst q q'
-cConst Leaf q q' = lengthOneConst q q'
-cConst (Ast.Const id _) _ _ = Left $ "Constructor '" ++ T.unpack id ++ "' not supported."
+cConst (Ast.Const id _) _ _ = error $ "Constructor '" ++ T.unpack id ++ "' not supported."
 
 cMatch :: RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint])
 -- nil / leaf

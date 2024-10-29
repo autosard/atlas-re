@@ -33,7 +33,7 @@ type Number = Int
 
 data Module a = Module {
   name :: Text,
-  modPotential :: Maybe PotentialKind,
+  modPotentialMap :: Map Type PotentialKind,
   mutRecGroups :: [[Id]],
   defs :: Map Id (FunDef a)
 } 
@@ -112,11 +112,11 @@ type family XFunAnn a
 
 
 type CoeffAnnotation = Map CoeffIdx Rational
-type FunRsrcAnn = (CoeffAnnotation, CoeffAnnotation)
+type FunRsrcAnn = (Map Type CoeffAnnotation, Map Type CoeffAnnotation)
 
 data CostAnnotation
   = Coeffs {caWithCost :: FunRsrcAnn, caWithoutCost :: Maybe FunRsrcAnn}
-  | Cost {worstCase :: Bool, costCoeffs :: CoeffAnnotation}
+  | Cost {worstCase :: Bool, costCoeffs :: Map Type CoeffAnnotation}
   deriving (Eq, Show)
   
 
@@ -334,8 +334,7 @@ data ParsedFunAnn = ParsedFunAnn {
   pfLoc :: SourcePos,
   pfFqn :: Fqn,
   pfType :: Maybe Scheme,
-  pfCostAnn :: Maybe CostAnnotation,
-  pfPotential :: Maybe PotentialKind}
+  pfCostAnn :: Maybe CostAnnotation}
   deriving (Eq, Show)
 
 data Parsed
@@ -368,8 +367,7 @@ data TypedFunAnn = TypedFunAnn {
   tfLoc :: SourcePos,
   tfFqn :: Fqn,
   tfType :: Scheme,
-  tfCostAnn :: Maybe CostAnnotation,
-  tfPotential :: Maybe PotentialKind}
+  tfCostAnn :: Maybe CostAnnotation}
   deriving (Eq, Show)
 
 data ExprSrc = Loc SourcePos | DerivedFrom SourcePos
@@ -388,7 +386,11 @@ class HasType a where
   type_ :: a -> Type
 
 getType :: (HasType (XExprAnn b), Annotated a b) => a b -> Type
-getType = type_ . getAnn 
+getType = type_ . getAnn
+
+varWithType :: (HasType (XExprAnn a)) => Expr a -> (Id, Type)
+varWithType e@(Var id) = (id, getType e)
+varWithType _ = error "varWithType called for non-variable expression."
 
 instance HasType TypedExprAnn where
   type_ = teType
@@ -403,12 +405,19 @@ ctxFromFn :: FunDef Positioned -> ([(Id, Type)], [(Id, Type)])
 ctxFromFn (FunDef ann _ args _) =
   let (tFrom, tTo) = splitFnType . toType . tfType $ ann
       tsFrom = splitProdType tFrom
-      tsTo = splitProdType tTo
       ctxFrom = zip args tsFrom 
-      ctxTo = zip (map (\n -> T.pack $ "e" ++ show n) [1..]) tsTo in
+      ctxTo = ctxFromType tTo in
     (ctxFrom, ctxTo)
-      
     
+ctxFromType :: Type -> [(Id, Type)]
+ctxFromType t = let ts = splitProdType t in 
+  zip (map (\n -> T.pack $ "e" ++ show n) [1..]) ts 
+
+fnArgsByType :: FunDef Positioned -> (Map Type [Id], Map Type [Id])
+fnArgsByType fn = let (from, to) = ctxFromFn fn in
+                    (toMap from, toMap to)
+  where toMap args = M.fromListWith (++) $ map (\(x, t) -> (t, [x])) args
+        
 
 instance Types TypedExpr where
   apply s = mapAnn (\ann -> ann{teType = apply s (teType ann) })
