@@ -33,8 +33,6 @@ import CostAnalysis.Coeff
 import Data.List(intercalate)
 import Data.Foldable (foldrM)
 
-import Debug.Trace
-
 type Derivation = Tree RuleApp
 
 
@@ -126,8 +124,6 @@ annForType t m = snd $ m M.! t
 withPotAndId :: Type -> (Potential -> Int -> Text -> Text -> [Id] -> RsrcAnn)
   -> (Text -> Text -> [Id] -> ProveMonad RsrcAnn)
 withPotAndId t f label comment args = do
---  pots <- use potentials 
---  let (pot, _) = pots M.! t
   pot <- potForType t <$> use potentials
   id <- genAnnId
   return $ f pot id label comment args
@@ -200,18 +196,24 @@ ctxCLetBodyBase qs rs_ ps' = foldrM go (M.empty, []) (M.keys qs)
           let (p', cs) = cLetBodyBase pot (qs M.! t) (rs_ M.! t) (ps' M.! t)
           return (M.insert t p' ps, css ++ cs)
 
-ctxEqPlus :: AnnCtx -> AnnCtx -> Term -> ProveMonad (AnnCtx, [Constraint])
-ctxEqPlus qs_ ps t = do
+ctxDefByConstShift :: AnnCtx -> AnnCtx -> (Term -> Term) -> ProveMonad (AnnCtx, [Constraint])
+ctxDefByConstShift qs_ ps shift = do
   pots <- use potentials
   let annsWithPot = map (\(t, q) -> (t, potForType t pots, q, ps M.! t)) $ M.toAscList qs_
   let (qs, css) = unzip $ map eqExceptConst' annsWithPot
   let qConsts = map (\(t, q) -> (t, constCoeff (potForType t pots))) qs
   let pConstTerms = M.elems $ M.mapWithKey (\t p -> p!?constCoeff (potForType t pots)) ps
-  let (qs', cs) = extendCtx (M.fromList qs) $ (`sumEqSum` (t:pConstTerms)) <$> defMulti qConsts
+  let (qs', cs) = extendCtx (M.fromList qs) $ (`shiftSum` pConstTerms)  <$> defMulti qConsts
   return (qs', concat css ++ cs)
   where eqExceptConst' (t, pot, q, p) = let (q', cs) = eqExceptConst pot q p in
           ((t, q'), cs)
-        sumEqSum ts rs = eq (sum ts) (sum rs)
+        shiftSum qs ps = sum qs `eq` shift (sum ps)
+
+ctxDefByPlus :: AnnCtx -> AnnCtx -> Term -> ProveMonad (AnnCtx, [Constraint])
+ctxDefByPlus qs_ ps t = ctxDefByConstShift qs_ ps (\s -> sum [s,t])
+        
+ctxDefByMinus :: AnnCtx -> AnnCtx -> Term -> ProveMonad (AnnCtx, [Constraint])
+ctxDefByMinus qs_ ps t = ctxDefByConstShift qs_ ps (\s -> sub [s,t])
 
 ctxCExternal :: AnnCtx -> AnnCtx -> ProveMonad [Constraint]
 ctxCExternal qs qs' = foldrM go [] $ zip (M.assocs qs) (M.assocs qs')

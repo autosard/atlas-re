@@ -24,6 +24,8 @@ import Typing.Type (Type, splitProdType, splitFnType)
 import Typing.Subst(Types(apply, tv))
 import Typing.Scheme (Scheme, toType)
 import CostAnalysis.Coeff(CoeffIdx)
+import Data.Tuple (swap)
+import Data.List.Extra (groupSort)
     
 type Fqn = (Text, Text)
 
@@ -411,12 +413,14 @@ ctxFromFn (FunDef ann _ args _) =
     
 ctxFromType :: Type -> [(Id, Type)]
 ctxFromType t = let ts = splitProdType t in 
-  zip (map (\n -> T.pack $ "e" ++ show n) [1..]) ts 
+  zip [T.pack $ "e" ++ show n
+      |n <- [1..]] ts 
 
 fnArgsByType :: FunDef Positioned -> (Map Type [Id], Map Type [Id])
 fnArgsByType fn = let (from, to) = ctxFromFn fn in
                     (toMap from, toMap to)
-  where toMap args = M.fromListWith (++) $ map (\(x, t) -> (t, [x])) args
+  where toMap = M.fromList . groupSort . map swap
+          --M.fromListWith (++) $ map (\(x, t) -> (t, [x])) args
         
 
 instance Types TypedExpr where

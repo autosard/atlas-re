@@ -31,11 +31,11 @@ farkas pot wArgs idxs p q = do
         fas fs as i = prods fs ([row V.! i | row <- V.toList as])
 
 ctxFarkas :: Set WeakenArg -> AnnCtx -> AnnCtx -> ProveMonad [Constraint]
-ctxFarkas wArgs ps qs = concatMapM go $ M.toAscList qs
+ctxFarkas wArgs ps qs = concatMapM go $ M.toAscList ps
   where go (t, p) = do
           pot <- potForType t <$> use potentials
           let q = qs M.! t
-          farkas pot wArgs (p^.coeffs) q p
+          farkas pot wArgs (p^.coeffs) p q
         
 merge :: [ExpertKnowledge] -> ExpertKnowledge
 merge ks = let (vs1, vs2) = unzip ks in (V.concat vs1, concat vs2)

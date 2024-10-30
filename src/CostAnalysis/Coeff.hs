@@ -119,7 +119,7 @@ onlyVarsOrConst idx xs = null $ varsExcept idx xs
 
 justConst :: CoeffIdx -> Bool
 justConst (Mixed idx) = all isConst idx
-justConst _ = error "pure index"
+justConst _ = False
 
 idxSum :: CoeffIdx -> Int
 idxSum (Mixed idx) = foldr go 0 idx

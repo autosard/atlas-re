@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module CostAnalysis.RsrcAnn where
 
@@ -25,7 +26,7 @@ import CostAnalysis.Constraint
 import Ast (PotentialKind, CoeffAnnotation)
 import Data.List.Extra (groupSort)
 import Data.Tuple (swap)
-import Data.Map.Merge.Strict (dropMissing, merge, zipWithMatched)
+import Data.Map.Merge.Strict (dropMissing, merge, zipWithMatched, SimpleWhenMissing, mapMissing)
 import Data.Vector.Internal.Check (HasCallStack)
 
 data RsrcAnn = RsrcAnn {
@@ -124,6 +125,19 @@ instance AnnLike PointWiseOp where
   (!?) op idx = fromMaybe (ConstTerm 0) $ opCoeffs op M.!? toIdx idx
 
 
+
+-- runWithZero :: (AnnLike a) => (a -> c) -> (k -> a -> c) 
+-- runWithZero zipper = const (`zipper` pointWiseZero) 
+--   where pointWiseZero = PointWiseOp [] M.empty
+
+pointWiseZero = PointWiseOp [] M.empty
+
+ctxZipWith :: (AnnLike a, AnnLike b) => (Type -> a -> c) -> (Type -> b -> c) -> (Type -> a -> b -> c) -> Map Type a -> Map Type b -> Map Type c
+ctxZipWith fL fR zipper = merge missingStrategyL missingStrategyR (zipWithMatched (zipper))
+  where missingStrategyL = mapMissing fL
+        missingStrategyR = mapMissing fR
+
+
 ctxScalarMul :: (AnnLike a) => Map Type a -> Term -> Map Type PointWiseOp
 ctxScalarMul qs k = M.map (`annLikeScalarMul` k) qs
 
@@ -131,31 +145,44 @@ annLikeScalarMul :: (AnnLike a) => a -> Term -> PointWiseOp
 annLikeScalarMul q k = PointWiseOp (argVars q) $
   M.fromList [(idx, prod2 (q!idx) k) | idx <- S.toList (definedIdxs q)]
 
-ctxAdd :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> Map Type PointWiseOp
-ctxAdd = merge dropMissing dropMissing (zipWithMatched (const annLikeAdd))
-
 annLikeAdd :: (AnnLike a, AnnLike b) => a -> b -> PointWiseOp
 annLikeAdd q p | argVars q == argVars p = PointWiseOp (argVars q) $
              M.fromList [(idx, sum [q!?idx, p!?idx])
                         | idx <- S.toList $ definedIdxs q `S.union` definedIdxs p]
                | otherwise = error "point wise operation not valid for annotation likes with different arguments."
-
-ctxEq :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> [Constraint]
-ctxEq qs ps = concat $ zipWith annLikeEq (M.elems qs) (M.elems ps)
+               
+ctxAdd :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> Map Type PointWiseOp
+ctxAdd = ctxZipWith
+  (const (`annLikeAdd` pointWiseZero))
+  (const (annLikeAdd pointWiseZero))
+  (const annLikeAdd)
+               
+-- ctxEq :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> [Constraint]
+-- ctxEq qs ps = concat $ zipWith annLikeEq (M.elems qs) (M.elems ps)
 
 annLikeEq :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
 annLikeEq q op = concat [eq (q!?idx) (op!?idx)
                         | idx <- S.toList $ definedIdxs q `S.union` definedIdxs op]
 
-ctxUnify :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> [Constraint]
-ctxUnify qs ps = concat $ zipWith annLikeUnify (M.elems qs) (M.elems ps)
+ctxEq :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> [Constraint]
+ctxEq qs ps = concat . M.elems $ ctxZipWith
+  (const (`annLikeEq` pointWiseZero))
+  (const (annLikeEq pointWiseZero))
+  (const annLikeEq) qs ps
 
 annLikeUnify :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
 annLikeUnify q p = concat [eq (q!?idx) p'
                           | idx <- S.toList $ definedIdxs q,
-                            let p' = if length (argVars q) == length (argVars p)
-                                  then p!?substitute (argVars q) (argVars p) idx
-                                  else ConstTerm 0]
+                            let p' | justConst idx = p!?idx 
+                                   | length (argVars q) == length (argVars p) 
+                                  = p!?substitute (argVars q) (argVars p) idx
+                                   | otherwise = ConstTerm 0]
+
+ctxUnify :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> [Constraint]
+ctxUnify qs ps = concat . M.elems $ ctxZipWith
+  (const (`annLikeUnify` pointWiseZero))
+  (const (annLikeUnify pointWiseZero))
+  (const annLikeUnify) qs ps
 
 annLikeMap :: (AnnLike a, AnnLike b) => a -> b -> (CoeffIdx -> Maybe CoeffIdx) -> PointWiseOp
 annLikeMap q p unifier = PointWiseOp (argVars p) (M.fromList coeffs')
@@ -168,12 +195,13 @@ annLikeUnify' :: (AnnLike a, AnnLike b) => a -> b -> [Id] -> [Constraint]
 annLikeUnify' q p qArgs = concat [eq (q!?idx) (p!?substitute qArgs (argVars p) idx)
                                  | idx <- S.toList $ definedIdxs q]
 
-ctxUnify' :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> [(Id, Type)] -> [Constraint]
-ctxUnify' qs ps' args = let x = groupSort $ map swap args in
-  concat $ zipWith3 annLikeUnify'
-  (map snd $ M.toAscList qs)
-  (map snd $ M.toAscList ps')
-  (map snd x)
+ctxUnify' :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> Map Type [Id] -> [Constraint]
+ctxUnify' qs ps' args = concat . M.elems $ ctxZipWith
+  (\t q -> annLikeUnifyForType t q pointWiseZero)
+  (`annLikeUnifyForType` pointWiseZero)
+  annLikeUnifyForType qs ps'
+  where annLikeUnifyForType :: (AnnLike a, AnnLike b) => Type -> a -> b -> [Constraint]
+        annLikeUnifyForType t q p = annLikeUnify' q p (args M.! t)
 
 type AnnArray = Map CoeffIdx RsrcAnn
 

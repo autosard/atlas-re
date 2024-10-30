@@ -31,9 +31,8 @@ import CostAnalysis.RsrcAnn ( RsrcSignature,
 import CostAnalysis.Potential(ctxSymbolicCost, PotFnMap)
 import CostAnalysis.Potential.Kind (fromKind)
 
-import Debug.Trace hiding (traceShow)
 
-traceShow x = trace (show x) x
+--traceShow x = trace (show x) x
 
 defaultPotentialMap = M.fromList
   [
@@ -111,7 +110,8 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
     Infer -> do
       s <- use sig
       let (q, q') = withCost $ s M.! fnId
-      tellCs <$> ctxCExternal q q'
+      extCs <- ctxCExternal q q'
+      tellCs extCs
       addFullCostOptimization fnId
   proveFun def
 
@@ -163,8 +163,11 @@ genFunRsrcAnn fn = do
   pots <- use potentials
   to <- if hasPotential fn then
           return $ M.mapWithKey (\t _ -> annForType t pots) argsTo
-        else
-          emptyAnnCtx argsTo "Q'" "fn" 
+        else if null argsTo then
+               emptyAnnCtx (M.map (const []) argsFrom) "Q'" "fn" 
+             else
+               emptyAnnCtx argsTo "Q'" "fn" 
+          
   from <- defaultAnnCtx argsFrom "Q" "fn" 
   fromCf <- defaultAnnCtx argsFrom "P" "fn cf" 
   toCf <- defaultAnnCtx argsTo "P'" "fn cf" 

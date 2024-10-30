@@ -129,10 +129,6 @@ eqMinus pot q_ p t = (q, cs ++ eqCs)
           (ConstTerm 0) -> (eqQ, [])
           _nonZero -> extendAnn eqQ [(`eq` sub [p!?constIdx, t]) <$> def constIdx]
 
---  -- | @ 'cPlusMulti' q p r k@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(* \mid P) + \phi(*\mid R) \cdot K\].
--- cPlusMulti :: RsrcAnn -> RsrcAnn -> RsrcAnn -> Var -> [Constraint],
--- cPlusMulti q p r k = q `annEq` (annAdd p (annScalarMul r k))
-
 calculateBound :: (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> Map Coeff Rational
 calculateBound (from, to) solution = M.fromList $ map subtract (getCoeffs from)
   where solutionOrZero coeff = case solution M.!? coeff of

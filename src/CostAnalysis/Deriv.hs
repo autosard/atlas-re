@@ -27,12 +27,12 @@ import CostAnalysis.Constraint ( and,
                                  Term(ConstTerm), geZero )
 import CostAnalysis.Weakening
 import CostAnalysis.ProveMonad
-import CostAnalysis.Potential.Kind (pays)
 import StaticAnalysis(freeVars)
 import Data.Maybe (fromMaybe, mapMaybe)
-import Data.Foldable (foldrM)
 
 import Debug.Trace hiding (traceShow)
+import Data.Tuple (swap)
+import Data.List.Extra (groupSort)
 
 traceShow x = trace (show x) x
   
@@ -45,8 +45,8 @@ proveConst _ cf e@Error q q' = do
   let cs = ctxUnify q q'
   conclude R.Const cf q q' cs e []
 proveConst _ cf e@(Const "(,)" args) q q' = do
-  let argsWithType = map varWithType args 
-  let cs = ctxUnify' q q' argsWithType
+  let argsByType = M.fromList . groupSort $ map (swap . varWithType) args
+  let cs = ctxUnify' q q' argsByType
   conclude R.Const cf q q' cs e []
 proveConst _ cf e@(Const id _) q q' = do
   pots <- use potentials
@@ -282,26 +282,22 @@ proveWeaken tactic@(Rule (R.Weaken wArgs) _) cf e q q' = do
   deriv <- proveExpr t cf e p p'
   conclude (R.Weaken wArgs) cf q q' (pCs ++ p'Cs) e [deriv]
 
-shiftCtx :: AnnCtx -> AnnCtx -> ProveMonad (AnnCtx, [Constraint])
-shiftCtx ps_ qs = foldrM go (M.empty, []) (M.toAscList qs)
-  where go (t, q) (ps, css) = do
-          k <- freshVar
-          pot <- potForType t <$> use potentials
-          let (p, cs) = eqMinus pot (ps_ M.! t) q k
-          return (M.insert t p ps, cs ++ css ++ geZero k)
-
 proveShift :: Prove PositionedExpr Derivation
 proveShift tactic cf e q q' = do
   let [subTactic] = subTactics 1 tactic
 
+  k <- freshVar
+
   p_ <- emptyAnnCtx (M.map _args q) "P" "shift" 
-  (ps, pCs) <- shiftCtx p_ q
+  (ps, pCs) <- ctxDefByMinus p_ q k
 
   p'_ <- emptyAnnCtx (M.map _args q') "P'" "shift"
-  (ps', p'Cs) <- shiftCtx p'_ q'
+  (ps', p'Cs) <- ctxDefByMinus p'_ q' k
+
+  let cs = pCs ++ p'Cs ++ geZero k
   
   deriv <- proveExpr subTactic cf e ps ps'
-  conclude R.Shift cf q q' (pCs ++ p'Cs) e [deriv]
+  conclude R.Shift cf q q' cs e [deriv]
 
 proveTickDefer :: Prove PositionedExpr Derivation
 proveTickDefer tactic cf e@(Tick c e1) q q' = do
@@ -312,7 +308,7 @@ proveTickDefer tactic cf e@(Tick c e1) q q' = do
     conclude R.TickDefer cf q q' [] e [deriv]
   else do
     p_ <- emptyAnnCtx (M.map _args q') "P" "" 
-    (p, cs) <- ctxEqPlus p_ q' (ConstTerm (fromMaybe 1 c))
+    (p, cs) <- ctxDefByPlus p_ q' (ConstTerm (fromMaybe 1 c))
 
     deriv <- proveExpr subTactic cf e1 q p
 
