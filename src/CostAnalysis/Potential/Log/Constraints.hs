@@ -37,8 +37,7 @@ cConst (Leaf {}) q q'
          idx /= [mix|exp^1|], -- TODO this should not be necessary
          idxSum idx `S.notMember` qConsts]
 cConst e@(Node {}) q q'
-  = case annVars q of
-  [x1,x2] ->
+  = let [x1, x2] = annVars q in
       eq (q!?x1) (q'!?exp) 
       ++ eq (q!?x2) (q'!?exp)
       ++ eq (q!?[mix|x1^1|]) (q'!?exp)
@@ -60,7 +59,6 @@ cConst e@(Node {}) q q'
                   let a = facForVar idx exp,
                   let c = constFactor idx,
                   [mix|x1^a,x2^a,c|] `S.notMember` (q^.coeffs)]
-  _other -> error $ show q
 -- cConst (Tuple x1 x2) q q' | (isTree . getType) x1 && (isTree . getType) x2
 --   = Left "Tuple with more then one tree type are not supported."
 --                           | otherwise = Right $ annLikeUnify q q'

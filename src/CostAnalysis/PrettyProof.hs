@@ -261,6 +261,7 @@ hamAnnType (t, q) = [shamlet|
 ^{hamAnn q}|]
 
 hamArgs :: [Id] -> Html
+hamArgs [] = [shamlet|<mi>∅|]
 hamArgs args = toHtml $ intersperse
   [shamlet|<mo separator="true">,|]
   (map hamArg args)

@@ -8,5 +8,5 @@ import CostAnalysis.Rules(WeakenArg)
 import CostAnalysis.Coeff
 import CostAnalysis.Potential
 
-genExpertKnowledge :: Set WeakenArg -> [Id] -> Set CoeffIdx -> ExpertKnowledge
+genExpertKnowledge :: Set WeakenArg -> [Id] -> Set CoeffIdx -> LeMatrix
 genExpertKnowledge _ _ _ = (V.empty, [])

@@ -10,7 +10,7 @@ import qualified Data.Set as S
 
 import Primitive(Id, infinity)
 import CostAnalysis.Rules(WeakenArg(..))
-import CostAnalysis.Potential(ExpertKnowledge)
+import CostAnalysis.Potential(ExpertKnowledge, LeMatrix)
 import CostAnalysis.Coeff
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Weakening
@@ -20,7 +20,7 @@ import CostAnalysis.RsrcAnn (isPure)
 
 supportedArgs = S.fromList [Mono, L2xy]
 
-genExpertKnowledge :: Set WeakenArg -> [Id] -> Set CoeffIdx -> ExpertKnowledge
+genExpertKnowledge :: Set WeakenArg -> [Id] -> Set CoeffIdx -> LeMatrix
 genExpertKnowledge wArgs args idxs = merge $ map select wArgs' 
   where wArgs' = S.toList $ S.intersection wArgs supportedArgs
         select Mono = monoLattice monoLe args idxs
@@ -29,15 +29,16 @@ genExpertKnowledge wArgs args idxs = merge $ map select wArgs'
 -- \sum a_i * |x_i| + a_{n+1} <= \sum b_i * |y_i| b_{n+1}.
 -- We know that arguments are trees, so we assume |x_i|,|y_i| >= 1. 
 monoLe :: [Id] -> CoeffIdx -> CoeffIdx -> Bool
-monoLe vars i j = sum (i `subtract` j) <= 0
+monoLe vars i@(Mixed _) j@(Mixed _) = sum (i `subtract` j) <= 0
   where subtract i j = let cD = fromIntegral $ constFactor i - constFactor j in
           cD : map (subFac i j) vars
         subFac i j x = let a = facForVar i x
                            b = facForVar j x in
                          if a - b <= 0 then fromIntegral $ a - b else infinity
+monoLe vars i j@(Pure _) = justConst i && constFactor i == 2
+monoLe _ _ _ = False
 
-
-logLemma :: [Id] -> Set CoeffIdx -> ExpertKnowledge
+logLemma :: [Id] -> Set CoeffIdx -> LeMatrix
 logLemma args idxs = merge $ [(V.singleton (row x y xy), [0])
                              | (x,y,xy) <- idxTriples]
   where iConst = S.findIndex [mix|2|] idxs

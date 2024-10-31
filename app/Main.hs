@@ -77,7 +77,7 @@ run Options{..} RunOptions{..} = do
         (Right (mod, fn)) -> (mod, Just fn)
   (normalizedProg, contents) <- liftIO $ loadMod searchPath target
   let positionedProg = contextualizeMod normalizedProg
-  -- liftIO $ putStrLn (printProg positionedProg)
+  liftIO $ putStrLn (printProg positionedProg)
   when (null . mutRecGroups $ positionedProg) $ do
     logError $ "Module does not define the requested function."
     liftIO exitFailure

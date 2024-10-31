@@ -11,7 +11,7 @@ import CostAnalysis.Weakening
 
 supportedArgs = S.fromList [Mono]
 
-genExpertKnowledge :: Set WeakenArg -> [Id] -> Set CoeffIdx -> ExpertKnowledge
+genExpertKnowledge :: Set WeakenArg -> [Id] -> Set CoeffIdx -> LeMatrix
 genExpertKnowledge wArgs args idxs = merge $ map select wArgs'
   where wArgs' = S.toList $ S.intersection wArgs supportedArgs
         select Mono = monoLattice monoLe args idxs

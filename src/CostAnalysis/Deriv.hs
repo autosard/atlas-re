@@ -237,7 +237,8 @@ proveApp tactic True e@(App id _) q q' = do
         concat [ and $
                    ctxUnify q (ctxScalarMul p (ConstTerm k))
                    ++ ctxUnify q' (ctxScalarMul p' (ConstTerm k))
-               | k <- [0,1,2]]
+                 | k <- [0,1,2]]
+        ++ ctxUnify q q'
   conclude R.App True q q' cs e []
 
 redundentVars :: AnnCtx -> Expr a -> [(Id, Type)]

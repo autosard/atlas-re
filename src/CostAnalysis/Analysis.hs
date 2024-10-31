@@ -130,8 +130,8 @@ coeffsMatchAnnotation fn (annWithCost, annWithoutCost) = do
   ann <- (M.! fn) <$> use sig
   let (p, p') = withoutCost ann
   let (q, q') = withCost ann
-  tellSigCs (ctxConstEq q $ fst annWithCost)
-  tellSigCs (ctxConstEq q' $ snd annWithCost)
+  tellSigCs $ ctxConstEq q $ fst annWithCost
+  tellSigCs $ ctxConstEq q' $ snd annWithCost
   tellSigCs . concat . maybeToList $ (ctxConstEq p . fst <$> annWithoutCost)
   tellSigCs . concat . maybeToList $ (ctxConstEq p' . snd <$> annWithoutCost)
 

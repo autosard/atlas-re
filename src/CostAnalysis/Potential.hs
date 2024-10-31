@@ -25,8 +25,14 @@ import Ast hiding (FunRsrcAnn)
 
 
 import Data.Bifunctor (Bifunctor(first))
+import Data.Maybe (fromMaybe)
 
-type ExpertKnowledge = (V.Vector (V.Vector Int), [Int])
+type LeMatrix = (V.Vector (V.Vector Int), [Int])
+
+data ExpertKnowledge = ExpertKnowledge {
+  matrix :: LeMatrix,
+  rows :: !(V.Vector (CoeffIdx, Term)),
+  cols :: !(V.Vector (CoeffIdx, Term))}
 
 type PotFnMap = Map Type (Potential, RsrcAnn)
 
@@ -79,7 +85,7 @@ data Potential = Potential {
   -- | @ 'cWeakenVar' q r @
   cWeakenVar :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint]),
   
-  genExpertKnowledge :: Set WeakenArg -> [Id] -> Set CoeffIdx -> ExpertKnowledge,
+  genExpertKnowledge :: Set WeakenArg -> [Id] -> Set CoeffIdx -> LeMatrix,
   
   -- | @ 'cOptimize' q q' @ returns a cost function that minimizes \[\Phi(\Gamma\mid Q) - \Phi(\Gamma\mid Q')\] as a term.
   cOptimize :: RsrcAnn -> RsrcAnn -> Term,
@@ -167,10 +173,12 @@ printRHS pot rhs solution = printPotential pot $ M.toList (M.restrictKeys soluti
 printBound :: PotFnMap -> (AnnCtx, AnnCtx) -> Map Coeff Rational -> String
 printBound pots (from, to) solution = unwords $ map costForType (M.keys from)
   where costForType :: Type -> String
-        costForType t = let solution' = calculateBound (from M.! t, to M.! t) solution
-                            terms = M.toList $ M.filter (0 /=) solution'
-                            pot = fst $ pots M.! t in
-                        printPotential pot terms
+        costForType t = let pot = fst $ pots M.! t
+                            to' = fromMaybe (emptyAnn pot 0 "" "" []) $ to M.!? t
+                            from' = fromMaybe (emptyAnn pot 0 "" "" []) $ from M.!? t
+                            solution' = calculateBound (from', to') solution
+                            terms = M.toList $ M.filter (0 /=) solution' in
+                          printPotential pot terms
         
 
 printPotential :: Potential -> [(Coeff, Rational)] -> String
