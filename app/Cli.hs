@@ -44,7 +44,8 @@ data RunOptions = RunOptions {
   analysisMode :: AnalysisMode,
   switchIncremental :: Bool,
   switchHideConstraints :: Bool,
-  switchHtmlOutput :: Bool}
+  switchHtmlOutput :: Bool,
+  switchPrintProg :: Bool}
 
 runOptionsP :: Parser RunOptions
 runOptionsP = do
@@ -68,7 +69,10 @@ runOptionsP = do
     <> help "When active, only the derivation tree is printed without constraints.")
   switchHtmlOutput <- switch
     (long "html-output"
-    <> help "When active, a html representation, potentially including the unsat-core is produced.")  
+    <> help "When active, a html representation, potentially including the unsat-core is produced.")
+  switchPrintProg <- switch
+    (long "print-program"
+    <> help "Output the normalized program.")    
   target <- argument (eitherReader parseFqn) (metavar "MODULE[.FUNCTION]" <> help "Analysis target. When a specific function is specified only this function and its dependencies are analyzed, which can save time.")
   return RunOptions{..}
 

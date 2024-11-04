@@ -26,7 +26,7 @@ import qualified Data.Set as S
 import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Potential
-import Ast(Module(..), TypedModule, TypedExpr, containsFn, Fqn, defs, printProg)
+import Ast(Module(..), TypedModule, TypedExpr, Fqn, defs, printProg)
 import CostAnalysis.PrettyProof(renderProof, css, js)
 
 
@@ -43,8 +43,6 @@ import Parsing.Tactic
 import Eval(evalWithModule)
 import Primitive(Id)
 import CostAnalysis.Tactic 
-import qualified CostAnalysis.Potential.Log as Log
-import qualified CostAnalysis.Potential.Poly as Poly
 import CostAnalysis.ProveMonad
 import CostAnalysis.Rules
 import CostAnalysis.Analysis
@@ -54,9 +52,8 @@ import Cli(Options(..), RunOptions(..), EvalOptions(..), Command(..), cliP)
 import System.Random (getStdGen)
 import Module (load)
 import SourceError (printSrcError)
-import CostAnalysis.Potential (printBound)
 import CostAnalysis.Constraint (Constraint)
-import Control.Monad (when, unless)
+import Control.Monad (when)
 import AstContext (contextualizeMod)
 
 import Debug.Trace (trace)
@@ -77,7 +74,7 @@ run Options{..} RunOptions{..} = do
         (Right (mod, fn)) -> (mod, Just fn)
   (normalizedProg, contents) <- liftIO $ loadMod searchPath target
   let positionedProg = contextualizeMod normalizedProg
-  liftIO $ putStrLn (printProg positionedProg)
+  when switchPrintProg $ liftIO $ putStrLn (printProg positionedProg)
   when (null . mutRecGroups $ positionedProg) $ do
     logError $ "Module does not define the requested function."
     liftIO exitFailure
