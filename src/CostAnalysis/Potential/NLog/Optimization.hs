@@ -10,7 +10,7 @@ import CostAnalysis.Potential(symbolicCost)
 import CostAnalysis.Coeff hiding ((^))
 
 cOptimize :: RsrcAnn -> RsrcAnn -> Term
-cOptimize q q' = sum $ M.elems $ M.mapWithKey weighted (opCoeffs (symbolicCost (q, q')))
+cOptimize q q' = sum $ M.elems $ M.mapWithKey weighted (opCoeffs (symbolicCost q q'))
   where weighted c v = prod [ConstTerm $ coeffWeight c, v]
 
 coeffWeight :: CoeffIdx -> Rational

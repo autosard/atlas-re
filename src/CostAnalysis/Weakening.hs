@@ -17,6 +17,7 @@ import CostAnalysis.ProveMonad
 import CostAnalysis.Rules
 import CostAnalysis.Coeff
 import Typing.Type
+import Control.Monad.Extra (concatMapM)
 
 farkas :: ExpertKnowledge -> ProveMonad [Constraint]
 farkas (ExpertKnowledge (as, bs) ps qs) = do
@@ -34,6 +35,7 @@ ctxFarkas :: Set WeakenArg -> AnnCtx -> AnnCtx -> ProveMonad [Constraint]
 ctxFarkas wArgs ps qs = do
   ks <- M.fromList <$> mapM go (M.toAscList ps)
   farkas =<< genInterPotKnowledge ks
+  --concatMapM farkas (M.elems ks)
   where go :: (Type, RsrcAnn) -> ProveMonad (Type, ExpertKnowledge)
         go (t, p) = do
           pot <- potForType t <$> use potentials
@@ -48,23 +50,36 @@ genInterPotKnowledge :: Map Type ExpertKnowledge -> ProveMonad ExpertKnowledge
 genInterPotKnowledge ks = do
   let ts = M.keys ks
   pots <- use potentials
-  let as = V.fromList [ V.concat 
-                        [ if rowT == colT then
-                            let k = ks M.! colT in
-                              fst (matrix k) V.! i
-                          else 
-                            genInterRow pots (ps V.! iP) rowT colT (V.map fst . cols $ ks M.! colT)
-                        | colT <- ts]
-                      | rowT <- ts,
-                        let ps = V.map fst . rows $ ks M.! rowT,
-                        (i, row) <- V.toList . V.indexed . fst . matrix $ ks M.! rowT,
-                        let iP = case V.findIndex (== 1) row of
-                                   Just i -> i
-                                   Nothing -> error "no 1 in row."]
-  let bs = concatMap (snd . matrix) $ M.elems ks
-  let rows' = V.concat $ map rows $ M.elems ks
   let cols' = V.concat $ map cols $ M.elems ks
-  return $ ExpertKnowledge (as, bs) rows' cols'
+  let rows' = V.concat $ map rows $ M.elems ks
+  
+  let as = V.fromList $ [ V.concat 
+                          [ if rowT == colT then
+                              let k = ks M.! colT in
+                                fst (matrix k) V.! i
+                            else
+                              V.replicate (length (cols $ ks M.! colT)) 0
+                          | colT <- ts]
+                        | rowT <- ts,
+                          let ps = V.map fst . rows $ ks M.! rowT,
+                              (i, _) <- V.toList . V.indexed . fst . matrix $ ks M.! rowT]
+
+  let asInter = V.fromList [ V.concat $ map (\t -> if t == tQ then interRowQ else
+                                                if t == tP then interRowP else
+                                                  V.replicate 0 $ length (cols $ ks M.! t)) ts
+                           | tP <- ts,
+                             tQ <- ts,
+                             tP /= tQ,
+                             let constP = constCoeff (potForType tP pots),
+                             let constQ = constCoeff (potForType tQ pots),
+                             let colsP = cols $ ks M.! tP,
+                             let colsQ = cols $ ks M.! tQ,
+                             let interRowP = case V.elemIndex constP (V.map fst colsP) of
+                                  Just j -> V.generate (V.length colsP ) (\i -> if i == j then 1 else 0),
+                             let interRowQ = case V.elemIndex constQ (V.map fst colsQ) of
+                                  Just j -> V.generate (V.length colsQ) (\i -> if i == j then -1 else 0)]
+  let bs = concatMap (snd . matrix) $ M.elems ks 
+  return $ ExpertKnowledge (V.concat [as, asInter], bs ++ replicate (length asInter) 0) rows' cols'
 
 genInterRow :: Map Type (Potential, RsrcAnn) -> CoeffIdx -> Type -> Type -> V.Vector CoeffIdx -> V.Vector Int
 genInterRow pots p rowT colT cols
@@ -73,21 +88,6 @@ genInterRow pots p rowT colT cols
         case V.elemIndex colConst cols of
           Just j -> V.generate (length cols) (\i -> if i == j then 1 else 0)
   | otherwise = V.replicate (length cols) 0
-  
--- interPotConsts :: AnnCtx -> AnnCtx -> ProveMonad [Constraint]
--- interPotConsts ps qs = do
---   pConsts <- mapM constCoeffForType $ M.assocs ps
---   qConsts <- mapM constCoeffForType $ M.assocs qs
---   let m = monoLattice (\_ _ _ -> True) [] (S.fromList (map fst pConsts))
---       ps = V.fromList (map snd pConsts)
---       qs = V.fromList (map snd qConsts)
---   let knowledge = ExpertKnowledge m ps qs  
---   farkas knowledge ps qs
---   where constCoeffForType :: (Type, RsrcAnn) -> ProveMonad (CoeffIdx, Term)
---         constCoeffForType (t, q) = do
---           pot <- potForType t <$> use potentials
---           let idx = constCoeff pot
---           return (idx, q!?idx)
           
 coeffForLine :: V.Vector Int -> V.Vector CoeffIdx -> CoeffIdx
 coeffForLine line coeffs = case V.findIndex (== 1) line of

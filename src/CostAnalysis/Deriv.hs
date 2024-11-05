@@ -217,6 +217,14 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q'
 --   let cs = annLikeUnify q q' 
 --   conclude R.App True q q' cs e []
 
+isRecursive :: Id -> ProveMonad Bool
+isRecursive other = do
+  selfFn <- use currFn
+  let self = case selfFn of
+               Just f -> f
+               Nothing -> error "not current function set."
+  return $ self == other
+
 proveApp :: Prove PositionedExpr Derivation
 proveApp tactic False e@(App id _) q q' = do
   fnSig <- use sig
@@ -233,12 +241,14 @@ proveApp tactic True e@(App id _) q q' = do
   fnSig <- use sig
   let (p, p') = withoutCost $ fnSig M.! id
   k <- freshVar
-  let cs = or $
-        concat [ and $
-                   ctxUnify q (ctxScalarMul p (ConstTerm k))
-                   ++ ctxUnify q' (ctxScalarMul p' (ConstTerm k))
-                 | k <- [0,1,2]]
-        ++ ctxUnify q q'
+  recursive <- isRecursive id
+  let cs = ctxUnify q q'
+  -- let cs = or $
+  --       concat [ and $
+  --                  ctxUnify q (ctxScalarMul p (ConstTerm k))
+  --                  ++ ctxUnify q' (ctxScalarMul p' (ConstTerm k))
+  --                | k <- [0,1,2]]
+--        ++ if not recursive then and $ ctxUnify q q' else []
   conclude R.App True q q' cs e []
 
 redundentVars :: AnnCtx -> Expr a -> [(Id, Type)]

@@ -5,7 +5,7 @@
 module CostAnalysis.Potential where
 
 import Prelude hiding (sum, (!))
-import Data.Text(Text, intercalate)
+import Data.Text(Text)
 import Data.Map(Map)
 import qualified Data.Map as M
 import qualified Data.List as L
@@ -154,24 +154,29 @@ calculateBound (from, to) solution = M.fromList $ map subtract (getCoeffs from)
             (ConstTerm 0) -> solutionOrZero left
 
   
-symbolicCost :: (RsrcAnn, RsrcAnn) -> PointWiseOp
-symbolicCost (from, to) = PointWiseOp (annVars from) $
+symbolicCost :: (AnnLike a, AnnLike b) => a -> b -> PointWiseOp
+symbolicCost from to = PointWiseOp (argVars from) $
   M.fromList [(idx, sub [from!idx, to!?idx'])
              | idx <- S.toList $ definedIdxs from,
-               let idx' = if length (annVars from) == length (annVars to) then
-                     substitute (annVars from) (annVars to) idx else idx]
+               let idx' = if length (argVars from) == length (argVars to) then
+                     substitute (argVars from) (argVars to) idx else idx]
 
-ctxSymbolicCost :: (AnnCtx, AnnCtx) -> Map Type PointWiseOp
-ctxSymbolicCost (from, to) = M.fromList $
-  zipWith go (M.assocs from) (M.assocs to)
-  where go (t, from) (_, to) = (t, symbolicCost (from, to))
+ctxSymbolicCost :: (AnnLike a, AnnLike b) => (Map Type a, Map Type b) -> Map Type PointWiseOp
+ctxSymbolicCost (from, to) = ctxZipWith
+  (const (`symbolicCost` pointWiseZero))
+  (const (symbolicCost pointWiseZero))
+  (const symbolicCost) from to
+
+  -- M.fromList $
+  -- zipWith go (M.assocs from) (M.assocs to)
+  -- where go (t, from) (_, to) = (t, symbolicCost (from, to))
 
 printRHS :: Potential -> RsrcAnn -> Map Coeff Rational -> String
 printRHS pot rhs solution = printPotential pot $ M.toList (M.restrictKeys solution (S.fromList (getCoeffs rhs)))
 
 
 printBound :: PotFnMap -> (AnnCtx, AnnCtx) -> Map Coeff Rational -> String
-printBound pots (from, to) solution = unwords $ map costForType (M.keys from)
+printBound pots (from, to) solution = L.intercalate " + " (map costForType (M.keys from))
   where costForType :: Type -> String
         costForType t = let pot = fst $ pots M.! t
                             to' = fromMaybe (emptyAnn pot 0 "" "" []) $ to M.!? t

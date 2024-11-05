@@ -25,6 +25,7 @@ import CostAnalysis.ProveMonad
 import Control.Monad.Extra (whenJust)
 import Data.Maybe (isNothing)
 
+import Debug.Trace
 
 class Encodeable a where
   toZ3 :: (MonadOptimize z3) => a -> z3 AST
@@ -113,7 +114,10 @@ solve fns = do
     Left unsatCore -> throwError $ UnsatErr unsatCore
     Right solution -> return solution
   constraints .= []
-  return solution
+  return (trace (concat $ M.mapWithKey showSol solution) solution)
+  --return solution
+
+showSol q v = show q ++ " = " ++ show v ++ "\n"
 
 createSolverZ3 :: MonadOptimize z3 => RsrcSignature -> [Constraint] -> [Constraint] -> Maybe Term -> z3 (Map String Constraint)
 createSolverZ3 sig typingCs extCs optiTarget = do
@@ -132,6 +136,7 @@ solveZ3 tracker sig = do
   case result of
     Sat -> do
       model <- optimizeGetModel
+--      Right <$> evalCoeffs model (concatMap getCoeffs (M.elems tracker))
       Right <$> evalCoeffs model (getCoeffs sig)
     Unsat -> do
       unsatCore <- optimizeGetUnsatCore

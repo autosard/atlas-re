@@ -7,7 +7,7 @@
 
 module CostAnalysis.RsrcAnn where
 
-import Prelude hiding (sum)
+import Prelude hiding (sum, or, and)
 
 import Data.Map(Map)
 import qualified Data.Map as M
@@ -124,7 +124,12 @@ instance AnnLike PointWiseOp where
   (!) op idx = opCoeffs op M.! toIdx idx
   (!?) op idx = fromMaybe (ConstTerm 0) $ opCoeffs op M.!? toIdx idx
 
-
+instance AnnLike (Map CoeffIdx Rational) where
+  argVars m = []
+  definedIdxs = M.keysSet
+  annEmpty = M.null 
+  (!) m idx = ConstTerm $ m M.! toIdx idx
+  (!?) m idx = ConstTerm $ fromMaybe 0 (m M.!? toIdx idx)
 
 -- runWithZero :: (AnnLike a) => (a -> c) -> (k -> a -> c) 
 -- runWithZero zipper = const (`zipper` pointWiseZero) 
@@ -170,6 +175,18 @@ ctxEq qs ps = concat . M.elems $ ctxZipWith
   (const (annLikeEq pointWiseZero))
   (const annLikeEq) qs ps
 
+ctxConstEq :: AnnLike a => Map Type a -> Map Type CoeffAnnotation -> [Constraint]
+ctxConstEq ctx values = concat . M.elems $ ctxZipWith
+  (const (`annLikeConstEq` M.empty))
+  (const (annLikeConstEq pointWiseZero))
+  (const annLikeConstEq) ctx values
+
+ctxConstLe :: AnnLike a => Map Type a -> Map Type CoeffAnnotation -> [Constraint]
+ctxConstLe ctx values = concat . M.elems $ ctxZipWith
+  (const (`annLikeConstLe` M.empty))
+  (const (annLikeConstLe pointWiseZero))
+  (const annLikeConstLe) ctx values
+
 annLikeUnify :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
 annLikeUnify q p = concat [eq (q!?idx) p'
                           | idx <- S.toList $ definedIdxs q,
@@ -177,6 +194,15 @@ annLikeUnify q p = concat [eq (q!?idx) p'
                                    | length (argVars q) == length (argVars p) 
                                   = p!?substitute (argVars q) (argVars p) idx
                                    | otherwise = ConstTerm 0]
+
+annLikeLeftInRight :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
+annLikeLeftInRight q p = concat [or $ and (zero (q!?idx)) ++ and (ge p' (q!?idx))
+                          | idx <- S.toList $ definedIdxs q,
+                            let p' | justConst idx = p!?idx 
+                                   | length (argVars q) == length (argVars p) 
+                                  = p!?substitute (argVars q) (argVars p) idx
+                                   | otherwise = ConstTerm 0,
+                            p' /= ConstTerm 0]
 
 ctxUnify :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> [Constraint]
 ctxUnify qs ps = concat . M.elems $ ctxZipWith
@@ -273,14 +299,9 @@ annLikeConstLe :: AnnLike a => a -> CoeffAnnotation -> [Constraint]
 annLikeConstLe ann values = concat [le (ann!idx) $ ConstTerm (M.findWithDefault 0 idx values)
                                    | idx <- S.toList $ definedIdxs ann]                   
 
-ctxConstLe :: AnnLike a => Map Type a -> Map Type CoeffAnnotation -> [Constraint]
-ctxConstLe ctx values = concat $ zipWith annLikeConstLe (M.elems ctx) (M.elems values)
-
 annLikeConstEq :: AnnLike a => a -> CoeffAnnotation -> [Constraint]
 annLikeConstEq ann values = concat [eq (ann!idx) $ ConstTerm (M.findWithDefault 0 idx values)
                                    | idx <- S.toList $ definedIdxs ann]
-ctxConstEq :: AnnLike a => Map Type a -> Map Type CoeffAnnotation -> [Constraint]
-ctxConstEq ctx values = concat $ zipWith annLikeConstEq (M.elems ctx) (M.elems values)
                         
 instance HasCoeffs RsrcAnn where
   getCoeffs ann = map (coeffFromAnn ann) $ S.toList (ann^.coeffs)

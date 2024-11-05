@@ -16,6 +16,7 @@ import CostAnalysis.Coeff
 import Data.List.Extra (groupSort)
 import Ast
 import qualified Data.Text as T
+import CostAnalysis.Potential.Log.Base (constCoeff)
 
 
 exp :: Id
@@ -129,7 +130,8 @@ cLetBinding q p = extendAnn p $
   ++ [(`eq` (q!idx)) <$> def idx
      | idx <- mixes q,
        onlyVarsOrConst idx xs,
-       (not . justConst) idx]
+       idx /= constCoeff]
+       --(not . justConst) idx]
   -- move const
   ++ [(`le` (q![mix|2|])) <$> def [mix|2|]]
   where xs = annVars p

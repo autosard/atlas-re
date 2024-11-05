@@ -27,7 +27,7 @@ import Typing.Type
 import CostAnalysis.RsrcAnn ( RsrcSignature,
                              FunRsrcAnn(..), ctxConstEq,
                              ctxConstLe, PointWiseOp,
-                             opCoeffs, ctxGeZero)
+                             opCoeffs, ctxGeZero, AnnCtx, annLikeLeftInRight)
 import CostAnalysis.Potential(ctxSymbolicCost, PotFnMap)
 import CostAnalysis.Potential.Kind (fromKind)
 
@@ -56,7 +56,7 @@ analyzeModule :: ProofEnv -> PositionedModule
   -> IO (Either SourceError (Derivation, RsrcSignature, Either [Constraint] (Solution, PotFnMap)))
 analyzeModule env mod = do
   
-  let state = ProofState M.empty [] [] 0 0 [] [] M.empty M.empty
+  let state = ProofState M.empty [] [] 0 0 [] [] M.empty M.empty Nothing
   (result, state', solution) <- runProof env state (analyzeModule' mod)
   let deriv = T.Node (ProgRuleApp mod) (state'^.fnDerivs)
   case result of
@@ -88,6 +88,7 @@ analyzeFn :: PositionedModule -> PositionedFunDef -> ProveMonad Derivation
 analyzeFn mod fn@(Fn id _ _) = do
   ann <- genFunRsrcAnn fn
   sig %= M.insert id ann
+  currFn .= Just id
   analyzeFn' fn
 
 analyzeFn' :: PositionedFunDef -> ProveMonad Derivation
@@ -111,10 +112,17 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
       s <- use sig
       let (q, q') = withCost $ s M.! fnId
       extCs <- ctxCExternal q q'
-      tellCs extCs
+      tellCs (extCs ++ potFnCovered q q')
       addFullCostOptimization fnId
   proveFun def
 
+potFnCovered :: AnnCtx -> AnnCtx -> [Constraint]
+potFnCovered qs qs' = concat
+  [annLikeLeftInRight q' q
+  | t <- M.keys qs',
+    let q' = qs' M.! t,
+    M.member t qs,
+    let q = qs M.! t]
 
 type CostComparision = Map Type PointWiseOp -> Map Type CoeffAnnotation -> [Constraint]
 

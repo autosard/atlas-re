@@ -46,7 +46,8 @@ data ProofState = ProofState {
   _constraints :: [Constraint],
   _fnDerivs :: [Derivation],
   _solution :: Map Coeff Rational,
-  _potentials :: P.PotFnMap}
+  _potentials :: P.PotFnMap,
+  _currFn :: Maybe Id}
 
 makeLenses ''ProofState
 
