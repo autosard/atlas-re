@@ -52,12 +52,15 @@ rsrcAnn id label comment args ranges =
   where rankCoeffs = [Pure x | (x,i) <- zip args [1..]]
         logCoeffs = [idx
                     | idx <- combi ranges args,
-                      idxSum idx > 0,
-                      idx /= [mix|1|]]
+                      idxSum idx > 0]
+--                      idx /= [mix|1|]]
 
                
 constCoeff :: CoeffIdx
 constCoeff = [mix|2|]
+
+zeroCoeff :: Maybe CoeffIdx
+zeroCoeff = Just [mix|1|]
 
 forAllCombinations :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 forAllCombinations q xs (rangeA, rangeB) x =

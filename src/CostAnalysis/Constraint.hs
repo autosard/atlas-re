@@ -3,7 +3,7 @@
 
 module CostAnalysis.Constraint where
 
-import Prelude hiding (sum)
+import Prelude hiding (sum, or)
 import Data.List(intercalate)
 
 import CostAnalysis.Coeff
@@ -119,6 +119,11 @@ impl _ _ = error "cannot construct implication. "
 or :: [Constraint] -> [Constraint]
 or [] = []
 or cs = [Or cs]
+
+or2 :: [Constraint] -> [Constraint] -> [Constraint]
+or2 [] _ = []
+or2 _ [] = []
+or2 xs ys = or (xs ++ ys)
 
 and :: [Constraint] -> [Constraint]
 and cs = [And cs]

@@ -45,7 +45,8 @@ data RunOptions = RunOptions {
   switchIncremental :: Bool,
   switchHideConstraints :: Bool,
   switchHtmlOutput :: Bool,
-  switchPrintProg :: Bool}
+  switchPrintProg :: Bool,
+  switchDumpCoeffs :: Bool}
 
 runOptionsP :: Parser RunOptions
 runOptionsP = do
@@ -72,7 +73,10 @@ runOptionsP = do
     <> help "When active, a html representation, potentially including the unsat-core is produced.")
   switchPrintProg <- switch
     (long "print-program"
-    <> help "Output the normalized program.")    
+    <> help "Output the normalized program.")
+  switchDumpCoeffs <- switch
+    (long "dump-coeffs"
+    <> help "Dump the values of found coefficients.")      
   target <- argument (eitherReader parseFqn) (metavar "MODULE[.FUNCTION]" <> help "Analysis target. When a specific function is specified only this function and its dependencies are analyzed, which can save time.")
   return RunOptions{..}
 

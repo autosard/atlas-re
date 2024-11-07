@@ -13,6 +13,7 @@ pot args = Potential
   (ranges args)
   rsrcAnn
   constCoeff
+  zeroCoeff
   forAllCombinations
   cConst
   cMatch 

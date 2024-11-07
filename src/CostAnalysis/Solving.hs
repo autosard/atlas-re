@@ -86,16 +86,14 @@ assertConstraints track = foldrM (go track) M.empty
           optimizeAssertAndTrack c' p
           return $ M.insert pS c tracker
 
-assertCoeffsPos :: (MonadOptimize z3) => [Constraint] -> z3 ()
-assertCoeffsPos cs = do
-  let annCoeffs = S.unions $ map (S.fromList . getCoeffs) cs
-  annCoeffs' <- mapM (toZ3 . CoeffTerm) (S.toList annCoeffs)
+assertCoeffsPos :: (MonadOptimize z3) => [Coeff] -> z3 ()
+assertCoeffsPos coeffs = do
+  annCoeffs' <- mapM (toZ3 . CoeffTerm) coeffs
   positiveCs <- mapM (\coeff -> mkGe coeff =<< mkReal 0 1) annCoeffs'
   mapM_ optimizeAssert positiveCs
 
 solve :: [Id] -> ProveMonad Solution
 solve fns = do
-  sig' <- (`M.restrictKeys` S.fromList fns) <$> use sig
   targets <- use optiTargets
   let opti = case targets of
                [] -> Nothing
@@ -105,9 +103,10 @@ solve fns = do
   let dump = True
   (result, smt) <- liftIO . evalZ3 $
     do
-      tracker <- createSolverZ3 sig' cs extCs opti
+      let coeffs = S.toList . S.unions $ map (S.fromList . getCoeffs) (cs ++ extCs)
+      tracker <- createSolverZ3 coeffs cs extCs opti
       smt <- if dump then Just <$> optimizeToString else return Nothing
-      result <- solveZ3 tracker sig'
+      result <- solveZ3 tracker coeffs 
       return (result, smt)
   liftIO $ whenJust smt (writeFile "out/instance.smt")
   solution <- case result of 
@@ -119,9 +118,9 @@ solve fns = do
 
 showSol q v = show q ++ " = " ++ show v ++ "\n"
 
-createSolverZ3 :: MonadOptimize z3 => RsrcSignature -> [Constraint] -> [Constraint] -> Maybe Term -> z3 (Map String Constraint)
-createSolverZ3 sig typingCs extCs optiTarget = do
-  assertCoeffsPos (typingCs ++ extCs)
+createSolverZ3 :: MonadOptimize z3 => [Coeff] -> [Constraint] -> [Constraint] -> Maybe Term -> z3 (Map String Constraint)
+createSolverZ3 coeffs typingCs extCs optiTarget = do
+  assertCoeffsPos coeffs
   tracker <- assertConstraints (isNothing optiTarget) $ typingCs ++ extCs
   case optiTarget of
     Just target -> do
@@ -130,14 +129,13 @@ createSolverZ3 sig typingCs extCs optiTarget = do
       return tracker
     Nothing -> return tracker
 
-solveZ3 :: MonadOptimize z3 => Map String Constraint -> RsrcSignature -> z3 (Either [Constraint] Solution)
-solveZ3 tracker sig = do
+solveZ3 :: MonadOptimize z3 => Map String Constraint -> [Coeff] -> z3 (Either [Constraint] Solution)
+solveZ3 tracker coeffs = do
   result <- optimizeCheck []
   case result of
     Sat -> do
       model <- optimizeGetModel
---      Right <$> evalCoeffs model (concatMap getCoeffs (M.elems tracker))
-      Right <$> evalCoeffs model (getCoeffs sig)
+      Right <$> evalCoeffs model coeffs
     Unsat -> do
       unsatCore <- optimizeGetUnsatCore
       astStrings <- mapM astToString unsatCore

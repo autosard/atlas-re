@@ -47,6 +47,9 @@ rsrcAnn id label comment args (degrees, _) =
 constCoeff :: CoeffIdx
 constCoeff = [mix||]
 
+zeroCoeff :: Maybe CoeffIdx
+zeroCoeff = Nothing
+
 forAllCombinations :: Args -> RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 forAllCombinations potArgs q xs (rangeA, rangeB) x = filter (not . null . idxToSet ) $ varsRestrictMixes q xs
 

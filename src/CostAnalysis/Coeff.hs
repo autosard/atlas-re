@@ -66,6 +66,11 @@ constFactor _ = error "cannot extract const for pure index."
 matchesVar x (Arg id _) = id == x
 matchesVar _ _ = False
 
+coeffArgs :: CoeffIdx -> [Id]
+coeffArgs = foldr go [] . S.toList . idxToSet
+  where go (Const _) xs = xs
+        go (Arg x _) xs = x:xs
+
 facForVar' :: CoeffIdx -> Id -> [Int]
 facForVar' (Mixed idx) x = getArg $ L.find (matchesVar x) (S.toList idx)
   where getArg (Just (Arg _ a)) = a

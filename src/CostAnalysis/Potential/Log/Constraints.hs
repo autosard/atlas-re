@@ -32,10 +32,11 @@ cConst (Leaf {}) q q'
              let c = constFactor idx,
              let addRank = [q'!?exp | c == 2],
              c >= 2]
+    ++ eq (q![mix|1|]) (q'!?[mix|exp^1|]) 
     ++ concat [zero (q'!idx)
        | let qConsts = S.fromList $ (filter (>=2) . map constFactor) (mixes q),
          idx <- mixes q',
-         idx /= [mix|exp^1|], -- TODO this should not be necessary
+         idx /= [mix|exp^1|], -- should be redundant with next line 
          idxSum idx `S.notMember` qConsts]
 cConst e@(Node {}) q q'
   = let [x1, x2] = annVars q in
@@ -43,18 +44,20 @@ cConst e@(Node {}) q q'
       ++ eq (q!?x2) (q'!?exp)
       ++ eq (q!?[mix|x1^1|]) (q'!?exp)
       ++ eq (q!?[mix|x2^1|]) (q'!?exp)
+--      ++ (if (q!?[mix|x1^1|]) /= ConstTerm 0 then eq (q!?[mix|x1^1|]) (q'!?exp) else [])
+--      ++ (if (q!?[mix|x1^1|]) /= ConstTerm 0 then eq (q!?[mix|x2^1|]) (q'!?exp) else [])
       ++ concat [eq (q!idx) (q'!?[mix|exp^a,c|])
                 | idx <- mixes q,
                   let a = facForVar idx x1,
                   a == facForVar idx x2,
                   let c = constFactor idx]
-      ++ concat [zero (q![mix|x1^x,x2^y,c|]) 
-                | idx <- mixes q,
-                  let x = facForVar idx x1,
-                  let y = facForVar idx x2,
-                  let c = constFactor idx,
-                  x /= y,
-                  x + y + c > 1]
+      -- ++ concat [zero (q![mix|x1^x,x2^y,c|]) 
+      --           | idx <- mixes q,
+      --             let x = facForVar idx x1,
+      --             let y = facForVar idx x2,
+      --             let c = constFactor idx,
+      --             x /= y,
+      --             x + y + c > 1]
       ++ concat [zero (q'![mix|exp^a,c|]) 
                 | idx <- mixes q',
                   let a = facForVar idx exp,
@@ -79,8 +82,8 @@ cMatch q p x [] = extendAnn p $
               let b = constFactor idx,
               a >= 0, b >= 0,
               let c = a + b,
-              let xs = varsExcept idx [x],
-              not (null xs && c == 1)]
+              let xs = varsExcept idx [x]]
+              --not (null xs && c == 1)]
 -- node
 cMatch q r x [u, v] = extendAnn r $
   [(`eq` (q!x)) <$> def u,

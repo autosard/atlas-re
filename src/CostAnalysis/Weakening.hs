@@ -7,7 +7,7 @@ import qualified Data.Map as M
 import Data.Map(Map)
 import qualified Data.Vector as V
 import Lens.Micro.Platform
-import Data.Maybe(catMaybes)
+import Data.Maybe(catMaybes, isJust, fromJust)
 
 import Primitive(Id)
 import CostAnalysis.RsrcAnn
@@ -64,22 +64,33 @@ genInterPotKnowledge ks = do
                           let ps = V.map fst . rows $ ks M.! rowT,
                               (i, _) <- V.toList . V.indexed . fst . matrix $ ks M.! rowT]
 
-  let asInter = V.fromList [ V.concat $ map (\t -> if t == tQ then interRowQ else
-                                                if t == tP then interRowP else
-                                                  V.replicate 0 $ length (cols $ ks M.! t)) ts
-                           | tP <- ts,
-                             tQ <- ts,
-                             tP /= tQ,
-                             let constP = constCoeff (potForType tP pots),
-                             let constQ = constCoeff (potForType tQ pots),
-                             let colsP = cols $ ks M.! tP,
-                             let colsQ = cols $ ks M.! tQ,
-                             let interRowP = case V.elemIndex constP (V.map fst colsP) of
-                                  Just j -> V.generate (V.length colsP ) (\i -> if i == j then 1 else 0),
-                             let interRowQ = case V.elemIndex constQ (V.map fst colsQ) of
-                                  Just j -> V.generate (V.length colsQ) (\i -> if i == j then -1 else 0)]
+  let equalConstCoeffs = interCoeffsEqual ks ts pots (Just . constCoeff)
+  let equalZeroCoeffs = interCoeffsEqual ks ts pots zeroCoeff
+  let asInter = V.concat [equalConstCoeffs, equalZeroCoeffs]
   let bs = concatMap (snd . matrix) $ M.elems ks 
   return $ ExpertKnowledge (V.concat [as, asInter], bs ++ replicate (length asInter) 0) rows' cols'
+
+interCoeffsEqual :: Map Type ExpertKnowledge -> [Type] -> PotFnMap -> (Potential -> Maybe CoeffIdx) -> V.Vector (V.Vector Int)
+interCoeffsEqual ks ts pots coeff = V.fromList [
+  V.concat $ map (buildSegment tQ tP) ts
+  | tP <- ts,
+    isJust $ coeff (potForType tP pots),
+    let coeffP = fromJust $ coeff (potForType tP pots),
+    isJust $ V.elemIndex coeffP (V.map fst $ cols $ ks M.! tP),
+    tQ <- ts,
+    isJust $ coeff (potForType tQ pots),
+    let coeffQ = fromJust $ coeff (potForType tQ pots),
+    isJust $ V.elemIndex coeffQ (V.map fst $ cols $ ks M.! tQ),    
+    tP /= tQ]
+  where buildSegment tP tQ t | t == tP
+          = let coeffP = fromJust $ coeff (potForType tP pots) in
+              singletonSegment coeffP (cols $ ks M.! tP) 1
+                         | t == tQ
+          = let coeffQ = fromJust $ coeff (potForType tQ pots) in
+              singletonSegment coeffQ (cols $ ks M.! tQ) (-1)
+                         | otherwise = V.replicate (length (cols $ ks M.! t)) 0
+        singletonSegment idx cols x = case V.elemIndex idx (V.map fst cols) of
+          Just j -> V.generate (V.length cols) (\i -> if i == j then x else 0)
 
 genInterRow :: Map Type (Potential, RsrcAnn) -> CoeffIdx -> Type -> Type -> V.Vector CoeffIdx -> V.Vector Int
 genInterRow pots p rowT colT cols

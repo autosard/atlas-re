@@ -57,6 +57,8 @@ data Potential = Potential {
   -- | @ 'constCoeff'@ returns the coefficient index for the constant basic potential function.
   constCoeff :: CoeffIdx,
 
+  zeroCoeff :: Maybe CoeffIdx, 
+
   -- | @ 'forAllCombinations' q xs (rangeA, rangeB) x@ generates an index for all combinations of variables in @xs@ and the variable @x@, based on the indices in @q@.
   forAllCombinations :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx],
   

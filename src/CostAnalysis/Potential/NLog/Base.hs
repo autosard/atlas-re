@@ -5,7 +5,6 @@ module CostAnalysis.Potential.NLog.Base where
 import Prelude hiding ((^))
 import Data.Text(Text)
 import qualified Data.Text as T
-import Data.List(intercalate)
 import qualified Data.Set as S
 
 import Primitive(Id)
@@ -36,18 +35,23 @@ rsrcAnn id label comment args ranges =
   where coeffs = defaultCoeffs args ranges
 
 defaultCoeffs :: [Id] -> ([Int], [Int]) -> [CoeffIdx]
-defaultCoeffs args (aRange, _) =
-  [[mix|x^(a, b, c)|]
+defaultCoeffs args (aRange, bRange) =
+  [[mix|x^(a, b), c|]
   | x <- args,
     a <- aRange,
     b <- aRange,
-    c <- aRange,
-    b + c <= 1]
+    c <- bRange,
+    b + c <= 2,
+    b + c > 0,
+    not (a == 1 && b == 0 &&  c == 1)]
 
                
 constCoeff :: CoeffIdx
-constCoeff = [mix||]
+constCoeff = [mix|2|]
 
+zeroCoeff :: Maybe CoeffIdx
+zeroCoeff = Just [mix|1|]
+  
 forAllCombinations :: Args -> RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 forAllCombinations potArgs q xs (rangeA, rangeB) x = filter (not . null . idxToSet ) $ varsRestrictMixes q xs
 
@@ -56,13 +60,18 @@ cExternal _ _ = []
 
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = error "pure coefficients are not supported with linear logarithmic potential."
-printBasePot (Mixed factors) = printBasePot' $ S.toDescList factors
-
-printBasePot' :: [Factor] -> String
-printBasePot' [Arg x [a1, a2, a3]] = printA1 ++ printA2 ++ printA3
+printBasePot idx = 
+  let [x] = coeffArgs idx
+      (a, b) = facForVar2 idx x
+      c = constFactor idx in
+    printN a x ++ printLogN b x c
   where printIfPos a s = if a > 0 then s else ""
-        printA1 = printIfPos a1 $ "|" ++ T.unpack x ++ "|"
-        printA2 = printIfPos a2 $ " * log(|" ++ T.unpack x ++ "|)"
-        printA3 = printIfPos a3 $ " * log(|" ++ T.unpack x ++ "| + 1" ++ ")"
+        printN a x = printIfPos a $ "|" ++ T.unpack x ++ "|"
+        printLogN b x c = printIfPos b $ " * log(" ++ printIfPos b ("|" ++ T.unpack x ++ "|") ++ printIfPos c (show c) ++ ")"
+
+--printBasePot' :: [Factor] -> String
+--printBasePot' [Arg x [a, b], Const c] = 
+--printBasePot' fs = error $ "non exaustive pattern: " ++ show fs
+    
 
  

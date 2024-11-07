@@ -98,11 +98,14 @@ run Options{..} RunOptions{..} = do
       (deriv, sig, Right (solution, pots)) -> do
          when switchHtmlOutput $
            liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv)
-         liftIO $ printSolution sig pots solution
+         liftIO $ printSolution switchDumpCoeffs sig pots solution
         
 
-printSolution :: RsrcSignature -> PotFnMap -> Solution -> IO ()
-printSolution sig potFns solution = do
+printSolution :: Bool -> RsrcSignature -> PotFnMap -> Solution -> IO ()
+printSolution dumpCoeffs sig potFns solution = do
+  when dumpCoeffs $ (do
+                        mapM_ (\(q, v) -> putStrLn $ show q ++ " = " ++ show v) (M.assocs solution)
+                        putStrLn "")
   putStrLn "Potential functions:"
   mapM_ printPotFn (M.assocs potFns)
   putStrLn ""

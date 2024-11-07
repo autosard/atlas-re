@@ -19,26 +19,31 @@ import Data.List.Extra (groupSort)
 exp :: Id
 exp = "e1"
 
-shiftLogs :: Int -> Int -> Maybe (Int, Int)
-shiftLogs 1 0 = Just (0, 1)
-shiftLogs 0 0 = Just (0, 0)
-shiftLogs 0 1 = Nothing
+-- shiftLogs :: Int -> Int -> Maybe (Int, Int)
+-- shiftLogs 1 0 = Just (0, 1)
+-- shiftLogs 0 0 = Just (0, 0)
+-- shiftLogs 0 1 = Nothing
 
+shiftLogs :: Int -> Int -> Maybe (Int, Int)
+shiftLogs b c | c < 2 || b == 0 = Just (b, c + b)
+              | otherwise = Nothing
+              
 addShiftL :: RsrcAnn -> RsrcAnn -> [Constraint] 
 addShiftL q q' =
   let [x] = _args q
       [y] = _args q' in
     concat $ [eqs
              | idx <- mixes q,
-               let (a,b,c) = facForVar3 idx x,
+               let (a,b) = facForVar2 idx x,
+               let c = constFactor idx,
                let a' = a - 1,
                let eqs = case shiftLogs b c of
                     Just (b', c') ->
                       if a > 0 then
-                        eq (q!idx) (q'![mix|y^(a,b',c')|])
-                        ++ eq (q!idx) (q'![mix|y^(a',b',c')|])
+                        eq (q!idx) (q'![mix|y^(a,b'),c'|])
+                        ++ eq (q!idx) (q'![mix|y^(a',b'),c'|])
                       else
-                        eq (q!idx) (q'![mix|y^(a,b',c')|])
+                        eq (q!idx) (q'![mix|y^(a,b'),c'|])
                     Nothing -> eq (q!idx) (ConstTerm 0)]
                             
 
@@ -47,34 +52,34 @@ addShiftDefL q_ x q' y = extendAnn q_ $
   [ (`eqSum` map (q'!) q'Idxs) <$> def qIdx
   | (qIdx, q'Idxs) <- groupSort nonZeroIdxs]
   where split idx (left, right) =
-           let (a,b,c) = facForVar3 idx y
+           let (a, b) = facForVar2 idx y
+               c = constFactor idx
                a' = a - 1 in
            case shiftLogs b c of
                 Just (b', c') -> (left, right ++ if a > 0 then
-                                     [([mix|x^(a, b', c')|], idx),
-                                      ([mix|x^(a',b', c')|], idx)]
-                                   else [([mix|x^(a, b', c')|], idx)])
+                                     [([mix|x^(a, b'), c'|], idx),
+                                      ([mix|x^(a',b'), c'|], idx)]
+                                   else [([mix|x^(a, b'), c'|], idx)])
                 Nothing -> (idx:left, right)
         (zeroIdxs, nonZeroIdxs) = foldr split ([],[]) (mixes q')
 
-lengthOneConst :: RsrcAnn -> RsrcAnn -> [Constraint]
-lengthOneConst q q' = eqSum (q!constCoeff) [
-  q'![mix|exp^(1,0,0)|],
-  q'![mix|exp^(0,0,1)|],
-  q'![mix|exp^(1,0,1)|],
-  q'![mix||]]
-
 cConst :: PositionedExpr -> RsrcAnn -> RsrcAnn -> [Constraint]
-cConst (Nil {}) q q' = lengthOneConst q q'
+cConst (Nil {}) q q' = eqSum (q!constCoeff) [
+  q'![mix|exp^(1,0),2|],
+  q'![mix|exp^(0,1),1|],
+  q'![mix|exp^(1,1),1|],
+  q'!constCoeff]
+  ++ eq (q![mix|1|]) (q'![mix|exp^(0,1)|])
 cConst (Ast.Const id _) _ _ = error $ "Constructor '" ++ T.unpack id ++ "' not supported."
 
 cMatch :: RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint])
 -- nil / leaf
 cMatch q r x [] = extendAnn r $
-  [(`eqSum` [q![mix|x^(1,0,0)|],
-            q![mix|x^(0,0,1)|],
-            q![mix|x^(1,0,1)|],
-            q![mix||]]) <$> def [mix||]]
+  ((`eqSum` [q![mix|x^(1,0),2|],
+            q![mix|x^(0,1),1|],
+            q![mix|x^(1,1),1|],
+            q!constCoeff]) <$> def constCoeff)
+  : [(`eq` (q![mix|x^(0,1)|])) <$> def [mix|1|]]
 -- cons                   
 cMatch q p x [l] = addShiftDefL p l q x
 
@@ -105,20 +110,22 @@ cLetBinding q p = extendAnn p $
 
 cLetBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> AnnArray -> Id -> [CoeffIdx] -> (RsrcAnn, [Constraint])
 cLetBody q r p p' ps' x js = extendAnn r $
-  [(`eq` (p'!pIdx)) <$> def [mix|x^(a,b,c)|]
+  [(`eq` (p'!pIdx)) <$> def [mix|x^(a,b),c|]
   | pIdx <- mixes p',
-    let (a, b, c) = facForVar3 pIdx exp,
+    let (a, b) = facForVar2 pIdx exp,
+    let c = constFactor pIdx,
     a /= 0 || b /= 0 || c /= 0]
   ++ [(`eq` (q!idx)) <$> def idx
      | idx <- mixes q,
        onlyVars idx ys,
        idx /= constCoeff]
   ++ [(`eq` sum [sub [q!?constCoeff, p!constCoeff], p'!constCoeff]) <$> def constCoeff]
-  ++ [(`eq` (ps'!!j!pIdx)) <$> def [mix|_j',x^(a, b, c)|]
+  ++ [(`eq` (ps'!!j!pIdx)) <$> def [mix|_j',x^(a, b), c|]
      | j <- js,
        let j' = idxToSet j,
        pIdx <- mixes $ ps'!!j,
-       let (a, b, c) = facForVar3 pIdx exp]
+       let (a, b) = facForVar2 pIdx exp,
+       let c = constFactor pIdx]
   where ys = L.delete x (annVars r)
 
 cLetCf :: Args -> RsrcAnn -> AnnArray -> AnnArray -> Id -> ([Id], [Id]) -> [CoeffIdx] -> (AnnArray, AnnArray, [Constraint])

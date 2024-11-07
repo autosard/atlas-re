@@ -1,5 +1,6 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module CostAnalysis.Deriv where
 
@@ -27,6 +28,7 @@ import CostAnalysis.Constraint ( and,
                                  Term(ConstTerm), geZero )
 import CostAnalysis.Weakening
 import CostAnalysis.ProveMonad
+import CostAnalysis.AnnIdxQuoter
 import StaticAnalysis(freeVars)
 import Data.Maybe (fromMaybe, mapMaybe)
 
@@ -130,6 +132,10 @@ splitLetCtx e1 e2 q =
       argsE2 = qArgs S.\\ argsE1 in
     (S.toList argsE1, S.toList argsE2)
 
+isLeaf :: PositionedExpr -> Bool
+isLeaf Leaf = True
+isLeaf _ = False
+
 -- splitLetCtxs :: AnnCtx -> Map Type ([Id], [Id])
 -- splitLetCtxs qs = map splitLetCtx
 proveLet :: Prove PositionedExpr Derivation
@@ -156,6 +162,8 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q'
       potE1 <- potForType (getType e1) <$> use potentials
       let (gamma, delta) = argSplit M.! getType e1
       bindingP' <- defaultAnn (getType e1) "P'"  "let e1" ["e1"]
+--      let e = "e1"
+--      let bindingP' = if isLeaf e1 then defaultP' & coeffs %~ S.delete [mix|e^1|] else defaultP'
         
       let rangeD = rangeA . ranges $ potE1
       let rangeE = if R.NegE `elem` letArgs then
@@ -242,13 +250,12 @@ proveApp tactic True e@(App id _) q q' = do
   let (p, p') = withoutCost $ fnSig M.! id
   k <- freshVar
   recursive <- isRecursive id
-  let cs = ctxUnify q q'
-  -- let cs = or $
-  --       concat [ and $
-  --                  ctxUnify q (ctxScalarMul p (ConstTerm k))
-  --                  ++ ctxUnify q' (ctxScalarMul p' (ConstTerm k))
-  --                | k <- [0,1,2]]
---        ++ if not recursive then and $ ctxUnify q q' else []
+  let cs = or $
+        concat [ and $
+                   ctxUnify q (ctxScalarMul p (ConstTerm k))
+                   ++ ctxUnify q' (ctxScalarMul p' (ConstTerm k))
+               | k <- [0,1,2]]
+        ++ if not recursive then and $ ctxUnify q q' else [] -- TODO 
   conclude R.App True q q' cs e []
 
 redundentVars :: AnnCtx -> Expr a -> [(Id, Type)]
