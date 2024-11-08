@@ -30,7 +30,7 @@ import CostAnalysis.Weakening
 import CostAnalysis.ProveMonad
 import CostAnalysis.AnnIdxQuoter
 import StaticAnalysis(freeVars)
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe, isJust)
 
 import Debug.Trace hiding (traceShow)
 import Data.Tuple (swap)
@@ -40,7 +40,7 @@ traceShow x = trace (show x) x
   
 type ProofResult = (Derivation, [Constraint], RsrcSignature)
 
-type Prove e a = Tactic -> Bool -> e -> AnnCtx -> AnnCtx -> ProveMonad a
+type Prove e a = Tactic -> Maybe Int -> e -> AnnCtx -> AnnCtx -> ProveMonad a
 
 proveConst :: Prove PositionedExpr Derivation
 proveConst _ cf e@Error q q' = do
@@ -186,7 +186,7 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q'
       let ctxPs = map (\p -> M.insert (getType e1) p nonBindingCtxP) (elems ps)
       let ctxPs' = map (\p -> M.insert (getType e1) p nonBindingCtxP') (elems ps')
 
-      cfDerivs <- zipWithM (proveExpr t1 True e1) ctxPs ctxPs'
+      cfDerivs <- zipWithM (proveExpr t1 (Just $ fromMaybe 1 cf) e1) ctxPs ctxPs'
       
       return (bindingCtxP', bindingCtxP, bindingCtxR,
                pCs ++ cfCs ++ rCs ++ nonBindingCs,
@@ -225,38 +225,33 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q'
 --   let cs = annLikeUnify q q' 
 --   conclude R.App True q q' cs e []
 
-isRecursive :: Id -> ProveMonad Bool
-isRecursive other = do
-  selfFn <- use currFn
-  let self = case selfFn of
-               Just f -> f
-               Nothing -> error "not current function set."
-  return $ self == other
-
 proveApp :: Prove PositionedExpr Derivation
-proveApp tactic False e@(App id _) q q' = do
+proveApp tactic Nothing e@(App id _) q q' = do
   fnSig <- use sig
-  let (p, p') = withCost $ fnSig M.! id
-  let (r, r') = withoutCost $ fnSig M.! id
+  let cSig = withCost $ fnSig M.! id
+  let cfSigs = withoutCost $ fnSig M.! id
   k <- freshVar
-  let cs = or $
-        concat [ and $
-                   ctxUnify q (ctxAdd p (ctxScalarMul r (ConstTerm k)))
-                   ++ ctxUnify q' (ctxAdd p' (ctxScalarMul r' (ConstTerm k)))
-               | k <- [0,1,2]]
-  conclude R.App False q q' cs e []
-proveApp tactic True e@(App id _) q q' = do
+  let cs = or $ concatMap (linCombOfSig cSig) cfSigs
+  conclude R.App Nothing q q' cs e []
+  where linCombOfSig (p, p') (r, r') = concat
+          [and $
+           ctxUnify q (ctxAdd p (ctxScalarMul r (ConstTerm k)))
+           ++ ctxUnify q' (ctxAdd p' (ctxScalarMul r' (ConstTerm k)))
+          | k <- [0,1,2]]
+proveApp tactic (Just cf) e@(App id _) q q' = do
   fnSig <- use sig
-  let (p, p') = withoutCost $ fnSig M.! id
+  let cfSigs = withoutCost $ fnSig M.! id
   k <- freshVar
-  recursive <- isRecursive id
-  let cs = or $
-        concat [ and $
-                   ctxUnify q (ctxScalarMul p (ConstTerm k))
-                   ++ ctxUnify q' (ctxScalarMul p' (ConstTerm k))
-               | k <- [0,1,2]]
-        ++ if not recursive then and $ ctxUnify q q' else [] -- TODO 
-  conclude R.App True q q' cs e []
+  p <- fromCtx "P" "cf shift" q
+  let csP = ctxEqSum q p
+  let cs = or $ linCombOfSig (p, q') (cfSigs L.!! cf)
+
+  conclude R.App (Just cf) q q' (cs) e []
+  where linCombOfSig (q, q') (p, p') = concat
+          [ and $
+            ctxUnify q (ctxScalarMul p (ConstTerm k))
+            ++ ctxUnify q' (ctxScalarMul p' (ConstTerm k))
+          | k <- [0,1,2]]
 
 redundentVars :: AnnCtx -> Expr a -> [(Id, Type)]
 redundentVars qs e =
@@ -321,7 +316,7 @@ proveTickDefer :: Prove PositionedExpr Derivation
 proveTickDefer tactic cf e@(Tick c e1) q q' = do
   -- pot <- use potential
   let [subTactic] = subTactics 1 tactic
-  if cf then do
+  if isJust cf then do
     deriv <- proveExpr subTactic cf e1 q q'
     conclude R.TickDefer cf q q' [] e [deriv]
   else do
@@ -367,7 +362,7 @@ proveExpr tactic _ e = \_ _ -> errorFrom (SynExpr e) $ "Could not apply tactic t
   ++ printExprHead e ++ " expression. Tactic: '" ++ printTacticHead tactic ++ "'"
 
 -- auto tactic
-proveByAuto :: Bool -> PositionedExpr -> AnnCtx -> AnnCtx -> ProveMonad Derivation
+proveByAuto :: Maybe Int -> PositionedExpr -> AnnCtx -> AnnCtx -> ProveMonad Derivation
 proveByAuto cf e q q' = do
   let tactic = genTactic e
   proveExpr tactic cf e q q'
@@ -416,10 +411,10 @@ proveFun fun@(FunDef _ fnId _ _) = do
   ann <- (M.! fnId) <$> use sig
   
   -- prove both with and without costs for well-typedness
-  let (p, p') = withoutCost ann
-  derivCf <- proveFunBody Auto True fun p p'
+  let cfAnns = withoutCost ann
+  derivsCf <- mapM (\(n, (p, p')) -> proveFunBody Auto (Just n) fun p p') $ zip [0..] cfAnns
   
   let (q, q') = withCost ann  
-  deriv <- proveFunBody Auto False fun q q'
+  deriv <- proveFunBody Auto Nothing fun q q'
   
-  return $ T.Node (R.FunRuleApp fun) [derivCf, deriv]
+  return $ T.Node (R.FunRuleApp fun) (deriv:derivsCf)

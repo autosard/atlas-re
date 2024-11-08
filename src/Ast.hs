@@ -117,7 +117,7 @@ type CoeffAnnotation = Map CoeffIdx Rational
 type FunRsrcAnn = (Map Type CoeffAnnotation, Map Type CoeffAnnotation)
 
 data CostAnnotation
-  = Coeffs {caWithCost :: FunRsrcAnn, caWithoutCost :: Maybe FunRsrcAnn}
+  = Coeffs {caWithCost :: FunRsrcAnn, caWithoutCost :: [FunRsrcAnn]}
   | Cost {worstCase :: Bool, costCoeffs :: Map Type CoeffAnnotation}
   deriving (Eq, Show)
   
@@ -336,7 +336,8 @@ data ParsedFunAnn = ParsedFunAnn {
   pfLoc :: SourcePos,
   pfFqn :: Fqn,
   pfType :: Maybe Scheme,
-  pfCostAnn :: Maybe CostAnnotation}
+  pfCostAnn :: Maybe CostAnnotation,
+  pfNumCf :: Maybe Int}
   deriving (Eq, Show)
 
 data Parsed
@@ -369,7 +370,8 @@ data TypedFunAnn = TypedFunAnn {
   tfLoc :: SourcePos,
   tfFqn :: Fqn,
   tfType :: Scheme,
-  tfCostAnn :: Maybe CostAnnotation}
+  tfCostAnn :: Maybe CostAnnotation,
+  tfNumCf :: Maybe Int}
   deriving (Eq, Show)
 
 data ExprSrc = Loc SourcePos | DerivedFrom SourcePos

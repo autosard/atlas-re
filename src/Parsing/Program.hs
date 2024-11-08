@@ -83,11 +83,17 @@ data Signature = Signature
   Id
   Scheme
   (Maybe CostAnnotation)
-  
+
+pNumCf :: Parser Int
+pNumCf = do
+  n <- pInt
+  if n > 0 then return n else
+    fail "Number of cf derivations need to be at least one."
 
 pFunc :: Parser ParsedFunDef
 pFunc = do
   pos <- getSourcePos
+  numCfs <- optional $ pPragma "NUMCF" pNumCf
   sig <- optional pSignature
   funName <- pIdentifier
   (_type, cost) <- case sig of
@@ -98,7 +104,7 @@ pFunc = do
   modName <- asks ctxModuleName
   let funFqn = (modName, funName)
   args <- manyTill pIdentifier (symbol "=")
-  FunDef (ParsedFunAnn pos funFqn _type cost) funName args <$> pExpr
+  FunDef (ParsedFunAnn pos funFqn _type cost numCfs) funName args <$> pExpr
 
 pSignature :: Parser Signature
 pSignature = do
@@ -113,8 +119,8 @@ pCoeffAnn :: Parser CostAnnotation
 pCoeffAnn = do
   symbol "|" 
   withCost <- pFunResourceAnn
-  costFree <- optional $ pCurlyParens pFunResourceAnn
-  return $ Coeffs withCost costFree
+  costFree <- optional $ pCurlyParens $ sepBy pFunResourceAnn (symbol ",")
+  return $ Coeffs withCost (fromMaybe [] costFree)
 
 pCostAnn :: Parser CostAnnotation
 pCostAnn = do

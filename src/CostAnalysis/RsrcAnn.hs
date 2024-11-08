@@ -23,11 +23,8 @@ import CostAnalysis.Coeff
 import Typing.Type
 import Control.Monad.State
 import CostAnalysis.Constraint
-import Ast (PotentialKind, CoeffAnnotation)
-import Data.List.Extra (groupSort)
-import Data.Tuple (swap)
-import Data.Map.Merge.Strict (dropMissing, merge, zipWithMatched, SimpleWhenMissing, mapMissing)
-import Data.Vector.Internal.Check (HasCallStack)
+import Ast (CoeffAnnotation)
+import Data.Map.Merge.Strict (merge, zipWithMatched, mapMissing)
 
 data RsrcAnn = RsrcAnn {
   _annId :: Int,
@@ -229,6 +226,19 @@ ctxUnify' qs ps' args = concat . M.elems $ ctxZipWith
   where annLikeUnifyForType :: (AnnLike a, AnnLike b) => Type -> a -> b -> [Constraint]
         annLikeUnifyForType t q p = annLikeUnify' q p (args M.! t)
 
+ctxEqSum :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> [Constraint]
+ctxEqSum qs ps = concat . M.elems $ ctxZipWith
+  (const (`annLikeEqSum` pointWiseZero))
+  (const (annLikeEqSum pointWiseZero))
+  (const annLikeEqSum) qs ps
+
+annLikeEqSum :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
+annLikeEqSum q p | definedIdxs q == definedIdxs p
+  = eq
+    (sum [q!idx | idx <- S.toList $ definedIdxs q])
+    (sum [p!idx | idx <- S.toList $ definedIdxs p])
+                 | otherwise = error "Sum of coeffs is only defined for annotations with the same indicies."
+
 type AnnArray = Map CoeffIdx RsrcAnn
 
 elems :: AnnArray -> [RsrcAnn]
@@ -242,7 +252,7 @@ infixl 9 !!
 
 data FunRsrcAnn = FunRsrcAnn {
   withCost :: (AnnCtx, AnnCtx),
-  withoutCost :: (AnnCtx, AnnCtx),
+  withoutCost :: [(AnnCtx, AnnCtx)],
   worstCase :: Bool}
   deriving(Show)
 

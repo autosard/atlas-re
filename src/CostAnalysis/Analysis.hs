@@ -10,7 +10,7 @@ import Data.Map(Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Tree as T
-import Data.Maybe(maybeToList, mapMaybe)
+import Data.Maybe(mapMaybe, fromMaybe)
 import Lens.Micro.Platform
 
 import Primitive(Id)
@@ -27,7 +27,7 @@ import Typing.Type
 import CostAnalysis.RsrcAnn ( RsrcSignature,
                              FunRsrcAnn(..), ctxConstEq,
                              ctxConstLe, PointWiseOp,
-                             opCoeffs, ctxGeZero, AnnCtx, annLikeLeftInRight)
+                             opCoeffs, ctxGeZero, AnnCtx, annLikeLeftInRight, ctxAdd)
 import CostAnalysis.Potential(ctxSymbolicCost, PotFnMap)
 import CostAnalysis.Potential.Kind (fromKind)
 
@@ -56,7 +56,7 @@ analyzeModule :: ProofEnv -> PositionedModule
   -> IO (Either SourceError (Derivation, RsrcSignature, Either [Constraint] (Solution, PotFnMap)))
 analyzeModule env mod = do
   
-  let state = ProofState M.empty [] [] 0 0 [] [] M.empty M.empty Nothing
+  let state = ProofState M.empty [] [] 0 0 [] [] M.empty M.empty 
   (result, state', solution) <- runProof env state (analyzeModule' mod)
   let deriv = T.Node (ProgRuleApp mod) (state'^.fnDerivs)
   case result of
@@ -88,7 +88,6 @@ analyzeFn :: PositionedModule -> PositionedFunDef -> ProveMonad Derivation
 analyzeFn mod fn@(Fn id _ _) = do
   ann <- genFunRsrcAnn fn
   sig %= M.insert id ann
-  currFn .= Just id
   analyzeFn' fn
 
 analyzeFn' :: PositionedFunDef -> ProveMonad Derivation
@@ -98,7 +97,7 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
   case mode of
     CheckCoefficients -> case tfCostAnn funAnn of
       Just Coeffs {..} -> coeffsMatchAnnotation fnId (caWithCost, caWithoutCost)
-      Just (Cost True cost) -> coeffsMatchAnnotation fnId ((cost, M.empty) , Nothing)
+      Just (Cost True cost) -> coeffsMatchAnnotation fnId ((cost, M.empty) , [])
       _noCoeff -> errorFrom (SynExpr body) "Missing resource coefficient annotation for check-coeffs mode."
     CheckCost -> case tfCostAnn funAnn of
       Just Cost {..} -> cmpCostWithAnn ctxConstEq fnId costCoeffs
@@ -133,15 +132,17 @@ cmpCostWithAnn cmp fn costAnn = do
   tellSigCs $ ctxGeZero cost
   tellSigCs $ cmp cost costAnn
 
-coeffsMatchAnnotation :: Id -> (Ast.FunRsrcAnn, Maybe Ast.FunRsrcAnn) -> ProveMonad ()
-coeffsMatchAnnotation fn (annWithCost, annWithoutCost) = do
+coeffsMatchAnnotation :: Id -> (Ast.FunRsrcAnn, [Ast.FunRsrcAnn]) -> ProveMonad ()
+coeffsMatchAnnotation fn (annWithCost, annsWithoutCost) = do
   ann <- (M.! fn) <$> use sig
-  let (p, p') = withoutCost ann
+  let cfAnns = withoutCost ann
   let (q, q') = withCost ann
   tellSigCs $ ctxConstEq q $ fst annWithCost
   tellSigCs $ ctxConstEq q' $ snd annWithCost
-  tellSigCs . concat . maybeToList $ (ctxConstEq p . fst <$> annWithoutCost)
-  tellSigCs . concat . maybeToList $ (ctxConstEq p' . snd <$> annWithoutCost)
+  zipWithM_ matchCf cfAnns annsWithoutCost
+  where matchCf (pIs, pIs') (pShould, pShould') = do
+          tellSigCs $ ctxConstEq pIs pShould
+          tellSigCs $ ctxConstEq pIs' pShould'
 
 addSimpleCostOptimization :: Id -> ProveMonad ()
 addSimpleCostOptimization fn = do
@@ -166,7 +167,7 @@ argsWithPot (from, to) = do
   return (from', to')
 
 genFunRsrcAnn :: PositionedFunDef -> ProveMonad CostAnalysis.RsrcAnn.FunRsrcAnn
-genFunRsrcAnn fn = do
+genFunRsrcAnn fn@(FunDef funAnn _ _ _) = do
   (argsFrom, argsTo) <- argsWithPot $ fnArgsByType fn
   pots <- use potentials
   to <- if hasPotential fn then
@@ -175,11 +176,12 @@ genFunRsrcAnn fn = do
                emptyAnnCtx (M.map (const []) argsFrom) "Q'" "fn" 
              else
                emptyAnnCtx argsTo "Q'" "fn" 
-          
+
+  let numCfSigs = fromMaybe 1 $ tfNumCf funAnn
   from <- defaultAnnCtx argsFrom "Q" "fn" 
-  fromCf <- defaultAnnCtx argsFrom "P" "fn cf" 
-  toCf <- defaultAnnCtx argsTo "P'" "fn cf" 
-  return $ FunRsrcAnn (from, to) (fromCf, toCf) (hasPotential fn)
+  fromCfs <- mapM (const $ defaultAnnCtx argsFrom "P" "fn cf") [1..numCfSigs]
+  toCfs <- mapM (const $ defaultAnnCtx argsTo "P'" "fn cf") [1..numCfSigs]
+  return $ FunRsrcAnn (from, to) (zip fromCfs toCfs) (hasPotential fn)
 
   
 addSigCs :: [Id] -> Solution -> ProveMonad ()

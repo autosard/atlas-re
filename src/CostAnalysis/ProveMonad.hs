@@ -19,7 +19,7 @@ import qualified Data.Tree as T
 
 
 import Primitive(Id)
-import CostAnalysis.RsrcAnn
+import CostAnalysis.RsrcAnn hiding (fromAnn)
 import CostAnalysis.Potential hiding (rsrcAnn, emptyAnn, defaultAnn)
 import CostAnalysis.Rules
 import qualified CostAnalysis.Potential as P
@@ -32,6 +32,7 @@ import Ast
 import CostAnalysis.Coeff
 import Data.List(intercalate)
 import Data.Foldable (foldrM)
+import Data.Maybe (isJust)
 
 type Derivation = Tree RuleApp
 
@@ -46,8 +47,8 @@ data ProofState = ProofState {
   _constraints :: [Constraint],
   _fnDerivs :: [Derivation],
   _solution :: Map Coeff Rational,
-  _potentials :: P.PotFnMap,
-  _currFn :: Maybe Id}
+  _potentials :: P.PotFnMap}
+
 
 makeLenses ''ProofState
 
@@ -78,10 +79,10 @@ runProof env state proof = let rws = runExceptT proof in
 
 
 
-conclude :: Rule -> Bool -> AnnCtx -> AnnCtx -> [Constraint] -> PositionedExpr -> [Derivation] -> ProveMonad Derivation
+conclude :: Rule -> Maybe Int -> AnnCtx -> AnnCtx -> [Constraint] -> PositionedExpr -> [Derivation] -> ProveMonad Derivation
 conclude rule cf q q' cs e derivs = do
   tellCs cs
-  return $ T.Node (ExprRuleApp rule cf q q' cs e) derivs
+  return $ T.Node (ExprRuleApp rule (isJust cf) q q' cs e) derivs
 
 tellCs :: [Constraint] -> ProveMonad ()
 tellCs cs = constraints %= (++cs)
@@ -147,6 +148,13 @@ fromAnn :: Text -> Text -> RsrcAnn -> ProveMonad RsrcAnn
 fromAnn label comment ann = do
   id <- genAnnId
   return $ R.fromAnn id label comment ann
+
+fromCtx :: Text -> Text -> AnnCtx -> ProveMonad AnnCtx
+fromCtx label comment ctx = M.fromList <$> mapM go (M.toList ctx)
+  where go (t, ann) = do
+          ann' <- fromAnn label comment ann
+          return (t, ann')
+
 
 enrichWithDefaults :: Bool -> Text -> Text -> AnnCtx -> ProveMonad AnnCtx
 enrichWithDefaults neg label comment ctx = do

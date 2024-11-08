@@ -11,7 +11,6 @@ import Primitive(Id)
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Constraint
 import CostAnalysis.AnnIdxQuoter(mix)
-import Typing.Type
 import CostAnalysis.Coeff
 import Data.List.Extra (groupSort)
 import Ast
