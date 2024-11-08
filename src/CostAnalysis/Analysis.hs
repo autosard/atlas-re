@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE NamedFieldPuns #-}
 
 module CostAnalysis.Analysis where
 
@@ -27,7 +26,7 @@ import Typing.Type
 import CostAnalysis.RsrcAnn ( RsrcSignature,
                              FunRsrcAnn(..), ctxConstEq,
                              ctxConstLe, PointWiseOp,
-                             opCoeffs, ctxGeZero, AnnCtx, annLikeLeftInRight, ctxAdd)
+                             opCoeffs, ctxGeZero, AnnCtx, annLikeLeftInRight)
 import CostAnalysis.Potential(ctxSymbolicCost, PotFnMap)
 import CostAnalysis.Potential.Kind (fromKind)
 
@@ -39,7 +38,6 @@ defaultPotentialMap = M.fromList
     (ListType, Polynomial),
     (TreeType, Logarithmic)
   ]
-
 
 
 initPotentials :: PositionedModule -> Map Type PotentialKind -> ProveMonad PotFnMap

@@ -210,8 +210,8 @@ ctxDefByConstShift qs_ ps shift = do
   pots <- use potentials
   let annsWithPot = map (\(t, q) -> (t, potForType t pots, q, ps M.! t)) $ M.toAscList qs_
   let (qs, css) = unzip $ map eqExceptConst' annsWithPot
-  let qConsts = map (\(t, q) -> (t, constCoeff (potForType t pots))) qs
-  let pConstTerms = M.elems $ M.mapWithKey (\t p -> p!?constCoeff (potForType t pots)) ps
+  let qConsts = map (\(t, q) -> (t, oneCoeff (potForType t pots))) qs
+  let pConstTerms = M.elems $ M.mapWithKey (\t p -> p!?oneCoeff (potForType t pots)) ps
   let (qs', cs) = extendCtx (M.fromList qs) $ (`shiftSum` pConstTerms)  <$> defMulti qConsts
   return (qs', concat css ++ cs)
   where eqExceptConst' (t, pot, q, p) = let (q', cs) = eqExceptConst pot q p in

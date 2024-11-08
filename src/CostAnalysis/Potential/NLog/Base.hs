@@ -46,8 +46,8 @@ defaultCoeffs args (aRange, bRange) =
     not (a == 1 && b == 0 &&  c == 1)]
 
                
-constCoeff :: CoeffIdx
-constCoeff = [mix|2|]
+oneCoeff :: CoeffIdx
+oneCoeff = [mix|2|]
 
 zeroCoeff :: Maybe CoeffIdx
 zeroCoeff = Just [mix|1|]

@@ -44,8 +44,8 @@ rsrcAnn id label comment args (degrees, _) =
   where coeffs = map (mixed . S.fromList . zipWith (^) args)
           $ idxs (last degrees) (length args)
           
-constCoeff :: CoeffIdx
-constCoeff = [mix||]
+oneCoeff :: CoeffIdx
+oneCoeff = [mix||]
 
 zeroCoeff :: Maybe CoeffIdx
 zeroCoeff = Nothing

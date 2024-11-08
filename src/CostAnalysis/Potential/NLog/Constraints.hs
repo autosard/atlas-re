@@ -64,11 +64,11 @@ addShiftDefL q_ x q' y = extendAnn q_ $
         (zeroIdxs, nonZeroIdxs) = foldr split ([],[]) (mixes q')
 
 cConst :: PositionedExpr -> RsrcAnn -> RsrcAnn -> [Constraint]
-cConst (Nil {}) q q' = eqSum (q!constCoeff) [
+cConst (Nil {}) q q' = eqSum (q!oneCoeff) [
   q'![mix|exp^(1,0),2|],
   q'![mix|exp^(0,1),1|],
   q'![mix|exp^(1,1),1|],
-  q'!constCoeff]
+  q'!oneCoeff]
   ++ eq (q![mix|1|]) (q'![mix|exp^(0,1)|])
 cConst (Ast.Const id _) _ _ = error $ "Constructor '" ++ T.unpack id ++ "' not supported."
 
@@ -78,7 +78,7 @@ cMatch q r x [] = extendAnn r $
   ((`eqSum` [q![mix|x^(1,0),2|],
             q![mix|x^(0,1),1|],
             q![mix|x^(1,1),1|],
-            q!constCoeff]) <$> def constCoeff)
+            q!oneCoeff]) <$> def oneCoeff)
   : [(`eq` (q![mix|x^(0,1)|])) <$> def [mix|1|]]
 -- cons                   
 cMatch q p x [l] = addShiftDefL p l q x
@@ -95,7 +95,7 @@ cLetBodyBase q r p' = extendAnn r $
   [(`eq` (q!idx)) <$> def idx
   | idx <- mixes q,
     onlyVarsOrConst idx ys,
-    idx /= constCoeff]
+    idx /= oneCoeff]
   where ys = annVars r
 
 cLetBinding :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
@@ -103,9 +103,9 @@ cLetBinding q p = extendAnn p $
   [(`eq` (q!idx)) <$> def idx
   | idx <- mixes q,
     onlyVarsOrConst idx xs,
-    idx /= constCoeff]
+    idx /= oneCoeff]
   -- move const
-  ++ [(`le` (q!?constCoeff)) <$> def constCoeff]
+  ++ [(`le` (q!?oneCoeff)) <$> def oneCoeff]
   where xs = annVars p
 
 cLetBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> AnnArray -> Id -> [CoeffIdx] -> (RsrcAnn, [Constraint])
@@ -118,8 +118,8 @@ cLetBody q r p p' ps' x js = extendAnn r $
   ++ [(`eq` (q!idx)) <$> def idx
      | idx <- mixes q,
        onlyVars idx ys,
-       idx /= constCoeff]
-  ++ [(`eq` sum [sub [q!?constCoeff, p!constCoeff], p'!constCoeff]) <$> def constCoeff]
+       idx /= oneCoeff]
+  ++ [(`eq` sum [sub [q!?oneCoeff, p!oneCoeff], p'!oneCoeff]) <$> def oneCoeff]
   ++ [(`eq` (ps'!!j!pIdx)) <$> def [mix|_j',x^(a, b), c|]
      | j <- js,
        let j' = idxToSet j,

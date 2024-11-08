@@ -12,7 +12,7 @@ pot args = Potential
   Logarithmic
   (ranges args)
   rsrcAnn
-  constCoeff
+  oneCoeff
   zeroCoeff
   forAllCombinations
   cConst

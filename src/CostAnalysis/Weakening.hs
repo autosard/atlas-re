@@ -64,7 +64,7 @@ genInterPotKnowledge ks = do
                           let ps = V.map fst . rows $ ks M.! rowT,
                               (i, _) <- V.toList . V.indexed . fst . matrix $ ks M.! rowT]
 
-  let equalConstCoeffs = interCoeffsEqual ks ts pots (Just . constCoeff)
+  let equalConstCoeffs = interCoeffsEqual ks ts pots (Just . oneCoeff)
   let equalZeroCoeffs = interCoeffsEqual ks ts pots zeroCoeff
   let asInter = V.concat [equalConstCoeffs, equalZeroCoeffs]
   let bs = concatMap (snd . matrix) $ M.elems ks 
@@ -94,8 +94,8 @@ interCoeffsEqual ks ts pots coeff = V.fromList [
 
 genInterRow :: Map Type (Potential, RsrcAnn) -> CoeffIdx -> Type -> Type -> V.Vector CoeffIdx -> V.Vector Int
 genInterRow pots p rowT colT cols
-  | p == constCoeff (potForType rowT pots) =
-      let colConst = constCoeff (potForType colT pots) in
+  | p == oneCoeff (potForType rowT pots) =
+      let colConst = oneCoeff (potForType colT pots) in
         case V.elemIndex colConst cols of
           Just j -> V.generate (length cols) (\i -> if i == j then 1 else 0)
   | otherwise = V.replicate (length cols) 0

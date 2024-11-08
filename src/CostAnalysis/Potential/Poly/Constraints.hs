@@ -69,7 +69,7 @@ cLetBodyBase q r p' = extendAnn r $
   [(`eq` (q!idx)) <$> def idx
   | idx <- mixes q,
     onlyVarsOrConst idx ys,
-    idx /= constCoeff]
+    idx /= oneCoeff]
   where ys = annVars r
 
 cLetBinding :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
@@ -77,9 +77,9 @@ cLetBinding q p = extendAnn p $
   [(`eq` (q!idx)) <$> def idx
   | idx <- mixes q,
     onlyVarsOrConst idx xs,
-    idx /= constCoeff]
+    idx /= oneCoeff]
   -- move const
-  ++ [(`le` (q!?constCoeff)) <$> def constCoeff]
+  ++ [(`le` (q!?oneCoeff)) <$> def oneCoeff]
   where xs = annVars p
 
 cLetBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> AnnArray -> Id -> [CoeffIdx] -> (RsrcAnn, [Constraint])
@@ -91,8 +91,8 @@ cLetBody q r p p' ps' x js = extendAnn r $
   ++ [(`eq` (q!idx)) <$> def idx
      | idx <- mixes q,
        onlyVars idx ys,
-       idx /= constCoeff]
-  ++ [(`eq` sum [sub [q!?constCoeff, p!constCoeff], p'!constCoeff]) <$> def constCoeff]
+       idx /= oneCoeff]
+  ++ [(`eq` sum [sub [q!?oneCoeff, p!oneCoeff], p'!oneCoeff]) <$> def oneCoeff]
   ++ [(`eq` (ps'!!j!pIdx)) <$> def [mix|_j',x^d|]
      | j <- js,
        let j' = idxToSet j,

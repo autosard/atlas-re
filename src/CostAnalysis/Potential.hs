@@ -54,8 +54,8 @@ data Potential = Potential {
   -- | @ 'rsrcAnn' id label comment vars (rangeA, rangeB) @ constructs a fresh resource annotation with arguments from @vars@ (types are considered). @rangeA@, @rangeB@ are used to define non-zero coefficients. @id@ specifies a unique identifier for the annotation and @label@ is the human readable label, e.g \"Q\", \"Q\'\" or \"P\".
   rsrcAnn :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> RsrcAnn, 
 
-  -- | @ 'constCoeff'@ returns the coefficient index for the constant basic potential function.
-  constCoeff :: CoeffIdx,
+  -- | @ 'oneCoeff'@ returns the coefficient index for the constant basic potential function.
+  oneCoeff :: CoeffIdx,
 
   zeroCoeff :: Maybe CoeffIdx, 
 
@@ -118,19 +118,19 @@ enrichWithDefaults pot neg id label comment origin =
 eqExceptConst :: Potential -> RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
 eqExceptConst pot q_ p = extendAnn q_ [(`eq` (p!idx)) <$> def idx
                                       | idx <- S.toList (p^.coeffs),
-                                        idx /= constCoeff pot]
+                                        idx /= oneCoeff pot]
 
 -- | @ 'eqPlus' q p t@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) + t\] where @t@ is a term.
 eqPlus :: Potential -> RsrcAnn -> RsrcAnn -> Term -> (RsrcAnn, [Constraint])
 eqPlus pot q_ p t = (q, cs ++ eqCs)
-  where constIdx = constCoeff pot
+  where constIdx = oneCoeff pot
         (eqQ, eqCs) = eqExceptConst pot q_ p
         (q, cs) = extendAnn eqQ [(`eq` sum [p!?constIdx, t]) <$> def constIdx]
 
 -- | @ 'eqMinus' q p t@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) - t\] where @t@ is a term.
 eqMinus :: Potential -> RsrcAnn -> RsrcAnn -> Term -> (RsrcAnn, [Constraint])
 eqMinus pot q_ p t = (q, cs ++ eqCs)
-  where constIdx = constCoeff pot
+  where constIdx = oneCoeff pot
         (eqQ, eqCs) = eqExceptConst pot q_ p
         constP = p!?constIdx
         (q, cs) = case constP of
@@ -196,7 +196,7 @@ printPotential pot coeffs = if L.null coeffs' then "0" else
         
   
 printPotTerm :: Potential -> CoeffIdx -> Rational -> String
-printPotTerm pot c 1 = if c == constCoeff pot then "1" else printBasePot pot c
-printPotTerm pot c v | c == constCoeff pot = printRat v
+printPotTerm pot c 1 = if c == oneCoeff pot then "1" else printBasePot pot c
+printPotTerm pot c v | c == oneCoeff pot = printRat v
                      | otherwise = printRat v ++ " * " ++ printBasePot pot c
 

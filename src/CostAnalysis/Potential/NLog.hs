@@ -12,7 +12,7 @@ pot args = Potential
   LinLog
   ranges
   rsrcAnn
-  constCoeff
+  oneCoeff
   zeroCoeff
   (forAllCombinations args)
   cConst 

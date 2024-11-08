@@ -12,7 +12,7 @@ pot args = Potential
   Polynomial
   (ranges args)
   rsrcAnn
-  constCoeff
+  oneCoeff
   zeroCoeff
   (forAllCombinations args)
   (cConst args)

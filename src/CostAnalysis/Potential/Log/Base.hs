@@ -8,7 +8,6 @@ import Data.List(intercalate)
 import qualified Data.Set as S
 import Data.Text(Text)
 import qualified Data.Text as T
-import qualified Data.Map as M
 
 import Primitive(Id)
 import CostAnalysis.Coeff
@@ -56,8 +55,8 @@ rsrcAnn id label comment args ranges =
 --                      idx /= [mix|1|]]
 
                
-constCoeff :: CoeffIdx
-constCoeff = [mix|2|]
+oneCoeff :: CoeffIdx
+oneCoeff = [mix|2|]
 
 zeroCoeff :: Maybe CoeffIdx
 zeroCoeff = Just [mix|1|]
