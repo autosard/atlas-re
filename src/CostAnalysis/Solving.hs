@@ -113,10 +113,7 @@ solve fns = do
     Left unsatCore -> throwError $ UnsatErr unsatCore
     Right solution -> return solution
   constraints .= []
-  return (trace (concat $ M.mapWithKey showSol solution) solution)
-  --return solution
-
-showSol q v = show q ++ " = " ++ show v ++ "\n"
+  return solution
 
 createSolverZ3 :: MonadOptimize z3 => [Coeff] -> [Constraint] -> [Constraint] -> Maybe Term -> z3 (Map String Constraint)
 createSolverZ3 coeffs typingCs extCs optiTarget = do
