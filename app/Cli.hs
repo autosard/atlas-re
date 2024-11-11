@@ -44,7 +44,6 @@ data RunOptions = RunOptions {
   analysisMode :: AnalysisMode,
   switchIncremental :: Bool,
   switchHideConstraints :: Bool,
-  switchHtmlOutput :: Bool,
   switchPrintProg :: Bool,
   switchDumpCoeffs :: Bool}
 
@@ -68,9 +67,6 @@ runOptionsP = do
   switchHideConstraints <- switch
     (long "hide-constraints"
     <> help "When active, only the derivation tree is printed without constraints.")
-  switchHtmlOutput <- switch
-    (long "html-output"
-    <> help "When active, a html representation, potentially including the unsat-core is produced.")
   switchPrintProg <- switch
     (long "print-program"
     <> help "Output the normalized program.")

@@ -86,19 +86,16 @@ run Options{..} RunOptions{..} = do
         _analysisMode=analysisMode,
         _incremental=switchIncremental}
   result <- liftIO $ analyzeModule env positionedProg
+  
   case result of
     Left srcErr -> liftIO $ die $ printSrcError srcErr contents
     Right solverResult -> case solverResult of
       (deriv, _, Left unsatCore) -> let core' = S.fromList unsatCore in do
-        logError $ "solver returned unsat. See unsat-core for details."
-        if switchHtmlOutput then
-          liftIO $ writeHtmlProof "./out" (renderProof (Just core') deriv)
-        else
-          liftIO $ printDeriv True (Just core') deriv
+        logError "solver returned unsat. See unsat-core for details."
+        liftIO $ writeHtmlProof "./out" (renderProof (Just core') deriv)
       (deriv, sig, Right (solution, pots)) -> do
-         when switchHtmlOutput $
-           liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv)
-         liftIO $ printSolution switchDumpCoeffs sig pots solution
+        liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv)
+        liftIO $ printSolution switchDumpCoeffs sig pots solution
         
 
 printSolution :: Bool -> RsrcSignature -> PotFnMap -> Solution -> IO ()
