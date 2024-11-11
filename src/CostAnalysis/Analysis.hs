@@ -31,8 +31,6 @@ import CostAnalysis.Potential(ctxSymbolicCost, PotFnMap)
 import CostAnalysis.Potential.Kind (fromKind)
 
 
---traceShow x = trace (show x) x
-
 defaultPotentialMap = M.fromList
   [
     (ListType, Polynomial),
