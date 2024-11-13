@@ -22,10 +22,8 @@ pot args = Potential
   cLetBinding
   cLetBody
   (cLetCf args)
-  cWeakenVar
   genExpertKnowledge
   cOptimize
-  cExternal
   printBasePot
 
 defaultPot = pot (Args 2)

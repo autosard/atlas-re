@@ -224,14 +224,6 @@ ctxDefByPlus qs_ ps t = ctxDefByConstShift qs_ ps (\s -> sum [s,t])
 ctxDefByMinus :: AnnCtx -> AnnCtx -> Term -> ProveMonad (AnnCtx, [Constraint])
 ctxDefByMinus qs_ ps t = ctxDefByConstShift qs_ ps (\s -> sub [s,t])
 
-ctxCExternal :: AnnCtx -> AnnCtx -> ProveMonad [Constraint]
-ctxCExternal qs qs' = foldrM go [] $ zip (M.assocs qs) (M.assocs qs')
-  where go :: ((Type, RsrcAnn), (Type, RsrcAnn)) -> [Constraint] -> ProveMonad [Constraint]
-        go ((t, q), (_, q')) css = do
-          pot <- potForType t <$> use potentials
-          let cs = cExternal pot q q'
-          return $ css ++ cs
-
 ctxCOptimize :: AnnCtx -> AnnCtx -> ProveMonad Term
 ctxCOptimize qs qs' = sum <$> mapM go (zip (M.assocs qs) (M.assocs qs'))
   where go :: ((Type, RsrcAnn), (Type, RsrcAnn)) -> ProveMonad Term

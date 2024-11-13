@@ -240,7 +240,7 @@ proveWeakenVar tactic cf e q q' = do
   pot <- potForType tVar <$> use potentials
   
   r_ <- emptyAnn tVar "R" "weaken var" $ L.delete var (annVars redundantQ)
-  let (r,cs) = cWeakenVar pot redundantQ r_
+  let (r,cs) = defineFrom r_ redundantQ
   let ctxR = M.insert tVar r q
   
   deriv <- proveExpr t cf e ctxR q'

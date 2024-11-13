@@ -19,11 +19,6 @@ import Data.List.Extra (groupSort)
 exp :: Id
 exp = "e1"
 
--- shiftLogs :: Int -> Int -> Maybe (Int, Int)
--- shiftLogs 1 0 = Just (0, 1)
--- shiftLogs 0 0 = Just (0, 0)
--- shiftLogs 0 1 = Nothing
-
 shiftLogs :: Int -> Int -> Maybe (Int, Int)
 shiftLogs b c | c < 2 || b == 0 = Just (b, c + b)
               | otherwise = Nothing
@@ -142,11 +137,3 @@ cLetCf potArgs q ps ps' x (gamma, delta) js = (psDefined, ps'Defined, psCs)
           [L.singleton <$> defEntry j idx
           | j <- js,
             idx <- defaultCoeffs ["e"] (rangeA ranges, rangeB ranges)]
-
-cWeakenVar :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
-cWeakenVar q r = let xs = annVars r in
-  extendAnn r $
-    [(`eq` (q!idx)) <$> def idx
-    | idx <- mixes q,
-      onlyVarsOrConst idx xs]
-

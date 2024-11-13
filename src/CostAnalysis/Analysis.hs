@@ -106,8 +106,7 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
     Infer -> do
       s <- use sig
       let (q, q') = withCost $ s M.! fnId
-      extCs <- ctxCExternal q q'
-      tellCs (extCs ++ potFnCovered q q')
+      tellCs $ potFnCovered q q'
       addFullCostOptimization fnId
   proveFun def
 

@@ -21,13 +21,6 @@ types = [ListType]
 
 nestedError = error "Polynomial potential only supports simple (non-nested) inductive data types."
 
--- bearesPotential :: Type -> Bool
--- bearesPotential (TAp Prod ts) | all notNested ts = any bearesPotential ts
---                               | otherwise = nestedError
--- bearesPotential (TAp List [t]) | notNested t = True
---                                | otherwise = nestedError
--- bearesPotential _ = False
-
 ranges :: Args -> P.AnnRanges
 ranges potArgs = P.AnnRanges [0..degree potArgs] [] []
 
@@ -52,9 +45,6 @@ zeroCoeff = Nothing
 
 forAllCombinations :: Args -> RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 forAllCombinations potArgs q xs (rangeA, rangeB) x = filter (not . null . idxToSet ) $ varsRestrictMixes q xs
-
-cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
-cExternal _ _ = []
 
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = error "pure coefficients are not supported with polynomial potential."

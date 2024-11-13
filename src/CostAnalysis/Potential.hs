@@ -83,16 +83,11 @@ data Potential = Potential {
 
   -- | @ 'cLetCf' q ps_ ps'_ x bdes = (ps, ps', cs)@
   cLetCf :: RsrcAnn -> AnnArray -> AnnArray -> Id -> ([Id], [Id]) -> [CoeffIdx] -> (AnnArray, AnnArray, [Constraint]),
-    
-  -- | @ 'cWeakenVar' q r @
-  cWeakenVar :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint]),
   
   genExpertKnowledge :: Set WeakenArg -> [Id] -> Set CoeffIdx -> LeMatrix,
   
   -- | @ 'cOptimize' q q' @ returns a cost function that minimizes \[\Phi(\Gamma\mid Q) - \Phi(\Gamma\mid Q')\] as a term.
   cOptimize :: RsrcAnn -> RsrcAnn -> Term,
-
-  cExternal :: RsrcAnn -> RsrcAnn -> [Constraint],
   
   printBasePot :: CoeffIdx -> String}
 

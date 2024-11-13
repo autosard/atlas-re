@@ -298,6 +298,17 @@ extendCtx ctx def = (ctx', cs)
   where (cs, ctx') = runState def ctx
 
 
+defineFrom :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
+defineFrom q p = let xs = annVars q in
+  extendAnn q $
+  [(`eq` (p!idx)) <$> def idx
+  | idx@(Pure x) <- pures q,
+    x `elem` xs]
+  ++ 
+  [(`eq` (p!idx)) <$> def idx
+  | idx <- mixes p,
+    onlyVarsOrConst idx xs]
+               
 annLikeGeZero :: AnnLike a => a -> [Constraint]
 annLikeGeZero ann = concat [ge (ann!idx) $ ConstTerm 0 | idx <- S.toList $ definedIdxs ann]
 

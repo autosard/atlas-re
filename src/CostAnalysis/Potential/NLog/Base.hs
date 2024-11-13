@@ -55,9 +55,6 @@ zeroCoeff = Just [mix|1|]
 forAllCombinations :: Args -> RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 forAllCombinations potArgs q xs (rangeA, rangeB) x = filter (not . null . idxToSet ) $ varsRestrictMixes q xs
 
-cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
-cExternal _ _ = []
-
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = error "pure coefficients are not supported with linear logarithmic potential."
 printBasePot idx = 

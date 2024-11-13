@@ -116,10 +116,3 @@ cLetCf potArgs q ps ps' x (gamma, delta) js = (psDefined, ps'Defined, psCs)
                                              d <- [0..degree potArgs],
                                              idxSum [mix|_j',exp^d|] <= degree potArgs]
 
-cWeakenVar :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
-cWeakenVar q r = let xs = annVars r in
-  extendAnn r $
-    [(`eq` (q!idx)) <$> def idx
-    | idx <- mixes q,
-      onlyVarsOrConst idx xs]
-

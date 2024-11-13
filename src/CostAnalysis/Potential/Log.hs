@@ -22,10 +22,8 @@ pot args = Potential
   cLetBinding
   cLetBody
   cLetCf
-  cWeakenVar
   genExpertKnowledge
   (cOptimize args)
-  cExternal
   printBasePot
 
 defaultPot = let _aRange = [0,1]

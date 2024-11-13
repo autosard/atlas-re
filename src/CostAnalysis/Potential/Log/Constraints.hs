@@ -186,13 +186,3 @@ cLetCf q ps ps' x (gamma, delta) bdes = (psDefined, ps'Defined, psCs ++ ps'Cs ++
                let d = facForVar bde x,
                let e = max 0 $ constFactor bde,
                let de = [mix|exp^d,e|]]
-
-
-cWeakenVar :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
-cWeakenVar q r = let xs = annVars r in
-  extendAnn r $
-    [(`eq` (q!x)) <$> def x | x <- xs]
-    ++ [(`eq` (q!idx)) <$> def idx
-       | idx <- mixes q,
-         onlyVarsOrConst idx xs]
-
