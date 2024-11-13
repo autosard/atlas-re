@@ -73,9 +73,12 @@ forAllCombinations q xs (rangeA, rangeB) x =
     let xIdx = S.singleton $ x^d]
 
 -- equal ranks
+-- cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
+-- cExternal q q' = concat [eq (q!idx) (q'!substitute (argVars q) (argVars q') idx)
+--                         | idx <- pures q]
 cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
-cExternal q q' = concat [eq (q!idx) (q'!substitute (argVars q) (argVars q') idx)
-                        | idx <- pures q]
+cExternal q q' = []
+
 
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = "rk(" ++ T.unpack x ++ ")"

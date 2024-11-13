@@ -100,9 +100,9 @@ run Options{..} RunOptions{..} = do
 
 printSolution :: Bool -> RsrcSignature -> PotFnMap -> Solution -> IO ()
 printSolution dumpCoeffs sig potFns solution = do
-  when dumpCoeffs $ (do
-                        mapM_ (\(q, v) -> putStrLn $ show q ++ " = " ++ show v) (M.assocs solution)
-                        putStrLn "")
+  when dumpCoeffs (do
+                      mapM_ (\(q, v) -> putStrLn $ show q ++ " = " ++ show v) (M.assocs solution)
+                      putStrLn "")
   putStrLn "Potential functions:"
   mapM_ printPotFn (M.assocs potFns)
   putStrLn ""
