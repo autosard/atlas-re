@@ -1,10 +1,11 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module CostAnalysis.Potential where
 
-import Prelude hiding (sum, (!))
+import Prelude hiding (sum, (!), (!!), exp)
 import Data.Text(Text)
 import Data.Map(Map)
 import qualified Data.Map as M
@@ -22,6 +23,7 @@ import CostAnalysis.Constraint
 import CostAnalysis.RsrcAnn
 import Typing.Type (Type)
 import Ast hiding (FunRsrcAnn)
+import CostAnalysis.AnnIdxQuoter(mix)
 
 
 import Data.Bifunctor (Bifunctor(first))
@@ -44,46 +46,35 @@ data AnnRanges = AnnRanges {
 
 data Potential = Potential {
   kind :: PotentialKind,
-
---  bearesPotential :: Type -> Bool,
   
-  ranges :: AnnRanges,
-  
-  -- Annotation manipulation
+  -- Annotation
   
   -- | @ 'rsrcAnn' id label comment vars (rangeA, rangeB) @ constructs a fresh resource annotation with arguments from @vars@ (types are considered). @rangeA@, @rangeB@ are used to define non-zero coefficients. @id@ specifies a unique identifier for the annotation and @label@ is the human readable label, e.g \"Q\", \"Q\'\" or \"P\".
-  rsrcAnn :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> RsrcAnn, 
+  rsrcAnn :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> RsrcAnn,
+
+  ranges :: AnnRanges,
 
   -- | @ 'oneCoeff'@ returns the coefficient index for the constant basic potential function.
   oneCoeff :: CoeffIdx,
 
   zeroCoeff :: Maybe CoeffIdx, 
 
-  -- | @ 'forAllCombinations' q xs (rangeA, rangeB) x@ generates an index for all combinations of variables in @xs@ and the variable @x@, based on the indices in @q@.
-  forAllCombinations :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx],
-  
-  -- Constraint generation
+  -- Constraints
   
   -- | @ 'cConst' q q'@ returns constraints that guarantee \[\phi(\Gamma \mid Q) = \phi(\Delta \mid Q') \text{ where } |\Gamma| = |Q|, |\Delta| = |Q'|\]  
   cConst :: PositionedExpr -> RsrcAnn -> RsrcAnn -> [Constraint],
   -- | @ 'cMatch' q p_ x ys = (p, cs)@ defines @p@ with the empty annotation @p_@ from @q@ by constraints @cs@, guaranteeing \[\phi(\Gamma, x \mid Q) = \phi(\Gamma, \vec{y} \mid P)\] where @x@ is the variable that matched and @ys@ is the pattern variables.
   cMatch :: RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint]),
 
-  -- | @ 'cLetBinding' q p_ = (p, cs)@
-  cLetBindingBase :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint]),
+  -- | @ 'letBodyMulti' ps' x is r_ = (r, cs)@
+  cLetBodyMulti :: AnnArray -> Id -> [CoeffIdx] -> RsrcAnn -> (RsrcAnn, [Constraint]),
 
-  -- | @ 'cLetBodyBase' q r_ p' = (r, cs)@
-  cLetBodyBase :: RsrcAnn -> RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint]),
+  -- | @ 'letCfIdxs' q xs (rangeA, rangeB) x@ generates an index for every cf derivation in the rule from the indices in @q@ and the given ranges.
+  letCfIdxs :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx],
 
-   -- | @ 'cLetBinding' q p_ = (p, cs)@
-  cLetBinding :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint]),
-
-  -- | @ 'cLetBody' q r_ p p' ps' x bdes = (r, cs)@
-  cLetBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> AnnArray -> Id -> [CoeffIdx] -> (RsrcAnn, [Constraint]),
-
-  -- | @ 'cLetCf' q ps_ ps'_ x bdes = (ps, ps', cs)@
+  -- | @ 'cLetCf' q ps_ ps'_ x is = (ps, ps', cs)@
   cLetCf :: RsrcAnn -> AnnArray -> AnnArray -> Id -> ([Id], [Id]) -> [CoeffIdx] -> (AnnArray, AnnArray, [Constraint]),
-  
+
   genExpertKnowledge :: Set WeakenArg -> [Id] -> Set CoeffIdx -> LeMatrix,
   
   -- | @ 'cOptimize' q q' @ returns a cost function that minimizes \[\Phi(\Gamma\mid Q) - \Phi(\Gamma\mid Q')\] as a term.
@@ -108,7 +99,25 @@ enrichWithDefaults pot neg id label comment origin =
   where args_ = origin^.args
         annGen = if neg then defaultNegAnn else defaultAnn
         defaultCoeffs = annGen pot id "" "" args_ ^.coeffs
+  
 
+-- | @'defineFrom' pot q p f@ Define q from p. This sets q(x) = p(x), where x contains only variables from q. If x is constant coefficient the function f is applied instead of euqality, i.e. f q(idx) p(idx).
+defineFrom' :: RsrcAnn -> RsrcAnn -> (CoeffIdx -> Term -> Term -> [Constraint])
+  -> (RsrcAnn, [Constraint])
+defineFrom' q p f = let xs = annVars q in
+  extendAnn q $
+  [(`eq` (p!idx)) <$> def idx
+  | idx@(Pure x) <- pures p,
+    x `elem` xs]
+  ++ 
+  [(`eq` (p!idx)) <$> def idx
+  | idx <- mixes p,
+    (not . justConst) idx,
+    onlyVarsOrConst idx xs]
+  ++
+  [flip (f idx) (p!idx) <$> def idx
+  | idx <- mixes p,
+    justConst idx]
 
 eqExceptConst :: Potential -> RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
 eqExceptConst pot q_ p = extendAnn q_ [(`eq` (p!idx)) <$> def idx
@@ -131,6 +140,32 @@ eqMinus pot q_ p t = (q, cs ++ eqCs)
         (q, cs) = case constP of
           (ConstTerm 0) -> (eqQ, [])
           _nonZero -> extendAnn eqQ [(`eq` sub [p!?constIdx, t]) <$> def constIdx]
+
+exp :: Id
+exp = "e1"
+
+cLetBodyUni :: RsrcAnn -> RsrcAnn -> RsrcAnn
+  -> Id -> RsrcAnn -> (RsrcAnn, [Constraint])
+cLetBodyUni q p p' x r_ = extendAnn r_ $
+  -- move const
+  [(`eq` sum [sub [q!?idx, p!idx], p'!?idx]) <$> def idx
+  | idx <- mixes q,
+    justConst idx]
+  ++ [(`eq` (q!y)) <$> def y
+     | idx@(Pure y) <- pures q,
+       y `elem` ys]
+  ++ [(`eq` (p'!exp)) <$> def x | (p'!?exp) /= ConstTerm 0]
+  ++ [(`eq` (p'!pIdx)) <$> def [mix|x^d,e|]
+     | pIdx <- mixes p',
+       let d = facForVar pIdx exp,
+       let e = constFactor pIdx,
+       let rIdx = [mix|x^d,e|],
+       (not . justConst) rIdx]
+  ++ [(`eq` (q!idx)) <$> def idx
+     | idx <- mixes q,
+       onlyVars idx ys,
+       (not . justConst) idx]
+  where ys = L.delete x (annVars r_)
 
 calculateBound :: (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> Map Coeff Rational
 calculateBound (from, to) solution = M.fromList $ map subtract (getCoeffs from)
@@ -163,10 +198,6 @@ ctxSymbolicCost (from, to) = ctxZipWith
   (const (`symbolicCost` pointWiseZero))
   (const (symbolicCost pointWiseZero))
   (const symbolicCost) from to
-
-  -- M.fromList $
-  -- zipWith go (M.assocs from) (M.assocs to)
-  -- where go (t, from) (_, to) = (t, symbolicCost (from, to))
 
 printRHS :: Potential -> RsrcAnn -> Map Coeff Rational -> String
 printRHS pot rhs solution = printPotential pot $ M.toList (M.restrictKeys solution (S.fromList (getCoeffs rhs)))

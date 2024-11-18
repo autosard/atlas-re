@@ -16,19 +16,12 @@ import CostAnalysis.RsrcAnn
 import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential (AnnRanges(..))
-import CostAnalysis.Constraint
 
 data Args = Args {
   aRange :: ![Int],
   bRange :: ![Int]}
 
 potType = TreeType
-
--- bearesPotential :: Type -> Bool
--- bearesPotential (TupleT x y) = if matchesTypes x types && matchesTypes y types
---   then error "Tuples with two tree types are not supported."
---   else matchesTypes x types /= matchesTypes y types
--- bearesPotential t = matchesTypes t types
 
 ranges :: Args -> AnnRanges
 ranges potArgs = AnnRanges (aRange potArgs) (bRange potArgs) (-1:bRange potArgs)
@@ -52,8 +45,6 @@ rsrcAnn id label comment args ranges =
         logCoeffs = [idx
                     | idx <- combi ranges args,
                       idxSum idx > 0]
---                      idx /= [mix|1|]]
-
                
 oneCoeff :: CoeffIdx
 oneCoeff = [mix|2|]
@@ -61,8 +52,8 @@ oneCoeff = [mix|2|]
 zeroCoeff :: Maybe CoeffIdx
 zeroCoeff = Just [mix|1|]
 
-forAllCombinations :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
-forAllCombinations q xs (rangeA, rangeB) x =
+letCfIdxs :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
+letCfIdxs q xs (rangeA, rangeB) x =
   [[mix|_bs,_xIdx,e|]
   | idx <- varsRestrictMixes q xs,
     let bs = idxToSet idx,

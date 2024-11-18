@@ -15,7 +15,6 @@ import CostAnalysis.Coeff
 import Data.List.Extra (groupSort)
 import Ast
 import qualified Data.Text as T
-import CostAnalysis.Potential.Log.Base (oneCoeff)
 
 
 exp :: Id
@@ -51,9 +50,6 @@ cConst e@(Node {}) q q'
                   let a = facForVar idx exp,
                   let c = constFactor idx,
                   [mix|x1^a,x2^a,c|] `S.notMember` (q^.coeffs)]
--- cConst (Tuple x1 x2) q q' | (isTree . getType) x1 && (isTree . getType) x2
---   = Left "Tuple with more then one tree type are not supported."
---                           | otherwise = Right $ annLikeUnify q q'
 cConst (Ast.Const id _) q q' = error $ "Constructor '" ++ T.unpack id ++ "' not supported."
       
 cMatch :: RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint])
@@ -95,61 +91,12 @@ cMatch q r x [v] = extendAnn r $
   ++ [(`eq` (q!y)) <$> def y | y <- L.delete x (annVars q)]
 cMatch _ _ x ys = error $ "x: " ++ show x ++ ", ys: " ++ show ys
 
-cLetBindingBase :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
-cLetBindingBase q p = extendAnn p $
-  [(`eq` (q!x)) <$> def x  | x <- xs]
-  ++ [(`eq` (q!idx)) <$> def idx
-     | idx <- mixes q,
-       onlyVarsOrConst idx xs]
-  where xs = annVars p
-
-cLetBodyBase :: RsrcAnn -> RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
-cLetBodyBase q r p' = extendAnn r $
-  [(`eq` (q!y)) <$> def y | y <- ys]
-  ++ [(`eq` (q!idx)) <$> def idx
-     | idx <- mixes q,
-       onlyVarsOrConst idx ys,
-       not . justConst $ idx]
-  ++ [(`eq` (p'!idx)) <$> def idx
-     | idx <- mixes p',
-       justConst idx]
-  where ys = annVars r
-
-cLetBinding :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
-cLetBinding q p = extendAnn p $
-  [(`eq` (q!x)) <$> def x  | x <- xs]
-  ++ [(`eq` (q!idx)) <$> def idx
-     | idx <- mixes q,
-       onlyVarsOrConst idx xs,
-       idx /= oneCoeff]
-       --(not . justConst) idx]
-  -- move const
-  ++ [(`le` (q![mix|2|])) <$> def [mix|2|]]
-  where xs = annVars p
-
-
-cLetBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> AnnArray -> Id -> [CoeffIdx] -> (RsrcAnn, [Constraint])
-cLetBody q r p p' ps' x bdes = extendAnn r $
-  [(`eq` (q!y)) <$> def y | y <- ys]
-  ++ [(`eq` (p'!exp)) <$> def x]
-  -- move const
-  ++ [(`eq` sum [p'![mix|2|], minus (p![mix|2|]), q![mix|2|]]) <$> def [mix|2|]]
-  ++ [(`eq` (p'!pIdx)) <$> def [mix|x^d,e|]
-     | pIdx <- mixes p',
-       let d = facForVar pIdx exp,
-       let e = constFactor pIdx,
-       (d, e) /= (0,2)]
-  ++ [(`eq` (q!idx)) <$> def idx
-     | idx <- mixes q,
---       annVars q /= ys || onlyVars idx ys,
-       onlyVars idx ys]
-  ++ [(`eq` (ps'!!bde![mix|exp^d,e|])) <$> def bde
-     | bde <- bdes,
-       let d = facForVar bde x,
---       annVars q == ys || d /= 0,
-       -- d /= 0 || constFactor bde /= 0,
-       let e = max 0 $ constFactor bde]
-  where ys = L.delete x (annVars r)
+cLetBodyMulti :: AnnArray -> Id -> [CoeffIdx] -> RsrcAnn -> (RsrcAnn, [Constraint])
+cLetBodyMulti ps' x is r_ = extendAnn r_ $
+  [(`eq` (ps'!!i![mix|exp^d,e|])) <$> def i
+  | i <- is,
+    let d = facForVar i x,
+    let e = max 0 $ constFactor i]
 
 cLetCf :: RsrcAnn -> AnnArray -> AnnArray -> Id -> ([Id], [Id]) -> [CoeffIdx] -> (AnnArray, AnnArray, [Constraint])
 cLetCf q ps ps' x (gamma, delta) bdes = (psDefined, ps'Defined, psCs ++ ps'Cs ++ cs)

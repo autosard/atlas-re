@@ -51,9 +51,10 @@ oneCoeff = [mix|2|]
 
 zeroCoeff :: Maybe CoeffIdx
 zeroCoeff = Just [mix|1|]
-  
-forAllCombinations :: Args -> RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
-forAllCombinations potArgs q xs (rangeA, rangeB) x = filter (not . null . idxToSet ) $ varsRestrictMixes q xs
+
+-- univariate potential
+letCfIdxs :: Args -> RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
+letCfIdxs potArgs q xs (rangeA, rangeB) x = []
 
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = error "pure coefficients are not supported with linear logarithmic potential."

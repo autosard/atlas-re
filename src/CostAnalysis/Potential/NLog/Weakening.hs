@@ -22,15 +22,15 @@ monoLe [x] i j = let (a,b) = facForVar2 i x
                      c = constFactor i
                      (a', b') = facForVar2 j x
                      c' = constFactor j in
-                   monoLe' (a,b,c) (a,b,c')
+                   monoLe' (a,b,c) (a',b',c')
 monoLe [] i j = let c = constFactor i
                     c' = constFactor j in
                   monoLe' (0,0,c) (0,0,c')
 monoLe xs _ _ = error $ "Weakening for linlog only supports univariate coefficients." 
 
 monoLe' :: (Int, Int, Int) -> (Int, Int, Int) -> Bool
-monoLe' (0,1,1) (1,0,2) = True -- log(n+1) <= n
-monoLe' (0,1,1) (1,1,1) = True -- log(n+1) <= n*log(n+1)
+--monoLe' (0,1,1) (1,0,2) = True -- log(n+1) <= n
+--monoLe' (0,1,1) (1,1,1) = True -- log(n+1) <= n*log(n+1)
 monoLe' (0,1,0) (0,1,1) = True -- log(n) <= log(n+1)
 monoLe' (0,1,0) (1,0,2) = True -- log(n) <= n
 monoLe' (0,1,0) (1,1,0) = True -- log(n) <= n*log(n)

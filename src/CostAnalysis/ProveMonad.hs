@@ -31,7 +31,6 @@ import Typing.Type
 import Ast
 import CostAnalysis.Coeff
 import Data.List(intercalate)
-import Data.Foldable (foldrM)
 import Data.Maybe (isJust)
 
 type Derivation = Tree RuleApp
@@ -181,29 +180,34 @@ defaultAnn' = withId P.defaultAnn
 defaultNegAnn :: Type -> Text -> Text -> [Id] -> ProveMonad RsrcAnn
 defaultNegAnn t = withPotAndId t P.defaultNegAnn
 
-annArrayFromIdxs :: Type -> [CoeffIdx] -> Text -> [Id] -> ProveMonad AnnArray
-annArrayFromIdxs t idxs label args = do
+emptyArrayFromIdxs :: Type -> [CoeffIdx] -> Text -> [Id] -> ProveMonad AnnArray
+emptyArrayFromIdxs t idxs label args = annArrayFromIdxs t idxs label args emptyAnn
+
+defaultArrayFromIdxs :: Type -> [CoeffIdx] -> Text -> [Id] -> ProveMonad AnnArray
+defaultArrayFromIdxs t idxs label args = annArrayFromIdxs t idxs label args defaultAnn
+
+annArrayFromIdxs :: Type -> [CoeffIdx] -> Text -> [Id] ->
+  (Type -> Text -> Text -> [Id] -> ProveMonad RsrcAnn) -> ProveMonad AnnArray
+annArrayFromIdxs t idxs label args annGen = do
   anns <- mapM annFromIdx idxs
   return $ M.fromList anns
-  where annFromIdx idx = (idx,) <$> emptyAnn t (label' idx) "" args
+  where annFromIdx idx = (idx,) <$> annGen t (label' idx) "" args
         printIdx idx = "(" ++ intercalate "," (map show (S.toAscList idx)) ++ ")"
         label' idx = Te.concat [label, "_", Te.pack $ show idx]  
 
-ctxCLetBindingBase :: AnnCtx -> AnnCtx -> ProveMonad (AnnCtx, [Constraint])
-ctxCLetBindingBase qs ps_ = foldrM go (M.empty, []) (M.keys qs)
-  where go :: Type -> (AnnCtx, [Constraint]) -> ProveMonad (AnnCtx, [Constraint])
-        go t (ps, css) = do
-          pot <- potForType t <$> use potentials
-          let (p', cs) = cLetBindingBase pot (qs M.! t) (ps_ M.! t)
-          return (M.insert t p' ps, css ++ cs)
 
-ctxCLetBodyBase :: AnnCtx -> AnnCtx -> AnnCtx -> ProveMonad (AnnCtx, [Constraint])
-ctxCLetBodyBase qs rs_ ps' = foldrM go (M.empty, []) (M.keys qs)
-  where go :: Type -> (AnnCtx, [Constraint]) -> ProveMonad (AnnCtx, [Constraint])
-        go t (ps, css) = do
-          pot <- potForType t <$> use potentials
-          let (p', cs) = cLetBodyBase pot (qs M.! t) (rs_ M.! t) (ps' M.! t)
-          return (M.insert t p' ps, css ++ cs)
+ctxDefineBinding :: AnnCtx -> AnnCtx -> (AnnCtx, [Constraint])
+ctxDefineBinding ps_ qs = foldr go (M.empty, []) (M.keys qs)
+  where go t (ps, css) =
+          let (p, cs) = defineFrom' (ps_ M.! t) (qs M.! t) (const le) in
+            (M.insert t p ps, css ++ cs)
+
+ctxDefineBody :: AnnCtx -> AnnCtx -> AnnCtx -> (AnnCtx, [Constraint])
+ctxDefineBody rs_ qs ps = foldr go (M.empty, []) (M.keys qs)
+  where go t (rs, css) =
+          let (r, cs) = defineFrom' (rs_ M.! t) (qs M.! t) 
+                (\idx r q -> r `eq` sub [q, (ps M.! t)!idx]) in
+            (M.insert t r rs, css ++ cs)
 
 ctxDefByConstShift :: AnnCtx -> AnnCtx -> (Term -> Term) -> ProveMonad (AnnCtx, [Constraint])
 ctxDefByConstShift qs_ ps shift = do
@@ -229,4 +233,4 @@ ctxCOptimize qs qs' = sum <$> mapM go (zip (M.assocs qs) (M.assocs qs'))
   where go :: ((Type, RsrcAnn), (Type, RsrcAnn)) -> ProveMonad Term
         go ((t, q), (_, q')) = do
           pot <- potForType t <$> use potentials
-          return $ cOptimize pot q q'
+          return $ cOptimize pot q q'          

@@ -10,17 +10,14 @@ import Ast (PotentialKind(LinLog))
 pot :: Args -> Potential
 pot args = Potential
   LinLog
-  ranges
   rsrcAnn
+  ranges
   oneCoeff
   zeroCoeff
-  (forAllCombinations args)
   cConst 
   cMatch
-  cLetBindingBase
-  cLetBodyBase
-  cLetBinding
-  cLetBody
+  cLetBodyMulti
+  (letCfIdxs args)
   (cLetCf args)
   genExpertKnowledge
   cOptimize

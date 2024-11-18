@@ -10,17 +10,14 @@ import Ast (PotentialKind(Logarithmic))
 pot :: Args -> Potential
 pot args = Potential
   Logarithmic
-  (ranges args)
   rsrcAnn
+  (ranges args)
   oneCoeff
   zeroCoeff
-  forAllCombinations
   cConst
   cMatch 
-  cLetBindingBase
-  cLetBodyBase
-  cLetBinding
-  cLetBody
+  cLetBodyMulti
+  letCfIdxs
   cLetCf
   genExpertKnowledge
   (cOptimize args)

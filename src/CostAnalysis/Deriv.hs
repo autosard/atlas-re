@@ -23,6 +23,7 @@ import CostAnalysis.Potential hiding (Factor(..), emptyAnn, defaultAnn, defaultN
 import CostAnalysis.RsrcAnn hiding (fromAnn)
 import CostAnalysis.Constraint ( and,
                                  or,
+                                 le,
                                  Constraint,
                                  Term(ConstTerm), geZero )
 import CostAnalysis.Weakening
@@ -136,6 +137,7 @@ proveLet :: Prove PositionedExpr Derivation
 proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q'
   | isProd (getType e1) = errorFrom (SynExpr e) "Binding product type in let expression is not supported."
   | otherwise = do
+  pots <- use potentials
   let [t1, t2] = subTactics 2 tactic
   let argSplit = M.map (splitLetCtx e1 e2) q
   
@@ -146,8 +148,8 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q'
   -- base
   nonBindingCtxP' <- defaultAnnCtx (M.map (const []) nonBindingQ) "P'"  "let:base e1"
 
-  (nonBindingCtxP, nonBindingCsP) <- ctxCLetBindingBase nonBindingQ ctxP_
-  (nonBindingCtxR, nonBindingCsR) <- ctxCLetBodyBase nonBindingQ ctxR_ nonBindingCtxP'
+  let (nonBindingCtxP, nonBindingCsP) = ctxDefineBinding ctxP_ nonBindingQ 
+  let (nonBindingCtxR, nonBindingCsR) = ctxDefineBody ctxR_ nonBindingQ nonBindingCtxP 
   let nonBindingCs = nonBindingCsP ++ nonBindingCsR
   
   -- potential bind
@@ -161,17 +163,18 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q'
       let rangeE = if R.NegE `elem` letArgs then
             rangeBNeg . ranges $ potE1 else rangeB . ranges $ potE1
       
-      let combis = forAllCombinations potE1 (q M.! getType e1)
-            (snd $ argSplit M.! getType e1) (rangeD, rangeE) x
+      let is = letCfIdxs potE1 (q M.! getType e1) delta (rangeD, rangeE) x
 
-      ps_ <- annArrayFromIdxs (getType e1) combis "P" $ gamma
-      ps'_ <- annArrayFromIdxs (getType e1) combis "P'" ["e1"]
+      ps_ <- emptyArrayFromIdxs (getType e1) is "P" gamma
+      ps'_ <- emptyArrayFromIdxs (getType e1) is "P'" ["e1"]
 
       r_ <-  emptyAnn (getType e1) "R" "let:base e2" (x:delta)
 
-      let (p, pCs) = cLetBinding potE1 bindingQ (ctxP_ M.! getType e1)
-      let (ps, ps', cfCs) = cLetCf potE1 bindingQ ps_ ps'_ x (gamma, delta) combis
-      let (r, rCs) = cLetBody potE1 bindingQ r_ p bindingP' ps' x combis
+      let (p, pCs) = defineFrom' (ctxP_ M.! getType e1) bindingQ (const le)
+      let (ps, ps', cfCs) = cLetCf potE1 bindingQ ps_ ps'_ x (gamma, delta) is
+      let (r, rCs) = chainDef
+            (cLetBodyUni bindingQ p bindingP' x)
+            (cLetBodyMulti potE1 ps' x is) r_
       let bindingCtxP' = M.insert (getType e1) bindingP' nonBindingCtxP'
       let bindingCtxP = M.insert (getType e1) p nonBindingCtxP
       let bindingCtxR = M.insert (getType e1) r nonBindingCtxR

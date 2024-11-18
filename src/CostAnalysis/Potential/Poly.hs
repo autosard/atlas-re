@@ -10,17 +10,14 @@ import Ast (PotentialKind(Polynomial))
 pot :: Args -> Potential
 pot args = Potential
   Polynomial
-  (ranges args)
   rsrcAnn
+  (ranges args)
   oneCoeff
   zeroCoeff
-  (forAllCombinations args)
   (cConst args)
   (cMatch args)
-  cLetBindingBase
-  cLetBodyBase
-  cLetBinding
-  cLetBody
+  cLetBodyMulti
+  letCfIdxs
   (cLetCf args)
   genExpertKnowledge
   cOptimize

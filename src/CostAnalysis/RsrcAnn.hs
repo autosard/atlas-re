@@ -267,6 +267,11 @@ def i = do
   ann <- get
   return $ ann!idx
 
+chainDef :: (RsrcAnn -> (RsrcAnn, [Constraint])) -> (RsrcAnn -> (RsrcAnn, [Constraint])) -> RsrcAnn -> (RsrcAnn, [Constraint])
+chainDef f g q_ = let (q, cs) = f q_ 
+                      (q', cs') = g q in
+                    (q', cs ++ cs')
+
 defMulti :: Index i => [(Type, i)] -> CoeffDef AnnCtx [Term]
 defMulti = mapM go
   where go :: Index i => (Type, i) -> CoeffDef AnnCtx Term
@@ -297,12 +302,19 @@ extendCtx :: AnnCtx -> CoeffDef AnnCtx [a] -> (AnnCtx, [a])
 extendCtx ctx def = (ctx', cs)
   where (cs, ctx') = runState def ctx
 
+  
+ctxDefineFrom :: AnnCtx -> AnnCtx -> (AnnCtx, [Constraint])
+ctxDefineFrom qs ps_ = foldr go (M.empty, []) (M.keys ps_)
+  where go :: Type -> (AnnCtx, [Constraint]) -> (AnnCtx, [Constraint])
+        go t (ps, css) = let (p', cs) = defineFrom (qs M.! t) (ps_ M.! t) in
+                           (M.insert t p' ps, css ++ cs)
 
+-- | @'defineFrom' q p@ Define q from p. This sets q(x) = p(x), where x contains only variables from q. 
 defineFrom :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
 defineFrom q p = let xs = annVars q in
   extendAnn q $
   [(`eq` (p!idx)) <$> def idx
-  | idx@(Pure x) <- pures q,
+  | idx@(Pure x) <- pures p,
     x `elem` xs]
   ++ 
   [(`eq` (p!idx)) <$> def idx

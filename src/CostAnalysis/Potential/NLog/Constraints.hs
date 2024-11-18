@@ -78,62 +78,8 @@ cMatch q r x [] = extendAnn r $
 -- cons                   
 cMatch q p x [l] = addShiftDefL p l q x
 
-cLetBindingBase :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
-cLetBindingBase q p = extendAnn p $
-  [(`eq` (q!idx)) <$> def idx
-  | idx <- mixes q,
-    onlyVarsOrConst idx xs]
-  where xs = annVars p
-
-cLetBodyBase :: RsrcAnn -> RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
-cLetBodyBase q r p' = extendAnn r $
-  [(`eq` (q!idx)) <$> def idx
-  | idx <- mixes q,
-    onlyVarsOrConst idx ys,
-    idx /= oneCoeff]
-  where ys = annVars r
-
-cLetBinding :: RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
-cLetBinding q p = extendAnn p $
-  [(`eq` (q!idx)) <$> def idx
-  | idx <- mixes q,
-    onlyVarsOrConst idx xs,
-    idx /= oneCoeff]
-  -- move const
-  ++ [(`le` (q!?oneCoeff)) <$> def oneCoeff]
-  where xs = annVars p
-
-cLetBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> AnnArray -> Id -> [CoeffIdx] -> (RsrcAnn, [Constraint])
-cLetBody q r p p' ps' x js = extendAnn r $
-  [(`eq` (p'!pIdx)) <$> def [mix|x^(a,b),c|]
-  | pIdx <- mixes p',
-    let (a, b) = facForVar2 pIdx exp,
-    let c = constFactor pIdx,
-    a /= 0 || b /= 0 || c /= 0]
-  ++ [(`eq` (q!idx)) <$> def idx
-     | idx <- mixes q,
-       onlyVars idx ys,
-       idx /= oneCoeff]
-  ++ [(`eq` sum [sub [q!?oneCoeff, p!oneCoeff], p'!oneCoeff]) <$> def oneCoeff]
-  ++ [(`eq` (ps'!!j!pIdx)) <$> def [mix|_j',x^(a, b), c|]
-     | j <- js,
-       let j' = idxToSet j,
-       pIdx <- mixes $ ps'!!j,
-       let (a, b) = facForVar2 pIdx exp,
-       let c = constFactor pIdx]
-  where ys = L.delete x (annVars r)
+cLetBodyMulti :: AnnArray -> Id -> [CoeffIdx] -> RsrcAnn -> (RsrcAnn, [Constraint])
+cLetBodyMulti _ _ _ r_ = (r_, [])
 
 cLetCf :: Args -> RsrcAnn -> AnnArray -> AnnArray -> Id -> ([Id], [Id]) -> [CoeffIdx] -> (AnnArray, AnnArray, [Constraint])
-cLetCf potArgs q ps ps' x (gamma, delta) js = (psDefined, ps'Defined, psCs)
-  where (psDefined, psCs) = extendAnns ps $
-          [(`eq` (q!idx)) <$> defEntry j [mix|_i|]
-          | j <- js,
-            idx <- mixes q,
-            idxToSet j == varsRestrict idx delta,
-            let i = varsRestrict idx gamma,
-            (not . null) (varsRestrict idx delta)]
-        -- assume shape for p'_j  
-        (ps'Defined, _) = extendAnns ps' $
-          [L.singleton <$> defEntry j idx
-          | j <- js,
-            idx <- defaultCoeffs ["e"] (rangeA ranges, rangeB ranges)]
+cLetCf potArgs q ps ps' x (gamma, delta) js = error "undefined for univariate potential."
