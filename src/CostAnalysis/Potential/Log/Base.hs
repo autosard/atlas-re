@@ -54,14 +54,13 @@ zeroCoeff = Just [mix|1|]
 
 letCfIdxs :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 letCfIdxs q xs (rangeA, rangeB) x =
-  [[mix|_bs,_xIdx,e|]
+  [[mix|_bs,x^d,e|]
   | idx <- varsRestrictMixes q xs,
     let bs = idxToSet idx,
     (not . null) bs,
     d <- rangeA,
     e <- rangeB,
-    d + max e 0 > 0,
-    let xIdx = S.singleton $ x^d]
+    d + max e 0 > 0]
 
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = "rk(" ++ T.unpack x ++ ")"

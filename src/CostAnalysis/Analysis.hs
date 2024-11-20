@@ -1,9 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module CostAnalysis.Analysis where
 
-import Prelude hiding (sum)
+import Prelude hiding (sum, (!))
 import Control.Monad.RWS
 import Data.Map(Map)
 import qualified Data.Map as M
@@ -26,8 +27,9 @@ import Typing.Type
 import CostAnalysis.RsrcAnn ( RsrcSignature,
                              FunRsrcAnn(..), ctxConstEq,
                              ctxConstLe, PointWiseOp,
-                             opCoeffs, ctxGeZero, AnnCtx, annLikeLeftInRight)
+                             opCoeffs, ctxGeZero, AnnCtx, annLikeLeftInRight, (!))
 import CostAnalysis.Potential(ctxSymbolicCost, PotFnMap)
+import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential.Kind (fromKind)
 
 
@@ -107,6 +109,7 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
       s <- use sig
       let (q, q') = withCost $ s M.! fnId
       tellCs $ potFnCovered q q'
+      tellCs $ concat . M.elems $ M.map (\q -> zero (q![mix|1|])) q
       addFullCostOptimization fnId
   proveFun def
 

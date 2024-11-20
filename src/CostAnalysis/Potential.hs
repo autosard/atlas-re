@@ -99,7 +99,10 @@ enrichWithDefaults pot neg id label comment origin =
   where args_ = origin^.args
         annGen = if neg then defaultNegAnn else defaultAnn
         defaultCoeffs = annGen pot id "" "" args_ ^.coeffs
-  
+
+defineBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
+defineBody r_ q p p' = defineFrom' r_ q constConstraint
+  where constConstraint idx r q = r `eq` sum [sub [q, p!idx], p'!?idx]
 
 -- | @'defineFrom' pot q p f@ Define q from p. This sets q(x) = p(x), where x contains only variables from q. If x is constant coefficient the function f is applied instead of euqality, i.e. f q(idx) p(idx).
 defineFrom' :: RsrcAnn -> RsrcAnn -> (CoeffIdx -> Term -> Term -> [Constraint])
@@ -147,13 +150,18 @@ exp = "e1"
 cLetBodyUni :: RsrcAnn -> RsrcAnn -> RsrcAnn
   -> Id -> RsrcAnn -> (RsrcAnn, [Constraint])
 cLetBodyUni q p p' x r_ = extendAnn r_ $
+  [(`eq` (q!y)) <$> def y
+  | idx@(Pure y) <- pures q,
+    y `elem` ys]
+  ++ [(`eq` (q!idx)) <$> def idx
+     | idx <- mixes q,
+       onlyVars idx ys,
+       (not . justConst) idx]
   -- move const
-  [(`eq` sum [sub [q!?idx, p!idx], p'!?idx]) <$> def idx
-  | idx <- mixes q,
-    justConst idx]
-  ++ [(`eq` (q!y)) <$> def y
-     | idx@(Pure y) <- pures q,
-       y `elem` ys]
+  ++ [(`eq` sum [sub [q!?idx, p!idx], p'!?idx]) <$> def idx
+     | idx <- mixes q,
+       justConst idx]
+  
   ++ [(`eq` (p'!exp)) <$> def x | (p'!?exp) /= ConstTerm 0]
   ++ [(`eq` (p'!pIdx)) <$> def [mix|x^d,e|]
      | pIdx <- mixes p',
@@ -161,10 +169,7 @@ cLetBodyUni q p p' x r_ = extendAnn r_ $
        let e = constFactor pIdx,
        let rIdx = [mix|x^d,e|],
        (not . justConst) rIdx]
-  ++ [(`eq` (q!idx)) <$> def idx
-     | idx <- mixes q,
-       onlyVars idx ys,
-       (not . justConst) idx]
+
   where ys = L.delete x (annVars r_)
 
 calculateBound :: (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> Map Coeff Rational

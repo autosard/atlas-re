@@ -62,7 +62,7 @@ proveCmp :: Prove PositionedExpr Derivation
 proveCmp _ cf e q q' = do
   unless (isBool $ getType e) $
     errorFrom (SynExpr e) "(cmp) applied to non-boolean expression."
-  let cs = ctxEq q q'
+  let cs = ctxUnify q q'
   conclude R.Cmp cf q q' cs e []
 
 proveVar :: Prove PositionedExpr Derivation
@@ -75,7 +75,7 @@ proveIte tactic cf e@(Ite (Coin p) e1 e2) q q' = do
   let [t1, t2] = subTactics 2 tactic
   q1 <- enrichWithDefaults False "Q1" "" q
   q2 <- enrichWithDefaults False "Q2" "" q
-  let cs = ctxEq q (ctxAdd
+  let cs = ctxUnify q (ctxAdd
                      (ctxScalarMul q1 (ConstTerm p))
                      (ctxScalarMul q2 (ConstTerm (1-p))))
   deriv1 <- proveExpr t1 cf e1 q1 q'
@@ -149,7 +149,7 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q'
   nonBindingCtxP' <- defaultAnnCtx (M.map (const []) nonBindingQ) "P'"  "let:base e1"
 
   let (nonBindingCtxP, nonBindingCsP) = ctxDefineBinding ctxP_ nonBindingQ 
-  let (nonBindingCtxR, nonBindingCsR) = ctxDefineBody ctxR_ nonBindingQ nonBindingCtxP 
+  let (nonBindingCtxR, nonBindingCsR) = ctxDefineBody ctxR_ nonBindingQ nonBindingCtxP nonBindingCtxP'
   let nonBindingCs = nonBindingCsP ++ nonBindingCsR
   
   -- potential bind
@@ -172,9 +172,9 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q'
 
       let (p, pCs) = defineFrom' (ctxP_ M.! getType e1) bindingQ (const le)
       let (ps, ps', cfCs) = cLetCf potE1 bindingQ ps_ ps'_ x (gamma, delta) is
-      let (r, rCs) = chainDef
-            (cLetBodyUni bindingQ p bindingP' x)
-            (cLetBodyMulti potE1 ps' x is) r_
+      let (r, rCs) = chainDef [
+            cLetBodyUni bindingQ p bindingP' x,
+            cLetBodyMulti potE1 ps' x is] r_ -- todo rename to cLetBindMulti
       let bindingCtxP' = M.insert (getType e1) bindingP' nonBindingCtxP'
       let bindingCtxP = M.insert (getType e1) p nonBindingCtxP
       let bindingCtxR = M.insert (getType e1) r nonBindingCtxR
@@ -329,16 +329,10 @@ proveExpr tactic@(Rule R.WeakenVar _) cf e = proveWeakenVar tactic cf e
 proveExpr tactic@(Rule (R.Weaken _) _) cf e = proveWeaken tactic cf e
 proveExpr tactic@(Rule R.Shift _) cf e = proveShift tactic cf e
 proveExpr tactic@(Rule R.App _) cf e@(App id _) = removeRedundantVars proveApp tactic cf e
-
-proveExpr Auto cf e = proveByAuto cf e
+-- auto tactic
+proveExpr Auto cf e = proveExpr (genTactic e) cf e 
 proveExpr tactic _ e = \_ _ -> errorFrom (SynExpr e) $ "Could not apply tactic to given "
   ++ printExprHead e ++ " expression. Tactic: '" ++ printTacticHead tactic ++ "'"
-
--- auto tactic
-proveByAuto :: Maybe Int -> PositionedExpr -> AnnCtx -> AnnCtx -> ProveMonad Derivation
-proveByAuto cf e q q' = do
-  let tactic = genTactic e
-  proveExpr tactic cf e q q'
 
 genTactic :: PositionedExpr -> Tactic
 genTactic e@(Var {}) = autoWeaken e (Rule R.Var [])

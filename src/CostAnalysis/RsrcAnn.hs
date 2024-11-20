@@ -158,19 +158,6 @@ ctxAdd = ctxZipWith
   (const (`annLikeAdd` pointWiseZero))
   (const (annLikeAdd pointWiseZero))
   (const annLikeAdd)
-               
--- ctxEq :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> [Constraint]
--- ctxEq qs ps = concat $ zipWith annLikeEq (M.elems qs) (M.elems ps)
-
-annLikeEq :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
-annLikeEq q op = concat [eq (q!?idx) (op!?idx)
-                        | idx <- S.toList $ definedIdxs q `S.union` definedIdxs op]
-
-ctxEq :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> [Constraint]
-ctxEq qs ps = concat . M.elems $ ctxZipWith
-  (const (`annLikeEq` pointWiseZero))
-  (const (annLikeEq pointWiseZero))
-  (const annLikeEq) qs ps
 
 ctxConstEq :: AnnLike a => Map Type a -> Map Type CoeffAnnotation -> [Constraint]
 ctxConstEq ctx values = concat . M.elems $ ctxZipWith
@@ -267,10 +254,10 @@ def i = do
   ann <- get
   return $ ann!idx
 
-chainDef :: (RsrcAnn -> (RsrcAnn, [Constraint])) -> (RsrcAnn -> (RsrcAnn, [Constraint])) -> RsrcAnn -> (RsrcAnn, [Constraint])
-chainDef f g q_ = let (q, cs) = f q_ 
-                      (q', cs') = g q in
-                    (q', cs ++ cs')
+chainDef :: [RsrcAnn -> (RsrcAnn, [Constraint])] -> RsrcAnn -> (RsrcAnn, [Constraint])
+chainDef fs q_ = foldr go (q_, []) fs
+  where go f (q, css) = let (q', cs) = f q in
+          (q', cs ++ css)
 
 defMulti :: Index i => [(Type, i)] -> CoeffDef AnnCtx [Term]
 defMulti = mapM go

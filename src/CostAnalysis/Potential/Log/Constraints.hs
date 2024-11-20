@@ -113,9 +113,6 @@ cLetCf q ps ps' x (gamma, delta) bdes = (psDefined, ps'Defined, psCs ++ ps'Cs ++
             let c = constFactor idx,
             (not . null) (varsRestrict idx delta),
             (not . null) (varsRestrict idx gamma) || c /= 0]
-            --not (onlyVarsOrConst idx gamma),
-            --not (onlyVarsOrConst idx delta)]
---            (null gamma && c /= 0) || not (onlyVarsOrConst idx delta)]
             
         (ps'Defined, ps'Cs) = extendAnns ps' $
           [(`le` sum [p!ac
