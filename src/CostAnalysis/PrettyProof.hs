@@ -333,7 +333,12 @@ hamTerm (VarTerm k) = [shamlet|
 hamTerm (CoeffTerm q) = hamCoeff q
 hamTerm (Sum terms) = hamOpTerm [shamlet|<mo>+|] terms
 hamTerm (Diff terms) = hamOpTerm [shamlet|<mo>-|] terms
-hamTerm (Minus term) = [shamlet|<mo>- #{hamTerm term}|]
+hamTerm (Minus term) = [shamlet|
+<mo form="prefix" stretchy="false">(
+<mo>-
+#{hamTerm term}
+<mo form="postfix" stretchy="false">)
+|]
 hamTerm (Prod terms) = hamOpTerm [shamlet|<mo lspace="0em" rspace="0em">⋅|] terms
 hamTerm (ConstTerm c) = hamRat c
 
