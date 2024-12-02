@@ -146,10 +146,8 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q'
   ctxP_ <- emptyAnnCtx (M.map fst argSplit) "P" "let:base e1"
   ctxR_ <- emptyAnnCtx (M.map snd argSplit) "R" "let:base e2"
   -- base
-  nonBindingCtxP' <- defaultAnnCtx (M.map (const []) nonBindingQ) "P'"  "let:base e1"
-
   let (nonBindingCtxP, nonBindingCsP) = ctxDefineBinding ctxP_ nonBindingQ 
-  let (nonBindingCtxR, nonBindingCsR) = ctxDefineBody ctxR_ nonBindingQ nonBindingCtxP nonBindingCtxP'
+  let (nonBindingCtxR, nonBindingCsR) = ctxDefineBody ctxR_ nonBindingQ nonBindingCtxP 
   let nonBindingCs = nonBindingCsP ++ nonBindingCsR
   
   -- potential bind
@@ -174,12 +172,12 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q'
       let (ps, ps', cfCs) = cLetCf potE1 bindingQ ps_ ps'_ x (gamma, delta) is
       let (r, rCs) = chainDef [
             cLetBodyUni bindingQ p bindingP' x,
-            cLetBodyMulti potE1 ps' x is] r_ -- todo rename to cLetBindMulti
-      let bindingCtxP' = M.insert (getType e1) bindingP' nonBindingCtxP'
+            cLetBodyMulti potE1 ps' x is] r_ 
+      let bindingCtxP' = M.insert (getType e1) bindingP' M.empty
       let bindingCtxP = M.insert (getType e1) p nonBindingCtxP
       let bindingCtxR = M.insert (getType e1) r nonBindingCtxR
       let ctxPs = map (\p -> M.insert (getType e1) p nonBindingCtxP) (elems ps)
-      let ctxPs' = map (\p -> M.insert (getType e1) p nonBindingCtxP') (elems ps')
+      let ctxPs' = map (\p -> M.fromList [(getType e1, p)]) (elems ps')
 
       cfDerivs <- zipWithM (proveExpr t1 (Just $ fromMaybe 0 cf) e1) ctxPs ctxPs'
       
@@ -187,7 +185,7 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q'
                pCs ++ cfCs ++ rCs ++ nonBindingCs,
                cfDerivs)
       -- derivs
-    Nothing -> return (nonBindingCtxP',
+    Nothing -> return (M.empty,
                        nonBindingCtxP,
                        nonBindingCtxR,
                        nonBindingCs, [])

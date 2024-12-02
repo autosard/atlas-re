@@ -100,9 +100,9 @@ enrichWithDefaults pot neg id label comment origin =
         annGen = if neg then defaultNegAnn else defaultAnn
         defaultCoeffs = annGen pot id "" "" args_ ^.coeffs
 
-defineBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
-defineBody r_ q p p' = defineFrom' r_ q constConstraint
-  where constConstraint idx r q = r `eq` sum [sub [q, p!idx], p'!?idx]
+defineBody :: RsrcAnn -> RsrcAnn -> RsrcAnn -> (RsrcAnn, [Constraint])
+defineBody r_ q p = defineFrom' r_ q constConstraint
+  where constConstraint idx r q = r `eq` sub [q, p!idx]
 
 -- | @'defineFrom' pot q p f@ Define q from p. This sets q(x) = p(x), where x contains only variables from q. If x is constant coefficient the function f is applied instead of euqality, i.e. f q(idx) p(idx).
 defineFrom' :: RsrcAnn -> RsrcAnn -> (CoeffIdx -> Term -> Term -> [Constraint])

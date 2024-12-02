@@ -202,10 +202,10 @@ ctxDefineBinding ps_ qs = foldr go (M.empty, []) (M.keys qs)
           let (p, cs) = defineFrom' (ps_ M.! t) (qs M.! t) (const le) in
             (M.insert t p ps, css ++ cs)
 
-ctxDefineBody :: AnnCtx -> AnnCtx -> AnnCtx -> AnnCtx -> (AnnCtx, [Constraint])
-ctxDefineBody rs_ qs ps ps' = foldr go (M.empty, []) (M.keys qs)
+ctxDefineBody :: AnnCtx -> AnnCtx -> AnnCtx -> (AnnCtx, [Constraint])
+ctxDefineBody rs_ qs ps = foldr go (M.empty, []) (M.keys qs)
   where go t (rs, css) =
-          let (r, cs) = defineBody (rs_ M.! t) (qs M.! t) (ps M.! t) (ps' M.! t) in
+          let (r, cs) = defineBody (rs_ M.! t) (qs M.! t) (ps M.! t) in
             (M.insert t r rs, css ++ cs)
 
 ctxDefByConstShift :: AnnCtx -> AnnCtx -> (Term -> Term) -> ProveMonad (AnnCtx, [Constraint])
