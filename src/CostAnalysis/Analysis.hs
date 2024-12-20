@@ -46,7 +46,7 @@ initPotentials mod kinds = do
   M.fromList <$> mapM go (M.toAscList potFnArgs)
   where go (t, args) = do
           let pot = fromKind (kinds M.! t)
-          potFn <- defaultAnn' pot "Q'" "fn" args
+          potFn <- defaultAnn' pot "Q'" "potFn" args
           return (t, (pot, potFn))
                          
 

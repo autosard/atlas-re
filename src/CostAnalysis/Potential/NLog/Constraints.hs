@@ -23,25 +23,24 @@ shiftLogs :: Int -> Int -> Maybe (Int, Int)
 shiftLogs b c | c < 2 || b == 0 = Just (b, c + b)
               | otherwise = Nothing
               
-addShiftL :: RsrcAnn -> RsrcAnn -> [Constraint] 
-addShiftL q q' =
-  let [x] = _args q
-      [y] = _args q' in
-    concat $ [eqs
-             | idx <- mixes q,
-               let (a,b) = facForVar2 idx x,
-               let c = constFactor idx,
-               let a' = a - 1,
-               let eqs = case shiftLogs b c of
-                    Just (b', c') ->
-                      if a > 0 then
-                        eq (q!idx) (q'![mix|y^(a,b'),c'|])
-                        ++ eq (q!idx) (q'![mix|y^(a',b'),c'|])
-                      else
-                        eq (q!idx) (q'![mix|y^(a,b'),c'|])
-                    Nothing -> eq (q!idx) (ConstTerm 0)]
-                            
-
+-- addShiftL :: RsrcAnn -> RsrcAnn -> [Constraint] 
+-- addShiftL q q' =
+--   let [x] = _args q
+--       [y] = _args q' in
+--     concat $ [eqs
+--              | idx <- mixes q,
+--                let (a,b) = facForVar2 idx x,
+--                let c = constFactor idx,
+--                let a' = a - 1,
+--                let eqs = case shiftLogs b c of
+--                     Just (b', c') ->
+--                       if a > 0 then
+--                         eq (q!idx) (q'![mix|y^(a,b'),c'|])
+--                         ++ eq (q!idx) (q'![mix|y^(a',b'),c'|])
+--                       else
+--                         eq (q!idx) (q'![mix|y^(a,b'),c'|])
+--                     Nothing -> eq (q!idx) (ConstTerm 0)]
+  
 addShiftDefL :: RsrcAnn -> Id -> RsrcAnn -> Id -> (RsrcAnn, [Constraint])
 addShiftDefL q_ x q' y = extendAnn q_ $
   [ (`eqSum` map (q'!) q'Idxs) <$> def qIdx

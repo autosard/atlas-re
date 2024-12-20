@@ -29,7 +29,7 @@ weightedAbs q = sum [prod [q!idx, ConstTerm $ indexWeight a b]
 weightedNonRankDifference :: Args -> RsrcAnn -> RsrcAnn -> Term
 weightedNonRankDifference potArgs q q' = sum $ map weightedDiff pairs 
   where weightedDiff (p, p', (a,b)) = prod [ConstTerm (indexWeight a b), sub [p, p']]
-        pairs = [(q![mix|_xs,b|], q'![mix|_ys,b|], (a,b))
+        pairs = [(q![mix|_xs,b|], q'!?[mix|_ys,b|], (a,b))
                 | a <- aRange potArgs,
                   b <- bRange potArgs,
                   a + b > 0,
@@ -46,7 +46,7 @@ indexWeight a b = fromIntegral (1 + a + (2 * (b + 1)) ) ^ 2
 
 
 constantDifference :: RsrcAnn -> RsrcAnn -> Term
-constantDifference q q' = sub [q![mix|2|], q'![mix|2|]]
+constantDifference q q' = sub [q![mix|2|], q'!?[mix|2|]]
 
 absRank :: RsrcAnn -> Term
 absRank q = sum [q!x | x <- annVars q]
