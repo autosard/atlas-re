@@ -144,9 +144,6 @@ instScheme (Forall len t) = do
 
 type Infer e t = Context -> e -> TI t
 
-litScheme :: Literal -> Scheme
-litScheme (LitNum _) = Forall 0 (TAp Num [])
-
 tiPatternVar :: Infer ParsedPatternVar (Context, TypedPatternVar)
 tiPatternVar ctx (Id ann id) = do
   t <- newTVar
@@ -207,11 +204,6 @@ tiExpr' ctx (ConstAnn ann id args) = do
   unify tConst (tArgs `fn` to)
   let ann' = extendWithType to ann 
   return $ ConstAnn ann' id args'
-tiExpr' ctx (LitAnn ann l) = do
-  let sc = litScheme l
-  t <- instScheme sc
-  let ann' = extendWithType t ann
-  return $ LitAnn ann' l
 tiExpr' ctx (IteAnn ann e1 e2 e3) = do
   r <- newTVar
   

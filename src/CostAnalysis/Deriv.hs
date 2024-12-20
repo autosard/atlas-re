@@ -49,6 +49,9 @@ proveConst _ cf e@(Const "(,)" args) q q' = do
   let argsByType = M.fromList . groupSort $ map (swap . varWithType) args
   let cs = ctxUnify' q q' argsByType
   conclude R.Const cf q q' cs e []
+proveConst _ cf e@(Const "numLit" _) q q' = do
+  let cs = ctxUnify q q'
+  conclude R.Var cf q q' cs e []
 proveConst _ cf e@(Const id _) q q' = do
   pots <- use potentials
   let t = getType e
@@ -126,7 +129,8 @@ splitLetCtx e1 e2 q =
   let qArgs = S.fromList (q^.args)
       varsE1 = freeVars e1
       argsE1 = qArgs `S.intersection` varsE1
-      argsE2 = qArgs S.\\ argsE1 in
+      varsE2 = freeVars e2
+      argsE2 = qArgs `S.intersection` varsE2 in
     (S.toList argsE1, S.toList argsE2)
 
 isLeaf :: PositionedExpr -> Bool
@@ -347,6 +351,7 @@ genTactic e@(Let _ binding body) = let t1 = genTactic binding
                                        neg = S.member BindsAppOrTickRec ctx in
   autoWeaken e $ Rule (R.Let [R.NegE | neg]) [t1, t2]
 genTactic (Tick _ e) = Rule R.TickDefer [genTactic e]
+genTactic e = error $ "genTactic: " ++ (printExprHead e)
 
 autoWeaken :: PositionedExpr -> Tactic -> Tactic
 autoWeaken e tactic = case wArgsForExpr e of

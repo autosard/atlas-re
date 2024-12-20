@@ -94,7 +94,6 @@ bindPatVars vars vals = foldr go M.empty $ zip vars vals
 
 evalExpr :: Env -> TypedExpr -> Eval Val
 evalExpr env (Var id) = find id env
-evalExpr env (Lit l) = return $ LitVal l
 evalExpr env (ConstAnn ann id args) = do
   args' <- mapM (evalExpr env) args
   return $ constEval id args'

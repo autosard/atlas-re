@@ -61,7 +61,7 @@ type Parser = ParsecT Void Text (RWS ParserContext () ParserState)
 
 pModule :: Parser (Map Type PotentialKind, [ParsedFunDef])
 pModule = sc *> do
-  pots <- optional $ pPragma "POTENTIAL" pPotentialMapping
+  pots <- optional $ try (pPragma "POTENTIAL" pPotentialMapping)
   (fromMaybe M.empty pots,) <$> manyTill pFunc eof
 
 pPragma :: Text -> Parser a -> Parser a
@@ -218,16 +218,12 @@ pExpr = pKeywordExpr
 pKeywordExpr :: Parser ParsedExpr
 pKeywordExpr
   = pConst
-  <|> pLit
   <|> pParenExpr
   <|> IteAnn <$> getSourcePos <* symbol "if" <*> pExpr <* symbol "then" <*> pExpr <* symbol "else" <*> pExpr
   <|> MatchAnn <$> getSourcePos <* symbol "match" <*> pExpr <* symbol "with" <* symbol "|" <*> sepBy1 pMatchArm (symbol "|")
   <|> LetAnn <$> getSourcePos <* symbol "let" <*> pIdentifier <* symbol "=" <*> pExpr <* symbol "in" <*> pExpr
   <|> TickAnn <$> getSourcePos <* symbol "~" <*> optional pRational <*> pExpr
   <|> CoinAnn <$> getSourcePos <* symbol "coin" <*> ((pRational <?> "coin probability") <|> pure defaultCoinPropability)
-
-pLit :: Parser ParsedExpr
-pLit = LitAnn <$> getSourcePos <*> pNumber
 
 pParenExpr :: Parser ParsedExpr
 pParenExpr = pParens pExpr
@@ -241,6 +237,7 @@ pConst = do
     <|> (,) <$> symbol' "leaf" <*> pure []
     <|> (,) <$> symbol' "cons" <*> count 2 pArg
     <|> (,) <$> symbol' "error" <*> pure []
+    <|> ("numLit", []) <$ pNumber 
     <|> ("nil",) <$ symbol "[]" <*> pure []
     <|> ("(,)",) <$> try (pParens ((\x y -> [x, y]) <$> pArg <* symbol "," <*> pArg))
   return $ ConstAnn pos name args
@@ -275,7 +272,6 @@ pApplication = AppAnn <$> getSourcePos <*> pIdentifier <*> some pArg
 pArg :: Parser ParsedExpr
 pArg = pParenExpr
   <|> pConst
-  <|> pLit
   <|> try (pVar <* notFollowedBy (symbol "= " <|> pDoubleColon2))
   <?> "function argument"
 

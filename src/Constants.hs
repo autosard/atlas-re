@@ -5,7 +5,7 @@ module Constants where
 
 import Primitive(Id)
 import Typing.Scheme
-import Typing.Type(Type(TGen, TAp), Tycon(Tree, Bool, Prod, List), fn)
+import Typing.Type(Type(TGen, TAp), Tycon(Tree, Bool, Prod, List, Num), fn)
 import Ast(Val(ConstVal, LitVal), Literal(LitNum))
 import qualified Data.Text as T
 
@@ -29,6 +29,7 @@ constType "cons" = Forall 1 $ [TGen 0, listT] `fn` listT
 constType "(,)" = Forall 2 $ [TGen 0, TGen 1] `fn` tupleT
 constType "true" = Forall 0 boolT
 constType "false" = Forall 0 boolT
+constType "numLit" = Forall 0 (TAp Num [])
 constType "error" = Forall 1 (TGen 0)
 constType "LT" = Forall 1 $ [TGen 0, TGen 0] `fn` boolT
 constType "LE" = Forall 1 $ [TGen 0, TGen 0] `fn` boolT

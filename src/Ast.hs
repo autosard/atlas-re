@@ -100,7 +100,6 @@ data Pattern a
 
 data Expr a
   = VarAnn (XExprAnn a) Id
-  | LitAnn (XExprAnn a) Literal
   | ConstAnn (XExprAnn a) Id [Expr a]
   | IteAnn (XExprAnn a) (Expr a) (Expr a) (Expr a)
   | MatchAnn (XExprAnn a) (Expr a) [MatchArm a]
@@ -139,8 +138,6 @@ pattern PatTuple ann x y <- ConstPat ann "(,)" [x, y]
 -- pattern synomyms to work with epxressions without the overhead of annotations
 pattern Var :: Id -> Expr a
 pattern Var id <- VarAnn _ id
-pattern Lit :: Literal -> Expr a
-pattern Lit l <- LitAnn _ l
 pattern Const :: Id -> [Expr a] -> Expr a
 pattern Const id args <- ConstAnn _ id args
 pattern Ite :: Expr a -> Expr a -> Expr a -> Expr a
@@ -201,7 +198,6 @@ containsFn fn = any matches . fns
 
 printExprHead :: Expr a -> String
 printExprHead (Var id) = T.unpack id 
-printExprHead (Lit l) = show l
 printExprHead (Const id args) = T.unpack id ++ " " ++ unwords (map printExprHead args)
 printExprHead (Ite {}) = "ite"
 printExprHead (Match (Var id) _) = "match " ++ T.unpack id
@@ -230,7 +226,6 @@ printExprPlain = printExpr (const "") 0
 
 printExpr :: (XExprAnn a -> String) -> Int -> Expr a -> String
 printExpr printAnn _ (VarAnn ann id) = T.unpack id ++ printAnn ann
-printExpr printAnn _ (LitAnn ann l) = show l ++ printAnn ann
 printExpr printAnn ident (ConstAnn ann "(,)" [x1, x2]) = "(" ++ printExpr printAnn ident x1 ++ ", " ++ printExpr printAnn ident x2 ++ ")" ++ printAnn ann
 printExpr printAnn ident (ConstAnn ann id args) = paren $ T.unpack id ++ " " ++ unwords (map (printExpr printAnn ident) args) ++ printAnn ann
 printExpr printAnn ident (IteAnn ann e1 e2 e3) = "if " ++ printExpr printAnn ident e1
@@ -270,7 +265,6 @@ class Annotated a b where
 instance Annotated Expr a where
   mapAnn f (VarAnn ann id) = VarAnn (f ann) id
   mapAnn f (ConstAnn ann id args) = ConstAnn (f ann) id $ map (mapAnn f) args
-  mapAnn f (LitAnn ann l) = LitAnn (f ann) l
   mapAnn f (IteAnn ann e1 e2 e3) = IteAnn (f ann) (mapAnn f e1) (mapAnn f e2) (mapAnn f e3)
   mapAnn f (MatchAnn ann e arms) = MatchAnn (f ann) (mapAnn f e) $ map (mapAnn f) arms
   mapAnn f (AppAnn ann id args) = AppAnn (f ann) id $ map (mapAnn f) args
@@ -280,7 +274,6 @@ instance Annotated Expr a where
 
   getAnn (VarAnn ann _) = ann
   getAnn (ConstAnn ann _ _) = ann
-  getAnn (LitAnn ann _) = ann
   getAnn (IteAnn ann _ _ _) = ann
   getAnn (MatchAnn ann _ _) = ann
   getAnn (AppAnn ann _ _) = ann

@@ -19,7 +19,6 @@ contextualizeExpr fn = contextualizeExpr' fn $ S.fromList [PseudoLeaf, Outermost
 
 contextualizeExpr' :: Id -> Set ExprCtx -> TypedExpr -> PositionedExpr
 contextualizeExpr' fn ctx (VarAnn ann id) = VarAnn (extendWithCtx (S.delete OutermostLet ctx) ann) id
-contextualizeExpr' fn ctx (LitAnn ann l) = LitAnn (extendWithCtx (S.delete OutermostLet ctx) ann) l
 contextualizeExpr' fn ctx (ConstAnn ann id args) = ConstAnn (extendWithCtx ctx ann) id args'
   where args' = map (contextualizeExpr' fn ctx) args
 contextualizeExpr' fn ctx (IteAnn ann e1 e2 e3) = IteAnn (extendWithCtx coinCtx ann) e1' e2' e3'
