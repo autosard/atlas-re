@@ -66,8 +66,8 @@ data Potential = Potential {
   -- | @ 'cMatch' q p_ x ys = (p, cs)@ defines @p@ with the empty annotation @p_@ from @q@ by constraints @cs@, guaranteeing \[\phi(\Gamma, x \mid Q) = \phi(\Gamma, \vec{y} \mid P)\] where @x@ is the variable that matched and @ys@ is the pattern variables.
   cMatch :: RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint]),
 
-  -- | @ 'letBodyMulti' ps' x is r_ = (r, cs)@
-  cLetBodyMulti :: AnnArray -> Id -> [CoeffIdx] -> RsrcAnn -> (RsrcAnn, [Constraint]),
+  -- | @ 'letBodyMulti' q ps' x is r_ = (r, cs)@
+  cLetBodyMulti :: RsrcAnn -> AnnArray -> Id -> [CoeffIdx] -> RsrcAnn -> (RsrcAnn, [Constraint]),
 
   -- | @ 'letCfIdxs' q xs (rangeA, rangeB) x@ generates an index for every cf derivation in the rule from the indices in @q@ and the given ranges.
   letCfIdxs :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx],

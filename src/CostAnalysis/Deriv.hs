@@ -176,7 +176,7 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q'
       let (ps, ps', cfCs) = cLetCf potE1 bindingQ ps_ ps'_ x (gamma, delta) is
       let (r, rCs) = chainDef [
             cLetBodyUni bindingQ p bindingP' x,
-            cLetBodyMulti potE1 ps' x is] r_ 
+            cLetBodyMulti potE1 bindingQ ps' x is] r_ 
       let bindingCtxP' = M.insert (getType e1) bindingP' M.empty
       let bindingCtxP = M.insert (getType e1) p nonBindingCtxP
       let bindingCtxR = M.insert (getType e1) r nonBindingCtxR

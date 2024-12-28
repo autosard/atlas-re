@@ -49,7 +49,7 @@ cConst _ (Tuple (Var x1) (Var x2)) q q' = annLikeUnify' q q' [x1,x2]
 cConst _ constr _ _ = error $ show constr
 
 cMatch :: Args -> RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint])
--- nil / leaf
+-- nil 
 cMatch _ q r x [] = extendAnn r $
   [(`eq` (q!idx)) <$> def idx
   | idx <- mixes q,
@@ -57,8 +57,8 @@ cMatch _ q r x [] = extendAnn r $
 -- cons                   
 cMatch potArgs q p x [l] = addShiftDefL (degree potArgs) p l q x
 
-cLetBodyMulti :: AnnArray -> Id -> [CoeffIdx] -> RsrcAnn -> (RsrcAnn, [Constraint])
-cLetBodyMulti ps' x is r_ = extendAnn r_ $
+cLetBodyMulti :: RsrcAnn -> AnnArray -> Id -> [CoeffIdx] -> RsrcAnn -> (RsrcAnn, [Constraint])
+cLetBodyMulti _ ps' x is r_ = extendAnn r_ $
   [(`eq` (ps'!!i!pIdx)) <$> def [mix|_b,x^d|]
   | i <- is,
     let b = idxToSet i,

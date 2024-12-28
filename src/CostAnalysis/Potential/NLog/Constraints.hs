@@ -77,8 +77,11 @@ cMatch q r x [] = extendAnn r $
 -- cons                   
 cMatch q p x [l] = addShiftDefL p l q x
 
-cLetBodyMulti :: AnnArray -> Id -> [CoeffIdx] -> RsrcAnn -> (RsrcAnn, [Constraint])
-cLetBodyMulti _ _ _ r_ = (r_, [])
+cLetBodyMulti :: RsrcAnn -> AnnArray -> Id -> [CoeffIdx] -> RsrcAnn -> (RsrcAnn, [Constraint])
+cLetBodyMulti q _ _ _ r = extendAnn r $
+  [ (`eq` (q!idx)) <$> def idx
+  | idx <- mixes q,
+    onlyVarsOrConst idx (annVars r)]
 
 cLetCf :: Args -> RsrcAnn -> AnnArray -> AnnArray -> Id -> ([Id], [Id]) -> [CoeffIdx] -> (AnnArray, AnnArray, [Constraint])
 cLetCf potArgs q ps ps' x (gamma, delta) js = error "undefined for univariate potential."

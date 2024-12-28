@@ -91,8 +91,8 @@ cMatch q r x [v] = extendAnn r $
   ++ [(`eq` (q!y)) <$> def y | y <- L.delete x (annVars q)]
 cMatch _ _ x ys = error $ "x: " ++ show x ++ ", ys: " ++ show ys
 
-cLetBodyMulti :: AnnArray -> Id -> [CoeffIdx] -> RsrcAnn -> (RsrcAnn, [Constraint])
-cLetBodyMulti ps' x is r_ = extendAnn r_ $
+cLetBodyMulti :: RsrcAnn -> AnnArray -> Id -> [CoeffIdx] -> RsrcAnn -> (RsrcAnn, [Constraint])
+cLetBodyMulti _ ps' x is r_ = extendAnn r_ $
   [(`eq` (ps'!!i![mix|exp^d,e|])) <$> def i
   | i <- is,
     let d = facForVar i x,
