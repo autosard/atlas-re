@@ -52,6 +52,9 @@ oneCoeff = [mix|2|]
 zeroCoeff :: Maybe CoeffIdx
 zeroCoeff = Just [mix|1|]
 
+cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
+cExternal q q' = []
+
 -- univariate potential
 letCfIdxs :: Args -> RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 letCfIdxs potArgs q xs (rangeA, rangeB) x = []

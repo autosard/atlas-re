@@ -16,6 +16,7 @@ import CostAnalysis.RsrcAnn
 import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential (AnnRanges(..))
+import CostAnalysis.Constraint (Constraint, zero, eq)
 
 data Args = Args {
   aRange :: ![Int],
@@ -51,6 +52,12 @@ oneCoeff = [mix|2|]
 
 zeroCoeff :: Maybe CoeffIdx
 zeroCoeff = Just [mix|1|]
+
+cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
+cExternal q q' = concat $ zero (q!?[mix|1|])
+  -- equal ranks  
+  : [eq (q!?idx) (q'!?substitute (argVars q) (argVars q') idx)
+    | idx <- pures q]
 
 letCfIdxs :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 letCfIdxs q xs (rangeA, rangeB) x =

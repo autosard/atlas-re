@@ -27,10 +27,11 @@ import Typing.Type
 import CostAnalysis.RsrcAnn ( RsrcSignature,
                              FunRsrcAnn(..), ctxConstEq,
                              ctxConstLe, PointWiseOp,
-                             opCoeffs, ctxGeZero, AnnCtx, annLikeLeftInRight, (!?))
-import CostAnalysis.Potential(ctxSymbolicCost, PotFnMap)
+                             opCoeffs, ctxGeZero, AnnCtx, annLikeLeftInRight, (!?), ctxZipWith, pointWiseZero, RsrcAnn (RsrcAnn))
+import CostAnalysis.Potential(ctxSymbolicCost, PotFnMap, Potential (cExternal))
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential.Kind (fromKind)
+import Control.Monad.Extra (concatMapM)
 
 
 defaultPotentialMap = M.fromList
@@ -109,9 +110,19 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
       s <- use sig
       let (q, q') = withCost $ s M.! fnId
       tellCs $ potFnCovered q q'
-      tellCs $ concat . M.elems $ M.map (\q -> zero (q!?[mix|1|])) q
+      tellCs =<< externalCsForCtx q q'
       addFullCostOptimization fnId
   proveFun def
+
+externalCsForCtx :: AnnCtx -> AnnCtx -> ProveMonad [Constraint]
+externalCsForCtx ctxQ ctxQ' = concatMapM csForType (M.assocs ctxQ) 
+  where csForType :: (Type, RsrcAnn) -> ProveMonad [Constraint]
+        csForType (t, q) = do
+          pots <- use potentials
+          if M.member t ctxQ' then
+            return $ cExternal (potForType t pots ) q (ctxQ' M.! t)
+          else
+            return []
 
 potFnCovered :: AnnCtx -> AnnCtx -> [Constraint]
 potFnCovered qs qs' = concat

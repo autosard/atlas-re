@@ -76,6 +76,9 @@ data Potential = Potential {
   cLetCf :: RsrcAnn -> AnnArray -> AnnArray -> Id -> ([Id], [Id]) -> [CoeffIdx] -> (AnnArray, AnnArray, [Constraint]),
 
   genExpertKnowledge :: Set WeakenArg -> [Id] -> Set CoeffIdx -> LeMatrix,
+
+  -- | @ 'cExternal' q q' @ returns constraints over the annoations q and q'. 
+  cExternal :: RsrcAnn -> RsrcAnn -> [Constraint],
   
   -- | @ 'cOptimize' q q' @ returns a cost function that minimizes \[\Phi(\Gamma\mid Q) - \Phi(\Gamma\mid Q')\] as a term.
   cOptimize :: RsrcAnn -> RsrcAnn -> Term,

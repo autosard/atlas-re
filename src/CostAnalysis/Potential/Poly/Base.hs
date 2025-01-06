@@ -13,6 +13,7 @@ import qualified CostAnalysis.Potential as P
 import CostAnalysis.Coeff
 import CostAnalysis.RsrcAnn
 import CostAnalysis.AnnIdxQuoter(mix)
+import CostAnalysis.Constraint (Constraint)
 
 newtype Args = Args { degree :: Int }
 
@@ -41,6 +42,9 @@ oneCoeff = [mix||]
 
 zeroCoeff :: Maybe CoeffIdx
 zeroCoeff = Nothing
+
+cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
+cExternal q q' = []
 
 letCfIdxs :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 letCfIdxs q xs (rangeA, rangeB) x = filter (not . null . idxToSet ) $ varsRestrictMixes q xs

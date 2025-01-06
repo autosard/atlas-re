@@ -20,6 +20,7 @@ pot args = Potential
   letCfIdxs
   (cLetCf args)
   genExpertKnowledge
+  cExternal
   cOptimize
   printBasePot
 
