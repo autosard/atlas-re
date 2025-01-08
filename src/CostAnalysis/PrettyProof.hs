@@ -389,21 +389,31 @@ hamConstraint (Not c) = [shamlet|
 #{hamConstraint c}
 <mo form="postfix" stretchy="false">)
 |]
-hamConstraint (Or cs) = [shamlet|
-<mo form="prefix" stretchy="false" lspace="0em" rspace="0em">or
-<mo form="prefix" stretchy="false">(
-#{args}
-<mo form="postfix" stretchy="false">)
-|]
-  where args = toHtml $ intersperse
-          [shamlet|<mo separator="true">,|]
-          (map hamConstraint cs)
-hamConstraint (And cs) = [shamlet|
-<mo form="prefix" stretchy="false" lspace="0em" rspace="0em">and
-<mo form="prefix" stretchy="false">(
-#{args}
-<mo form="postfix" stretchy="false">)
-|]
-  where args = toHtml $ intersperse
-          [shamlet|<mo separator="true">,|]
-          (map hamConstraint cs)
+hamConstraint (Or cs) = hamConstraintList "∨" cs
+hamConstraint (And cs) = hamConstraintList "∧" cs
+
+hamConstraintList op cs = [shamlet|
+<mtable rowalign="top" columnalign="center left">
+  <mtr>
+    <mtd>
+      <mo form="prefix">#{op}
+    <mtd>
+      <mtable columnalign="left">
+        $forall c <- cs
+          <mtr>
+            <mrow>
+              ^{hamConstraint c}
+|] 
+  -- where args = [shamlet|
+  -- -- where args = toHtml $ intersperse
+  -- --         [shamlet|<mo separator="true">,|]
+  -- --         (map hamConstraint cs)c
+-- hamConstraint (And cs) = [shamlet|
+-- <mo form="prefix" stretchy="false" lspace="0em" rspace="0em">and
+-- <mo form="prefix" stretchy="false">(
+-- #{args}
+-- <mo form="postfix" stretchy="false">)
+-- |]
+--   where args = toHtml $ intersperse
+--           [shamlet|<mo separator="true">,|]
+--           (map hamConstraint cs)

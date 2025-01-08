@@ -15,7 +15,7 @@ import CostAnalysis.Coeff
 import CostAnalysis.RsrcAnn
 import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
-import CostAnalysis.Potential (AnnRanges(..))
+import CostAnalysis.Potential (AnnRanges(..), MonoFn(..))
 import CostAnalysis.Constraint (Constraint, zero, eq)
 
 data Args = Args {
@@ -52,6 +52,12 @@ oneCoeff = [mix|2|]
 
 zeroCoeff :: Maybe CoeffIdx
 zeroCoeff = Just [mix|1|]
+
+monoFnCoeff :: MonoFn -> [Id] -> Int -> Maybe CoeffIdx
+monoFnCoeff Log args c = let xs = S.fromList $ map (^1) args in
+  Just [mix|_xs, c|]
+monoFnCoeff _ args c = Nothing
+
 
 cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
 cExternal q q' = concat $ zero (q!?[mix|1|])

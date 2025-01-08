@@ -44,6 +44,10 @@ data AnnRanges = AnnRanges {
   rangeBNeg :: ![Int]}
 
 
+data MonoFn = Log
+  deriving (Enum, Bounded)
+
+
 data Potential = Potential {
   kind :: PotentialKind,
   
@@ -57,7 +61,10 @@ data Potential = Potential {
   -- | @ 'oneCoeff'@ returns the coefficient index for the constant basic potential function.
   oneCoeff :: CoeffIdx,
 
-  zeroCoeff :: Maybe CoeffIdx, 
+  zeroCoeff :: Maybe CoeffIdx,
+
+  -- | @ 'monoFnCoeff fn args c' returns the coefficient index of the given monotonic basic potential function 'fn' with arguments 'args', with shift 'c'. If the function is not present, 'Nothing' is returned.
+  monoFnCoeff :: MonoFn -> [Id] -> Int -> Maybe CoeffIdx,
 
   -- Constraints
   

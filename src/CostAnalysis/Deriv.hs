@@ -29,11 +29,12 @@ import CostAnalysis.Constraint ( and,
 import CostAnalysis.Weakening
 import CostAnalysis.ProveMonad
 import StaticAnalysis(freeVars)
-import Data.Maybe (fromMaybe, mapMaybe, isJust)
+import Data.Maybe (fromMaybe, mapMaybe, isJust, catMaybes)
 
 import Debug.Trace hiding (traceShow)
 import Data.Tuple (swap)
 import Data.List.Extra (groupSort)
+import CostAnalysis.Coeff (coeffArgs, onlyVars, justVars)
 
 traceShow x = trace (show x) x
   
@@ -284,20 +285,41 @@ proveShift tactic cf@Nothing e q q' = do
   
   deriv <- proveExpr subTactic cf e ps ps'
   conclude R.Shift cf q q' cs e [deriv]
-proveShift tactic cf@(Just _) e q q' = do
+proveShift tactic cf@(Just _) e qs qs' = do
   let [subTactic] = subTactics 1 tactic
   let wArgs = S.fromList [R.Mono]
 
-  p <- fromCtx "P" "shift" q 
-  pCs <- ctxFarkas wArgs p q
-
-  p' <- fromCtx "P'" "shift" q'
-  p'Cs <- ctxFarkas wArgs p' q'
-
-  let cs = pCs ++ p'Cs
+  k <- freshVar
   
-  deriv <- proveExpr subTactic cf e p p'
-  conclude R.Shift cf q q' cs e [deriv]  
+  ps_ <- enrichWithDefaults False "P" "shift" qs
+  (ps, constShiftCsQ) <- ctxDefByMinus ps_ qs k
+  ps'_ <- enrichWithDefaults False "P'" "shift" qs'
+  (ps', constShiftCsQ') <- ctxDefByMinus ps'_ qs' k
+  let constShiftCs = and (constShiftCsQ ++ constShiftCsQ')
+
+  pots <- use potentials
+
+  let monoShiftCs = catMaybes $
+        [(do
+             shiftQP <- monoShift fn xs c potQ (ps M.! tq) q
+             shiftQ'P' <- monoShift fn ys c potQ' (ps' M.! tq') q'
+             let eqQs = ctxUnify otherQs (M.delete tq ps)
+             let eqQ's = ctxUnify otherQ's (M.delete tq' ps)
+             return $ and (shiftQP ++ shiftQ'P' ++ eqQs ++ eqQ's))
+        | let c = 1,
+          fn <- [minBound..],
+          (tq, q) <- M.assocs qs,
+          let potQ = potForType tq pots, 
+          let otherQs = M.delete tq qs,
+          (tq', q') <- M.assocs qs',
+          let potQ' = potForType tq' pots,
+          let otherQ's = M.delete tq' qs',
+          xs <- map coeffArgs $ filter justVars (mixes q),
+          ys <- map coeffArgs $ filter justVars (mixes q')]
+  let cs = or $ constShiftCs ++ concat monoShiftCs
+  
+  deriv <- proveExpr subTactic cf e ps ps'
+  conclude R.Shift cf qs qs' cs e [deriv]  
 
 proveTickDefer :: Prove PositionedExpr Derivation
 proveTickDefer tactic cf e@(Tick c e1) q q' = do

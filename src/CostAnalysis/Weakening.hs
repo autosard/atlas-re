@@ -125,4 +125,20 @@ monoLattice monoLe args idxs = merge . catMaybes $
                               | k <- [0..length idxs-1]], [0])
             else Nothing
 
+monoShift :: MonoFn -> [Id] -> Int -> Potential -> RsrcAnn -> RsrcAnn -> Maybe [Constraint]
+monoShift fn xs c pot p q = do
+  idxFn <- monoFnCoeff pot fn xs 0
+  idxFnShift <- monoFnCoeff pot fn xs c
+  return $
+    zero (q!idxFn) 
+    ++ eq (q!?idxFnShift) (sum [p!idxFnShift, p!idxFn])
+    -- ++ eq (q!?oneCoeff pot) (sum [p!?oneCoeff pot, ConstTerm (fromIntegral c)])
+    ++ concat [ eq (p!idx) (q!?idx)
+              | idx <- S.toList $ definedIdxs p,
+                idx /= idxFn,
+                idx /= idxFnShift]
+                --idx /= oneCoeff pot]
 
+    
+    
+  

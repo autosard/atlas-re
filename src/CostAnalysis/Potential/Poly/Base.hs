@@ -43,6 +43,9 @@ oneCoeff = [mix||]
 zeroCoeff :: Maybe CoeffIdx
 zeroCoeff = Nothing
 
+monoFnCoeff :: P.MonoFn -> [Id] -> Int -> Maybe CoeffIdx
+monoFnCoeff _ args c = Nothing
+
 cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
 cExternal q q' = []
 

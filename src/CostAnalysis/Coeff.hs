@@ -126,6 +126,10 @@ justConst :: CoeffIdx -> Bool
 justConst (Mixed idx) = all isConst idx
 justConst _ = False
 
+justVars :: CoeffIdx -> Bool
+justVars (Mixed idx) = not $ any isConst idx
+justVars _ = False
+
 idxSum :: CoeffIdx -> Int
 idxSum (Mixed idx) = foldr go 0 idx
   where go (Const c) s = s + c

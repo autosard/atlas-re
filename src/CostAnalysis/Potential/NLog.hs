@@ -14,6 +14,7 @@ pot args = Potential
   ranges
   oneCoeff
   zeroCoeff
+  monoFnCoeff
   cConst 
   cMatch
   cLetBodyMulti

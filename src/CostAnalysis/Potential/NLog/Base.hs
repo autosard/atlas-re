@@ -52,6 +52,12 @@ oneCoeff = [mix|2|]
 zeroCoeff :: Maybe CoeffIdx
 zeroCoeff = Just [mix|1|]
 
+monoFnCoeff :: P.MonoFn -> [Id] -> Int -> Maybe CoeffIdx
+monoFnCoeff P.Log args c = let xs = S.fromList $ map (`Arg` [0,1]) args in
+  Just [mix|_xs, c|]
+monoFnCoeff _ args c = Nothing
+
+
 cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
 cExternal q q' = []
 
