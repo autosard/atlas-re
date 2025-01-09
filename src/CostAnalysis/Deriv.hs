@@ -24,6 +24,7 @@ import CostAnalysis.RsrcAnn hiding (fromAnn)
 import CostAnalysis.Constraint ( and,
                                  or,
                                  le,
+                                 eq,
                                  Constraint,
                                  Term(ConstTerm), geZero )
 import CostAnalysis.Weakening
@@ -301,11 +302,20 @@ proveShift tactic cf@(Just _) e qs qs' = do
 
   let monoShiftCs = catMaybes $
         [(do
-             shiftQP <- monoShift fn xs c potQ (ps M.! tq) q
-             shiftQ'P' <- monoShift fn ys c potQ' (ps' M.! tq') q'
-             let eqQs = ctxUnify otherQs (M.delete tq ps)
-             let eqQ's = ctxUnify otherQ's (M.delete tq' ps)
-             return $ and (shiftQP ++ shiftQ'P' ++ eqQs ++ eqQ's))
+             let p = ps M.! tq
+             let p' = ps' M.! tq'
+             shiftQP <- monoShift fn xs c potQ p q
+             shiftQ'P' <- monoShift fn ys c potQ' p' q'
+             idxFnQ <- monoFnCoeff potQ fn xs c
+             idxFnQ' <- monoFnCoeff potQ' fn ys c
+             let cs =
+                   eq (q!?idxFnQ) (q'!?idxFnQ')
+                   ++ eq (q!?oneCoeff potQ) (q'!?oneCoeff potQ')
+                   ++ ctxZero otherQs 
+                   ++ ctxZero (M.delete tq ps)
+                   ++ ctxZero otherQ's
+                   ++ ctxZero (M.delete tq' ps')
+             return $ and (shiftQP ++ shiftQ'P' ++ cs))
         | let c = 1,
           fn <- [minBound..],
           (tq, q) <- M.assocs qs,

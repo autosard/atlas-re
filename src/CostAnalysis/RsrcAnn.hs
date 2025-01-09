@@ -313,7 +313,15 @@ annLikeGeZero ann = concat [ge (ann!idx) $ ConstTerm 0 | idx <- S.toList $ defin
 
 ctxGeZero :: (AnnLike a) => Map Type a -> [Constraint]
 ctxGeZero = M.foldr go []
-  where go ann cs = cs ++ annLikeGeZero ann 
+  where go ann cs = cs ++ annLikeGeZero ann
+
+annLikeZero :: AnnLike a => a -> [Constraint]
+annLikeZero ann = concat [eq (ann!idx) $ ConstTerm 0
+                           | idx <- S.toList $ definedIdxs ann]
+
+ctxZero :: (AnnLike a) => Map Type a -> [Constraint]
+ctxZero = M.foldr go []
+  where go ann cs = cs ++ annLikeZero ann 
 
 annLikeConstLe :: AnnLike a => a -> CoeffAnnotation -> [Constraint]
 annLikeConstLe ann values = concat [le (ann!idx) $ ConstTerm (M.findWithDefault 0 idx values)

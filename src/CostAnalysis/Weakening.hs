@@ -130,14 +130,17 @@ monoShift fn xs c pot p q = do
   idxFn <- monoFnCoeff pot fn xs 0
   idxFnShift <- monoFnCoeff pot fn xs c
   return $
-    zero (q!idxFn) 
-    ++ eq (q!?idxFnShift) (sum [p!idxFnShift, p!idxFn])
-    -- ++ eq (q!?oneCoeff pot) (sum [p!?oneCoeff pot, ConstTerm (fromIntegral c)])
-    ++ concat [ eq (p!idx) (q!?idx)
+    eq (q!?idxFnShift) (p!idxFn)
+    ++ eq (q!?oneCoeff pot) (p!oneCoeff pot)
+    ++ concat [ zero (p!idx)
               | idx <- S.toList $ definedIdxs p,
                 idx /= idxFn,
-                idx /= idxFnShift]
-                --idx /= oneCoeff pot]
+                idx /= oneCoeff pot]
+    ++ concat [ zero (q!idx)
+              | idx <- S.toList $ definedIdxs q,
+                idx /= idxFnShift,
+                idx /= oneCoeff pot]
+
 
     
     
