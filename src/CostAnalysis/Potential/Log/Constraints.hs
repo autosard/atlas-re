@@ -29,7 +29,7 @@ cConst (Leaf {}) q q'
            | idx <- mixes q,
              let c = constFactor idx,
              let addRank = [q'!?exp | c == 2],
-             c >= 1]
+             c >= 2]
     ++ concat [zero (q'!idx)
        | let qConsts = S.fromList $ (filter (>=1) . map constFactor) (mixes q),
          idx <- mixes q',

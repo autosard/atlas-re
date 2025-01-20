@@ -60,10 +60,10 @@ monoFnCoeff _ args c = Nothing
 
 
 cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
-cExternal q q' = concat $ zero (q!?[mix|1|])
+cExternal q q' = 
   -- equal ranks  
-  : [eq (q!?idx) (q'!?substitute (argVars q) (argVars q') idx)
-    | idx <- pures q]
+  concat [eq (q!?idx) (q'!?substitute (argVars q) (argVars q') idx)
+  | idx <- pures q]
 
 letCfIdxs :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 letCfIdxs q xs (rangeA, rangeB) x =
