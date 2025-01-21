@@ -117,7 +117,9 @@ freshVar :: ProveMonad Term
 freshVar = VarTerm <$> genVarId
 
 potForType :: Type -> Map Type (Potential, RsrcAnn) -> Potential
-potForType t m = fst $ m M.! t
+potForType t m = maybe
+  (error $ "No potential function for type '" ++ show t ++ "' defined.")
+  fst (m M.!? t)
 
 annForType :: Type -> Map Type (Potential, RsrcAnn) -> RsrcAnn
 annForType t m = snd $ m M.! t
