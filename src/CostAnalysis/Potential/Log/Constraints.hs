@@ -33,6 +33,7 @@ cConst (Leaf {}) q q'
     ++ concat [zero (q'!idx)
        | let qConsts = S.fromList $ (filter (>=1) . map constFactor) (mixes q),
          idx <- mixes q',
+         idxSum idx >= 2,
          idxSum idx `S.notMember` qConsts]
 cConst e@(Node {}) q q'
   = let [x1, x2] = annVars q in

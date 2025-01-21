@@ -17,7 +17,6 @@ import CostAnalysis.ProveMonad
 import CostAnalysis.Rules
 import CostAnalysis.Coeff
 import Typing.Type
-import Control.Monad.Extra (concatMapM)
 
 farkas :: ExpertKnowledge -> ProveMonad [Constraint]
 farkas (ExpertKnowledge (as, bs) ps qs) = do
@@ -64,9 +63,7 @@ genInterPotKnowledge ks = do
                           let ps = V.map fst . rows $ ks M.! rowT,
                               (i, _) <- V.toList . V.indexed . fst . matrix $ ks M.! rowT]
 
-  let equalConstCoeffs = interCoeffsEqual ks ts pots (Just . oneCoeff)
-  let equalZeroCoeffs = interCoeffsEqual ks ts pots zeroCoeff
-  let asInter = V.concat [equalConstCoeffs, equalZeroCoeffs]
+  let asInter = interCoeffsEqual ks ts pots (Just . oneCoeff)
   let bs = concatMap (snd . matrix) $ M.elems ks 
   return $ ExpertKnowledge (V.concat [as, asInter], bs ++ replicate (length asInter) 0) rows' cols'
 

@@ -45,7 +45,8 @@ rsrcAnn id label comment args ranges =
   where rankCoeffs = [Pure x | (x,i) <- zip args [1..]]
         logCoeffs = [idx
                     | idx <- combi ranges args,
-                      idxSum idx > 0]
+                      idxSum idx > 0,
+                      idx /= [mix|1|]]
                
 oneCoeff :: CoeffIdx
 oneCoeff = [mix|2|]
