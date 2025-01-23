@@ -99,17 +99,19 @@ proveMatchArm matchVar tactic cf
   let nonMatchAnns = M.delete tMatch q
   let matchAnn = q M.! tMatch
   pot <- potForType tMatch <$> use potentials
-  let vars = mapMaybe (getVar tMatch) patVars
+  let vars = mapMaybe (getVar tMatch) $ zip patVars [0..]
   let args' = L.delete matchVar (matchAnn ^.args) `L.union` vars
   p_ <- emptyAnn tMatch "P" "match arm" args'
   let (p, cs) = cMatch pot matchAnn p_ matchVar vars
   tellCs cs
   deriv <- proveExpr tactic cf e (M.insert tMatch p nonMatchAnns) q'
   return (cs, deriv)
-  where getVar :: Type -> PositionedPatternVar -> Maybe Id
-        getVar t v@(Id _ id) | matchesType (getType v) t = Just id
-                             | otherwise = Nothing
-        getVar _ (WildcardVar _) = Nothing
+  where getVar :: Type -> (PositionedPatternVar, Int) -> Maybe Id
+        getVar t (v@(Id _ id), _) | matchesType (getType v) t = Just id
+                                  | otherwise = Nothing
+        getVar t (v@(WildcardVar _), wcId) | matchesType (getType v) t =
+                                         Just . Text.pack $ ("?w" ++ show wcId)
+                                       | otherwise = Nothing
 proveMatchArm matchVar tactic cf arm@(MatchArm pat@(Alias _ x) e) q q' = do
     deriv <- proveExpr tactic cf e q q'
     return ([], deriv)

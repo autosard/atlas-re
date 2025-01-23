@@ -64,7 +64,9 @@ cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
 cExternal q q' = 
   -- equal ranks  
   concat [eq (q!?idx) (q'!?substitute (argVars q) (argVars q') idx)
-  | idx <- pures q]
+  | length (argVars q) == length (argVars q'),
+    idx <- pures q]
+    
 
 letCfIdxs :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 letCfIdxs q xs (rangeA, rangeB) x =
