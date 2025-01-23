@@ -2,7 +2,7 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE StrictData #-}
 
-module Cli(Options(..), Command(..), RunOptions(..), optionsP, EvalOptions(..), cliP) where
+module Cli(Options(..), Command(..), AnalyzeOptions(..), optionsP, EvalOptions(..), cliP) where
 
 import Ast(Fqn)
 
@@ -10,14 +10,13 @@ import Options.Applicative
 import qualified Data.Text as T
 import Data.Text (Text)
 import CostAnalysis.ProveMonad (AnalysisMode (CheckCoefficients, CheckCost, ImproveCost, Infer))
-import CostAnalysis.Potential
 
 data Options = Options
   { searchPath :: !(Maybe FilePath)
   , optCommand :: !Command
   }
 
-data Command = Run !RunOptions | Eval !EvalOptions
+data Command = Analyze !AnalyzeOptions | Eval !EvalOptions
 
 cliP :: ParserInfo Options
 cliP = info (optionsP <**> helper) ( fullDesc
@@ -31,13 +30,13 @@ optionsP = do
      <> short 's'
      <> metavar "PATH"
      <> help "Search for modules in PATH.")
-   optCommand <- hsubparser (command "run"
-                             (info runCommandP (progDesc "Run type inference for the given functions.")))
+   optCommand <- hsubparser (command "analyze"
+                             (info analyzeCommandP (progDesc "Perform amortized resource analysis for the given functions.")))
                  <|> hsubparser (command "eval"
                                  (info evalCommandP (progDesc "Evaluate the given expression in the context of the given module.")))
    return Options{..}
 
-data RunOptions = RunOptions {
+data AnalyzeOptions = AnalyzeOptions {
   target :: Either Text Fqn,
   tacticsPath :: Maybe FilePath,
   switchPrintDeriv :: Bool,
@@ -47,7 +46,7 @@ data RunOptions = RunOptions {
   switchPrintProg :: Bool,
   switchDumpCoeffs :: Bool}
 
-runOptionsP :: Parser RunOptions
+runOptionsP :: Parser AnalyzeOptions
 runOptionsP = do
   tacticsPath <- optional $ strOption
     (long "tactics"
@@ -74,10 +73,10 @@ runOptionsP = do
     (long "dump-coeffs"
     <> help "Dump the values of found coefficients.")      
   target <- argument (eitherReader parseFqn) (metavar "MODULE[.FUNCTION]" <> help "Analysis target. When a specific function is specified only this function and its dependencies are analyzed, which can save time.")
-  return RunOptions{..}
+  return AnalyzeOptions{..}
 
-runCommandP :: Parser Command
-runCommandP = Run <$> runOptionsP
+analyzeCommandP :: Parser Command
+analyzeCommandP = Analyze <$> runOptionsP
 
 parseAnalysisMode :: String -> Either String AnalysisMode
 parseAnalysisMode "check-coeffs" = Right CheckCoefficients

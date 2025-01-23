@@ -47,7 +47,7 @@ import CostAnalysis.ProveMonad
 import CostAnalysis.Rules
 import CostAnalysis.Analysis
 
-import Cli(Options(..), RunOptions(..), EvalOptions(..), Command(..), cliP)
+import Cli(Options(..), AnalyzeOptions(..), EvalOptions(..), Command(..), cliP)
 
 import System.Random (getStdGen)
 import Module (load)
@@ -64,11 +64,11 @@ type App a = LoggerT (Msg Severity) IO a
 app :: Options -> App ()
 app options = do
   case optCommand options of
-    Run runOptions -> run options runOptions
+    Analyze runOptions -> run options runOptions
     Eval evalOptions -> eval options evalOptions
 
-run :: Options -> RunOptions -> App ()
-run Options{..} RunOptions{..} = do
+run :: Options -> AnalyzeOptions -> App ()
+run Options{..} AnalyzeOptions{..} = do
   let (modName, _) = case target of
         (Left mod) -> (mod, Nothing)
         (Right (mod, fn)) -> (mod, Just fn)
