@@ -105,8 +105,9 @@ proveMatchArm matchVar tactic cf arm@(MatchArm pat@(ConstPat _ "(,)" patVars) e)
   let tMatch = head tsMatch
   let vars = mapMaybe (getVar tMatch) $ zip patVars [0..]
   let p = M.adjust (substArg matchVar (head vars)) tMatch q
+  let cs = ctxUnify q p
   deriv <- proveExpr tactic cf e p q'
-  return ([], deriv)
+  return (cs, deriv)
 proveMatchArm matchVar tactic cf 
   (MatchArm pat@(ConstPat _ id patVars) e) q q' = do
   let tMatch = getType pat
