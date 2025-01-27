@@ -63,6 +63,12 @@ constRange q = S.toList $ foldr go S.empty (q^.coeffs)
 annVars :: RsrcAnn -> [Id]
 annVars = _args
 
+substArg :: Id -> Id -> RsrcAnn -> RsrcAnn
+substArg x y q = q
+  & args .~ args'
+  & coeffs %~ S.map (substitute (q ^. args) args') 
+  where args' = map (\z -> if z == x then y else z) $ q ^. args
+
 class AnnLike a where
   infixl 9 !
   (!) :: (Index i, Show i) => a -> i -> Term

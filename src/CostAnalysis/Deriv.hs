@@ -35,7 +35,7 @@ import Data.Maybe (fromMaybe, mapMaybe, isJust, catMaybes)
 import Debug.Trace hiding (traceShow)
 import Data.Tuple (swap)
 import Data.List.Extra (groupSort)
-import CostAnalysis.Coeff (coeffArgs, onlyVars, justVars)
+import CostAnalysis.Coeff (coeffArgs, justVars)
 
 traceShow x = trace (show x) x
   
@@ -92,7 +92,21 @@ proveIte tactic cf e@(Ite _ e1 e2) q q' = do
   deriv2 <- proveExpr t2 cf e2 q q'
   conclude R.Ite cf q q' [] e [deriv1, deriv2]
 
+getVar :: Type -> (PositionedPatternVar, Int) -> Maybe Id
+getVar t (v@(Id _ id), _) | matchesType (getType v) t = Just id
+                          | otherwise = Nothing
+getVar t (v@(WildcardVar _), wcId) | matchesType (getType v) t =
+                                     Just . Text.pack $ ("?w" ++ show wcId)
+                                   | otherwise = Nothing
+
 proveMatchArm :: Id -> Prove PositionedMatchArm ([Constraint], Derivation)
+proveMatchArm matchVar tactic cf arm@(MatchArm pat@(ConstPat _ "(,)" patVars) e) q q' = do
+  let tsMatch = filter (`M.member` q) $ splitProdType (getType pat)
+  let tMatch = head tsMatch
+  let vars = mapMaybe (getVar tMatch) $ zip patVars [0..]
+  let p = M.adjust (substArg matchVar (head vars)) tMatch q
+  deriv <- proveExpr tactic cf e p q'
+  return ([], deriv)
 proveMatchArm matchVar tactic cf 
   (MatchArm pat@(ConstPat _ id patVars) e) q q' = do
   let tMatch = getType pat
@@ -106,12 +120,7 @@ proveMatchArm matchVar tactic cf
   tellCs cs
   deriv <- proveExpr tactic cf e (M.insert tMatch p nonMatchAnns) q'
   return (cs, deriv)
-  where getVar :: Type -> (PositionedPatternVar, Int) -> Maybe Id
-        getVar t (v@(Id _ id), _) | matchesType (getType v) t = Just id
-                                  | otherwise = Nothing
-        getVar t (v@(WildcardVar _), wcId) | matchesType (getType v) t =
-                                         Just . Text.pack $ ("?w" ++ show wcId)
-                                       | otherwise = Nothing
+
 proveMatchArm matchVar tactic cf arm@(MatchArm pat@(Alias _ x) e) q q' = do
     deriv <- proveExpr tactic cf e q q'
     return ([], deriv)
@@ -142,14 +151,22 @@ isLeaf Leaf = True
 isLeaf _ = False
 
 proveLet :: Prove PositionedExpr Derivation
-proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q'
-  | isProd (getType e1) = errorFrom (SynExpr e) "Binding product type in let expression is not supported."
-  | otherwise = do
+proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q' = do
   pots <- use potentials
   let [t1, t2] = subTactics 2 tactic
   let argSplit = M.map (splitLetCtx e1 e2) q
+
+  let tsBind = filter (`M.member` q) $ splitProdType $ getType e1
+  tBind <- if null tsBind then
+             return Nothing
+           else if length tsBind == 1 then
+                  return $ Just (head tsBind)
+                else
+                  errorFrom (SynExpr e) "Binding product type in let expression is only supported singleton potential bearing types."
   
-  let nonBindingQ = M.delete (getType e1) q
+  let nonBindingQ = case tBind of
+        Just t -> M.delete t q
+        Nothing -> q
 
   ctxP_ <- emptyAnnCtx (M.map fst argSplit) "P" "let:base e1"
   ctxR_ <- emptyAnnCtx (M.map snd argSplit) "R" "let:base e2"
@@ -159,33 +176,34 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q'
   let nonBindingCs = nonBindingCsP ++ nonBindingCsR
   
   -- potential bind
-  (ctxP', ctxP, ctxR, cs, cfDerivs) <- case M.lookup (getType e1) q of
-    Just bindingQ -> do
-      potE1 <- potForType (getType e1) <$> use potentials
-      let (gamma, delta) = argSplit M.! getType e1
-      bindingP' <- defaultAnn (getType e1) "P'"  "let e1" ["e1"]
+  (ctxP', ctxP, ctxR, cs, cfDerivs) <- case tBind of
+    Just t -> do
+      let bindingQ = q M.! t
+      potE1 <- potForType t <$> use potentials
+      let (gamma, delta) = argSplit M.! t
+      bindingP' <- defaultAnn t "P'"  "let e1" ["e1"]
         
       let rangeD = rangeA . ranges $ potE1
       let rangeE = if R.NegE `elem` letArgs then
             rangeBNeg . ranges $ potE1 else rangeB . ranges $ potE1
       
-      let is = letCfIdxs potE1 (q M.! getType e1) delta (rangeD, rangeE) x
+      let is = letCfIdxs potE1 (q M.! t) delta (rangeD, rangeE) x
 
-      ps_ <- emptyArrayFromIdxs (getType e1) is "P" gamma
-      ps'_ <- emptyArrayFromIdxs (getType e1) is "P'" ["e1"]
+      ps_ <- emptyArrayFromIdxs t is "P" gamma
+      ps'_ <- emptyArrayFromIdxs t is "P'" ["e1"]
 
-      r_ <-  emptyAnn (getType e1) "R" "let:base e2" (x:delta)
+      r_ <-  emptyAnn t "R" "let:base e2" (x:delta)
 
-      let (p, pCs) = defineFrom' (ctxP_ M.! getType e1) bindingQ (const le)
+      let (p, pCs) = defineFrom' (ctxP_ M.! t) bindingQ (const le)
       let (ps, ps', cfCs) = cLetCf potE1 bindingQ ps_ ps'_ x (gamma, delta) is
       let (r, rCs) = chainDef [
             cLetBodyUni bindingQ p bindingP' x,
             cLetBodyMulti potE1 bindingQ ps' x is] r_ 
-      let bindingCtxP' = M.insert (getType e1) bindingP' M.empty
-      let bindingCtxP = M.insert (getType e1) p nonBindingCtxP
-      let bindingCtxR = M.insert (getType e1) r nonBindingCtxR
-      let ctxPs = map (\p -> M.insert (getType e1) p nonBindingCtxP) (elems ps)
-      let ctxPs' = map (\p -> M.fromList [(getType e1, p)]) (elems ps')
+      let bindingCtxP' = M.insert t bindingP' M.empty
+      let bindingCtxP = M.insert t p nonBindingCtxP
+      let bindingCtxR = M.insert t r nonBindingCtxR
+      let ctxPs = map (\p -> M.insert t p nonBindingCtxP) (elems ps)
+      let ctxPs' = map (\p -> M.fromList [(t, p)]) (elems ps')
 
       cfDerivs <- zipWithM (proveExpr t1 (Just $ fromMaybe 0 cf) e1) ctxPs ctxPs'
       

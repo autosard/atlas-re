@@ -179,7 +179,6 @@ cLetBodyUni q p p' x r_ = extendAnn r_ $
        let e = constFactor pIdx,
        let rIdx = [mix|x^d,e|],
        (not . justConst) rIdx]
-
   where ys = L.delete x (annVars r_)
 
 calculateBound :: (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> Map Coeff Rational
