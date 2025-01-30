@@ -11,6 +11,7 @@ import qualified Data.Text as Text
 import Prelude hiding (or, and)
 
 import Ast hiding (Coefficient, CostAnnotation(..))
+import Constants (isBasicConst)
 import Primitive(Id)
 import Control.Monad.RWS
 
@@ -48,8 +49,7 @@ proveConst _ cf e@Error q q' = do
   let cs = ctxUnify q q'
   conclude R.Const cf q q' cs e []
 proveConst _ cf e@(Const "(,)" args) q q' = do
-  let argsByType = M.fromList . groupSort $ map (swap . varWithType) args
-  let cs = ctxUnify' q q' argsByType
+  let cs = ctxUnify' q q' (varsByType args)
   conclude R.Const cf q q' cs e []
 proveConst _ cf e@(Const "numLit" _) q q' = do
   let cs = ctxUnify q q'
@@ -63,12 +63,10 @@ proveConst _ cf e@(Const id _) q q' = do
         else errorFrom (SynExpr e) $ "Constructor '" ++ Text.unpack id ++ "' not supported, by selected potential function(s)."
   conclude R.Const cf q q' cs e []
 
-proveCmp :: Prove PositionedExpr Derivation
-proveCmp _ cf e q q' = do
-  unless (isBool $ getType e) $
-    errorFrom (SynExpr e) "(cmp) applied to non-boolean expression."
+proveConstBase :: Prove PositionedExpr Derivation
+proveConstBase _ cf e q q' = do
   let cs = ctxUnify q q'
-  conclude R.Cmp cf q q' cs e []
+  conclude R.ConstBase cf q q' cs e []
 
 proveVar :: Prove PositionedExpr Derivation
 proveVar _ cf e@(Var id) q q' = do
@@ -224,7 +222,7 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) q q' = do
   conclude (R.Let letArgs) cf q q' cs e ([deriv1, deriv2] ++ cfDerivs)
 
 proveApp :: Prove PositionedExpr Derivation
-proveApp tactic Nothing e@(App id _) q q' = do
+proveApp tactic Nothing e@(App id args) q q' = do
   fnSig <- use sig
   let cSig = withCost $ fnSig M.! id
   let cfSigs = withoutCost $ fnSig M.! id
@@ -233,10 +231,10 @@ proveApp tactic Nothing e@(App id _) q q' = do
   conclude R.App Nothing q q' cs e []
   where linCombOfSig (p, p') (r, r') = concat
           [and $
-           ctxUnify q (ctxAdd p (ctxScalarMul r (ConstTerm k)))
+           ctxUnify' q (ctxAdd p (ctxScalarMul r (ConstTerm k))) (varsByType args) 
            ++ ctxUnify q' (ctxAdd p' (ctxScalarMul r' (ConstTerm k)))
           | k <- [0,1,2]]
-proveApp tactic (Just cf) e@(App id _) q q' = do
+proveApp tactic (Just cf) e@(App id args) q q' = do
   fnSig <- use sig
   let cfSigs = withoutCost $ fnSig M.! id
   k <- freshVar
@@ -245,7 +243,7 @@ proveApp tactic (Just cf) e@(App id _) q q' = do
   conclude R.App (Just cf) q q' cs e []
   where linCombOfSig (q, q') (p, p') = concat
           [ and $
-            ctxUnify q (ctxScalarMul p (ConstTerm k))
+            ctxUnify' q (ctxScalarMul p (ConstTerm k)) (varsByType args) 
             ++ ctxUnify q' (ctxScalarMul p' (ConstTerm k))
           | k <- [0,1,2]]
 
@@ -374,7 +372,7 @@ removeRedundantVars prove tactic cf e q q' = if (not . null) (redundentVars q e)
 proveExpr :: Prove PositionedExpr Derivation
 -- manual tactic
 proveExpr tactic@(Rule R.Var []) cf e@(Var _) = removeRedundantVars proveVar tactic cf e
-proveExpr tactic@(Rule R.Cmp []) cf e@(Const {}) | isCmp e = proveCmp tactic cf e
+proveExpr tactic@(Rule R.ConstBase []) cf e@(Const {}) | isBasicConst e = proveConstBase tactic cf e
 proveExpr tactic@(Rule R.Const []) cf e@(Const {}) = removeRedundantVars proveConst tactic cf e 
 proveExpr tactic@(Rule R.Match _) cf e@(Match {}) = proveMatch tactic cf e
 proveExpr tactic@(Rule R.Ite _) cf e@(Ite {}) = proveIte tactic cf e
@@ -391,7 +389,7 @@ proveExpr tactic _ e = \_ _ -> errorFrom (SynExpr e) $ "Could not apply tactic t
 
 genTactic :: PositionedExpr -> Tactic
 genTactic e@(Var {}) = autoWeaken e (Rule R.Var [])
-genTactic e@(Const {}) | isCmp e = Rule R.Cmp []
+genTactic e@(Const {}) | isBasicConst e = Rule R.ConstBase []
 genTactic e@(Const {}) = autoWeaken e (Rule R.Const [])
 genTactic (Match _ arms) = Rule R.Match $ map (genTactic . armExpr) arms
 genTactic e@(Ite _ e2 e3) = let t1 = genTactic e2

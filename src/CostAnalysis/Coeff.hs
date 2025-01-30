@@ -180,6 +180,8 @@ substitute from to (Mixed factors) = Mixed (S.map subFactor factors)
           Just i -> Arg (to !! i) a
           Nothing -> error "invalid index"
 
+stubArgVars :: [Id] -> Int -> [Id]
+stubArgVars args l = args ++ replicate (l - length args) "!"
 
 class HasCoeffs a where
   getCoeffs :: a -> [Coeff]

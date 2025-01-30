@@ -23,7 +23,7 @@ data LetArg = NegE
 
 data Rule 
   = Const
-  | Cmp
+  | ConstBase
   | Var
   | Ite 
   | Match 

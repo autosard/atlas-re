@@ -272,6 +272,7 @@ pApplication = AppAnn <$> getSourcePos <*> pIdentifier <*> some pArg
 pArg :: Parser ParsedExpr
 pArg = pParenExpr
   <|> pConst
+  <|> pParens pInfixExpr
   <|> try (pVar <* notFollowedBy (symbol "= " <|> pDoubleColon2))
   <?> "function argument"
 
@@ -297,7 +298,9 @@ operatorTable =
       binaryApp (symbol' "<=") "LE",
       binaryApp (symbol' "<") "LT",
       binaryApp (symbol' "==" <|> symbol' "⩵") "EQ",
-      binaryApp (symbol' ">") "GT"
+      binaryApp (symbol' ">") "GT",
+      binaryApp (symbol' "+") "+",
+      binaryApp (symbol' "-") "-"
     ]
   ]
 

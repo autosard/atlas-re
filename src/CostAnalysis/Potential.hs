@@ -187,7 +187,7 @@ calculateBound (from, to) solution = M.fromList $ map subtract (getCoeffs from)
                                  Just value -> (coeff, value)
                                  Nothing -> (coeff, 0)           
         subtract left@(Coeff _ _ _ idx) = let
-          right = if length (annVars from) == length (annVars to) then
+          right = if length (annVars from) <= length (annVars to) then
             to!?substitute (annVars from) (annVars to) idx else to!?idx in
           case right of
             (CoeffTerm r) ->
@@ -204,7 +204,7 @@ symbolicCost :: (AnnLike a, AnnLike b) => a -> b -> PointWiseOp
 symbolicCost from to = PointWiseOp (argVars from) $
   M.fromList [(idx, sub [from!idx, to!?idx'])
              | idx <- S.toList $ definedIdxs from,
-               let idx' = if length (argVars from) == length (argVars to) then
+               let idx' = if length (argVars from) <= length (argVars to) then
                      substitute (argVars from) (argVars to) idx else idx]
 
 ctxSymbolicCost :: (AnnLike a, AnnLike b) => (Map Type a, Map Type b) -> Map Type PointWiseOp

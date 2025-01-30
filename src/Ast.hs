@@ -172,12 +172,6 @@ pattern Tuple x1 x2 <- ConstAnn _ "(,)" [x1, x2]
 pattern Error :: Expr a
 pattern Error <- ConstAnn _ "error" []
 
-isCmp :: Expr a -> Bool
-isCmp (Const "EQ" _ ) = True
-isCmp (Const "LT" _ ) = True
-isCmp (Const "GT" _ ) = True
-isCmp (Const "LE" _ ) = True
-isCmp _ = False
 
 pattern PatWildcard :: XExprAnn a -> Pattern a
 pattern PatWildcard ann <- WildcardPat ann
@@ -388,6 +382,9 @@ getType = type_ . getAnn
 varWithType :: (HasType (XExprAnn a)) => Expr a -> (Id, Type)
 varWithType e@(Var id) = (id, getType e)
 varWithType _ = error "varWithType called for non-variable expression."
+
+varsByType :: HasType (XExprAnn a) => [Expr a] -> Map Type [Id]
+varsByType es = M.fromList . groupSort $ map (swap . varWithType) es
 
 instance HasType TypedExprAnn where
   type_ = teType

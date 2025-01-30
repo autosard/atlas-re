@@ -276,15 +276,21 @@ funArgTypes _ = error "cannot extract arg types from non-function type."
 
 tiFun :: Infer ParsedFunDef (Type, TypedExpr)
 tiFun ctx (FunDef ann id args exp) = do
-  argVars <- case toType <$> ctx M.!? id of
-    Just (TAp Arrow [TAp Prod from, _]) -> return from
-    Just _ -> mapM (const newTVar) args
+  (tsFrom, tTo) <- case toType <$> ctx M.!? id of
+    Just (TAp Arrow [TAp Prod from, to]) -> return (from, to)
+    Just _ -> do
+      from <- mapM (const newTVar) args
+      to <- newTVar
+      return (from, to)
     Nothing -> error "function not in context"
-  let argSchemes = map toScheme argVars
+  let argSchemes = map toScheme tsFrom
   let ctx' = M.fromList $ zip args argSchemes
   let ctx'' = ctx' `M.union` ctx
+  trace exp
   exp' <- tiExpr ctx'' exp
-  let te = argVars `fn` getType exp'
+  unify (getType exp') tTo
+  untrace exp
+  let te = tsFrom `fn` getType exp'
   return (te, exp')
 
 tiApply :: Infer TypedExpr TypedExpr

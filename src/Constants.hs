@@ -6,12 +6,13 @@ module Constants where
 import Primitive(Id)
 import Typing.Scheme
 import Typing.Type(Type(TGen, TAp), Tycon(Tree, Bool, Prod, List, Num), fn)
-import Ast(Val(ConstVal, LitVal), Literal(LitNum))
+import Ast(Val(ConstVal, LitVal), Literal(LitNum), Expr, pattern Const)
 import qualified Data.Text as T
 
 treeT = TAp Tree [TGen 0]
 tupleT = TAp Prod [TGen 0, TGen 1]
 boolT = TAp Bool []
+numT = TAp Num []
 listT = TAp List [TGen 0]
 
 pattern TupleT :: Type -> Type -> Type
@@ -35,6 +36,8 @@ constType "LT" = Forall 1 $ [TGen 0, TGen 0] `fn` boolT
 constType "LE" = Forall 1 $ [TGen 0, TGen 0] `fn` boolT
 constType "EQ" = Forall 1 $ [TGen 0, TGen 0] `fn` boolT
 constType "GT" = Forall 1 $ [TGen 0, TGen 0] `fn` boolT
+constType "+" = Forall 0 $ [numT, numT] `fn` numT
+constType "-" = Forall 0 $ [numT, numT] `fn` numT
 constType c = error $ "undefined constant '" ++ T.unpack c ++ "'"
 
 
@@ -50,7 +53,19 @@ constEval "error" args = ConstVal "error" args
 constEval "LT" [x, y] = evalLT x y
 constEval "EQ" [x, y] = evalEQ x y
 constEval "GT" [x, y] = evalGT x y
+constEval "+" [LitVal (LitNum x), LitVal (LitNum y)] = LitVal $ LitNum (x + y)
+constEval "-" [LitVal (LitNum x), LitVal (LitNum y)] = LitVal $ LitNum (x - y)
 constEval c _ = error $ "undefined constant '" ++ T.unpack c ++ "'"
+
+-- basic consts do not change potential
+isBasicConst :: Expr a -> Bool
+isBasicConst (Const "EQ" _ ) = True
+isBasicConst (Const "LT" _ ) = True
+isBasicConst (Const "GT" _ ) = True
+isBasicConst (Const "LE" _ ) = True
+isBasicConst (Const "+" _ ) = True
+isBasicConst (Const "-" _ ) = True
+isBasicConst _ = False
 
 toBool :: Bool -> Val
 toBool True = ConstVal "true" []

@@ -188,11 +188,10 @@ annLikeUnify q p = concat [eq (q!?idx) p'
 annLikeLeftInRight :: (AnnLike a, AnnLike b) => a -> b -> [Constraint]
 annLikeLeftInRight q p = concat [or $ and (zero (q!?idx)) ++ and (ge p' (q!?idx))
                           | idx <- S.toList $ definedIdxs q,
-                            let p' | justConst idx = p!?idx 
-                                   | length (argVars q) == length (argVars p) 
-                                  = p!?substitute (argVars q) (argVars p) idx
-                                   | otherwise = ConstTerm 0,
-                            p' /= ConstTerm 0]
+                            let p' | justConst idx = p!?idx
+                                   | otherwise =
+                                     p!?substitute (argVars q) (stubArgVars (argVars p) $ length (argVars q)) idx]
+
 
 ctxUnify :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> [Constraint]
 ctxUnify qs ps = concat . M.elems $ ctxZipWith

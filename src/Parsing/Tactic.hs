@@ -23,7 +23,7 @@ pRule = pAtomic <|> pParens pNonAtomic
 
 pAtomic :: Parser Tactic
 pAtomic = Rule Const [] <$ symbol "const" 
-  <|> Rule Cmp [] <$ symbol "cmp"
+  <|> Rule ConstBase [] <$ symbol "const:base"
   <|> Rule Var [] <$ symbol "var"
   <|> Rule App [] <$ symbol "app"
   <|> Hole <$ symbol "?"
