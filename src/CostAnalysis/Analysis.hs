@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE StrictData #-}
 
 module CostAnalysis.Analysis where
 
@@ -27,9 +27,8 @@ import Typing.Type
 import CostAnalysis.RsrcAnn ( RsrcSignature,
                              FunRsrcAnn(..), ctxConstEq,
                              ctxConstLe, PointWiseOp,
-                             opCoeffs, ctxGeZero, AnnCtx, annLikeLeftInRight, (!?), ctxZipWith, pointWiseZero, RsrcAnn (RsrcAnn))
+                             opCoeffs, ctxGeZero, AnnCtx, annLikeLeftInRight, RsrcAnn(..))
 import CostAnalysis.Potential(ctxSymbolicCost, PotFnMap, Potential (cExternal))
-import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential.Kind (fromKind)
 import Control.Monad.Extra (concatMapM)
 
@@ -49,10 +48,15 @@ initPotentials mod kinds = do
           let pot = fromKind (kinds M.! t)
           potFn <- defaultAnn' pot "Q'" "potFn" args
           return (t, (pot, potFn))
-                         
+
+data AnalysisResult = AnalysisResult
+  Derivation
+  [Constraint]
+  RsrcSignature
+  (Either [Constraint] (Solution, PotFnMap))
 
 analyzeModule :: ProofEnv -> PositionedModule
-  -> IO (Either SourceError (Derivation, RsrcSignature, Either [Constraint] (Solution, PotFnMap)))
+  -> IO (Either SourceError AnalysisResult)
 analyzeModule env mod = do
   
   let state = ProofState M.empty [] [] 0 0 [] [] M.empty M.empty 
@@ -60,8 +64,16 @@ analyzeModule env mod = do
   let deriv = T.Node (ProgRuleApp mod) (state'^.fnDerivs)
   case result of
     Left (DerivErr srcErr) -> return (Left srcErr)
-    Left (UnsatErr core) -> return (Right (deriv, state'^.sig, Left core))
-    Right _ -> return (Right (deriv, state'^.sig, Right (solution, state'^.potentials)))
+    Left (UnsatErr core) -> return (Right (AnalysisResult
+                                            deriv
+                                            (state'^.sigCs)
+                                            (state'^.sig)
+                                            (Left core)))
+    Right _ -> return (Right (AnalysisResult
+                               deriv
+                               (state'^.sigCs)
+                               (state'^.sig)
+                               (Right (solution, state'^.potentials))))
 
 
 
@@ -109,8 +121,8 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
     Infer -> do
       s <- use sig
       let (q, q') = withCost $ s M.! fnId
-      tellCs $ potFnCovered q q'
-      tellCs =<< externalCsForCtx q q'
+      tellSigCs $ potFnCovered q q'
+      tellSigCs =<< externalCsForCtx q q'
       addFullCostOptimization fnId
   proveFun def
 

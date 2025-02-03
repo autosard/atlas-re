@@ -90,11 +90,12 @@ run Options{..} AnalyzeOptions{..} = do
   case result of
     Left srcErr -> liftIO $ die $ printSrcError srcErr contents
     Right solverResult -> case solverResult of
-      (deriv, _, Left unsatCore) -> let core' = S.fromList unsatCore in do
-        logError "solver returned unsat. See unsat-core for details."
-        liftIO $ writeHtmlProof "./out" (renderProof (Just core') deriv)
-      (deriv, sig, Right (solution, pots)) -> do
-        liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv)
+      (AnalysisResult deriv sigCs _ (Left unsatCore)) ->
+        let core' = S.fromList unsatCore in do
+          logError "solver returned unsat. See unsat-core for details."
+          liftIO $ writeHtmlProof "./out" (renderProof (Just core') deriv sigCs) 
+      (AnalysisResult deriv sigCs sig (Right (solution, pots))) -> do
+        liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv sigCs)
         liftIO $ printSolution switchDumpCoeffs sig pots solution
         
 

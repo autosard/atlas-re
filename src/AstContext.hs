@@ -6,6 +6,7 @@ import qualified Data.Set as S
 import Primitive(Id)
 import StaticAnalysis(calledFunctions')
 import Ast
+import Constants (isBasicConst)
 
 
 contextualizeMod :: TypedModule -> PositionedModule
@@ -39,7 +40,7 @@ contextualizeExpr' fn ctx (LetAnn ann id e1 e2) = LetAnn (extendWithCtx letCtx a
                       | appOrTick e1,
                         S.member fn (calledFunctions' e1)]
         firstAfterMatch = [FirstAfterMatch | S.member FirstAfterMatch ctx,
-                                             (not . isCmp) e1]
+                                             (not . isBasicConst) e1]
         firstAfterApp = [FirstAfterApp | S.member FirstAfterApp ctx]
         letCtx = S.fromList $ outermost ++ bindsApp ++ bindsAppRec ++ firstAfterMatch ++ firstAfterApp
         childCtx = ctx S.\\ S.fromList (FirstAfterMatch:[OutermostLet | nestedConst e1 e2]

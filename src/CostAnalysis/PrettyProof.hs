@@ -167,8 +167,8 @@ window.addEventListener("load", () => {
 });
 |] undefined)
 
-renderProof :: Maybe (Set Constraint) -> Derivation -> Text
-renderProof unsat deriv = renderHtml [shamlet|
+renderProof :: Maybe (Set Constraint) -> Derivation -> [Constraint] -> Text
+renderProof unsat deriv sigCs = renderHtml [shamlet|
 $doctype 5
 <html>
     <link rel="stylesheet" href="style.css">
@@ -181,13 +181,19 @@ $doctype 5
            <p class="unsat">unsat
         $nothing
            <p> sat
+        <h2>Signature Constraints
+        ^{hamCsList sigCs (inCore unsat)}
         <h2>Derivation
         <div class="deriv-flags">
             <input type=checkbox id="onlyUnsat">show only unsat constraints
         <br>
         ^{hamDeriv unsat deriv}
 |]
-
+          
+inCore unsat c = case unsat of
+                   Just core -> S.member c core
+                   Nothing -> False
+          
 hamDeriv :: Maybe (Set Constraint) -> Derivation -> Html
 hamDeriv unsat (T.Node mod fns) = [shamlet|
 <p class="tree">mod
@@ -224,6 +230,21 @@ hamRuleApp unsat (ExprRuleApp rule cf q q' cs e) = [shamlet|
           (#{printPos srcPos})  
       <mo lspace="0.22em" rspace="0.22em" stretchy="false">|
       ^{hamAnnCtx q'}
+      ^{hamCsList cs (inCore unsat)}
+|]
+  where srcPos = case peSrc $ getAnn e of
+          Loc pos -> pos
+          DerivedFrom pos -> pos
+        cs' = case unsat of
+          Just core -> S.toList $ S.intersection (S.fromList cs) core
+          Nothing -> []
+
+printRule :: Bool -> Rule -> String
+printRule cf rule = map toLower (show rule)
+  ++ if cf then ", cf" else ""
+
+hamCsList :: [Constraint] -> (Constraint -> Bool) -> Html
+hamCsList cs inCore = [shamlet|
 <div class="constraints">
     <math class="constraintsBlock" display="block">
         <mtable columnalign="left">
@@ -233,20 +254,7 @@ hamRuleApp unsat (ExprRuleApp rule cf q q' cs e) = [shamlet|
                       <mrow :(unsat):class="unsat" :(not unsat):class="sat">
                           ^{hamConstraint c}
 |]
-  where srcPos = case peSrc $ getAnn e of
-          Loc pos -> pos
-          DerivedFrom pos -> pos
-        inCore c = case unsat of
-          Just core -> S.member c core
-          Nothing -> False
-        cs' = case unsat of
-          Just core -> S.toList $ S.intersection (S.fromList cs) core
-          Nothing -> []
-
-printRule :: Bool -> Rule -> String
-printRule cf rule = map toLower (show rule)
-  ++ if cf then ", cf" else ""
-
+  
 hamAnnCtx :: AnnCtx -> Html
 hamAnnCtx ctx = toHtml $ intersperse
   [shamlet|<mo separator="true">,|]
