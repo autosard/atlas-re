@@ -141,8 +141,7 @@ splitLetCtx e1 e2 q =
   let qArgs = S.fromList (q^.args)
       varsE1 = freeVars e1
       argsE1 = qArgs `S.intersection` varsE1
-      varsE2 = freeVars e2
-      argsE2 = qArgs `S.intersection` varsE2 in
+      argsE2 = qArgs S.\\ varsE1 in
     (S.toList argsE1, S.toList argsE2)
 
 isLeaf :: PositionedExpr -> Bool
