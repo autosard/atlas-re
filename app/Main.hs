@@ -26,7 +26,7 @@ import qualified Data.Set as S
 import Data.Tree(drawTree)
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Potential
-import Ast(Module(..), TypedModule, TypedExpr, Fqn, defs, printProg)
+import Ast(Module(..), TypedModule, TypedExpr, Fqn, defs, printProg, PositionedModule)
 import CostAnalysis.PrettyProof(renderProof, css, js)
 
 
@@ -78,6 +78,7 @@ run Options{..} AnalyzeOptions{..} = do
   when (null . mutRecGroups $ positionedProg) $ do
     logError $ "Module does not define the requested function."
     liftIO exitFailure
+  liftIO $ printAnalysisInfo positionedProg
   tactics <- case tacticsPath of
     Just path -> loadTactics (T.unpack modName) (M.keys (defs normalizedProg)) path
     Nothing -> return M.empty
@@ -97,7 +98,12 @@ run Options{..} AnalyzeOptions{..} = do
       (AnalysisResult deriv sigCs sig (Right (solution, pots))) -> do
         liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv sigCs)
         liftIO $ printSolution switchDumpCoeffs sig pots solution
-        
+
+printAnalysisInfo :: PositionedModule -> IO ()
+printAnalysisInfo (Module {..}) = putStrLn $
+  "Analyzing module " ++ T.unpack name ++ "("
+  ++ T.unpack (T.intercalate ", " (concat mutRecGroups))
+  ++ ")."
 
 printSolution :: Bool -> RsrcSignature -> PotFnMap -> Solution -> IO ()
 printSolution dumpCoeffs sig potFns solution = do
