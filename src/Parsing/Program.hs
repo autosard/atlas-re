@@ -237,7 +237,9 @@ pConst = do
     <|> (,) <$> symbol' "leaf" <*> pure []
     <|> (,) <$> symbol' "cons" <*> count 2 pArg
     <|> (,) <$> symbol' "error" <*> pure []
-    <|> ("numLit", []) <$ pNumber 
+    <|> (do
+            n <- pNumber
+            return (T.append "num#" (T.pack (show n)), []))
     <|> ("nil",) <$ symbol "[]" <*> pure []
     <|> ("(,)",) <$> try (pParens ((\x y -> [x, y]) <$> pArg <* symbol "," <*> pArg))
   return $ ConstAnn pos name args
@@ -321,7 +323,7 @@ pInt = lexeme L.decimal
 pListInt :: Parser [Int]
 pListInt = pParens $ sepBy pInt (symbol ",")
 
-pNumber = LitNum <$> lexeme L.decimal
+pNumber = NumVal <$> lexeme L.decimal
 
 pInteger :: Parser Integer
 pInteger = lexeme L.decimal

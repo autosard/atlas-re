@@ -34,8 +34,6 @@ import StaticAnalysis(freeVars)
 import Data.Maybe (fromMaybe, mapMaybe, isJust, catMaybes)
 
 import Debug.Trace hiding (traceShow)
-import Data.Tuple (swap)
-import Data.List.Extra (groupSort)
 import CostAnalysis.Coeff (coeffArgs, justVars)
 
 traceShow x = trace (show x) x

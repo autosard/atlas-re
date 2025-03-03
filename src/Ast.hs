@@ -70,10 +70,6 @@ hasPotential fn = case tfCostAnn (funAnn fn) of
                     Just _ -> True
                     Nothing -> True
 
-
-newtype Literal = LitNum Number
-  deriving (Eq, Show)
-
 data Op = LT | EQ | GT
   deriving (Eq, Show)
 
@@ -463,8 +459,7 @@ type instance XExprAnn Positioned = PositionedExprAnn
 extendWithCtx :: Set ExprCtx -> XExprAnn Typed -> XExprAnn Positioned
 extendWithCtx ctx (TypedExprAnn {..}) = PositionedExprAnn teSrc teType ctx
 
-data Val = ConstVal !Id ![Val] | LitVal !Literal
-  deriving Eq
+data Val = ConstVal !Id ![Val] | NumVal Int
 
 paren :: String -> String
 paren s = "(" ++ s ++ ")"
@@ -472,7 +467,7 @@ paren s = "(" ++ s ++ ")"
 instance Show Val where
   show (ConstVal id []) = T.unpack id
   show (ConstVal id args) = paren $ T.unpack id ++ " " ++ unwords (map show args)
-  show (LitVal (LitNum n)) = show n
+  show (NumVal n) = show n
 
 printPos :: SourcePos -> String
 printPos pos = show (unPos . sourceLine $ pos) ++ ","  ++ show (unPos $ sourceColumn pos)

@@ -15,7 +15,7 @@ import Control.Monad.Except (Except, liftEither, runExcept, MonadError (throwErr
 import Control.Monad.State(StateT, runStateT)
 import Control.Monad.Reader (ReaderT (runReaderT), lift, asks)
 import Data.Either.Extra (maybeToEither)
-import Constants(constEval, toBool)
+import Constants(evalConst, algebraicConsts, toBool)
 import Data.Maybe (fromMaybe)
 import System.Random
 import Data.Random.Sample
@@ -79,7 +79,7 @@ matchPatterns val arms = msum $ map (matchArm val) arms
   where matchArm val (MatchArm pat e) = (,e) <$> match val pat
 
 match :: Val -> TypedPattern -> Maybe Env
-match (LitVal _) _ = Nothing
+match (NumVal _) _ = Nothing
 match (ConstVal id1 args) (ConstPat _ id2 vars)
   | id1 == id2 && length args == length vars = Just $ bindPatVars vars args
 match val (Alias _ id) = Just $ M.singleton id val
@@ -96,7 +96,9 @@ evalExpr :: Env -> TypedExpr -> Eval Val
 evalExpr env (Var id) = find id env
 evalExpr env (ConstAnn ann id args) = do
   args' <- mapM (evalExpr env) args
-  return $ constEval id args'
+  if id `elem` algebraicConsts
+    then return $ ConstVal id args'
+    else return $ evalConst id args'
 evalExpr env (Ite e1 e2 e3) = do
   val1 <- evalExpr env e1
   case val1 of

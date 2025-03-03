@@ -6,8 +6,22 @@ module Constants where
 import Primitive(Id)
 import Typing.Scheme
 import Typing.Type(Type(TGen, TAp), Tycon(Tree, Bool, Prod, List, Num), fn)
-import Ast(Val(ConstVal, LitVal), Literal(LitNum), Expr, pattern Const)
+import Ast(Val(..), Expr, pattern Const)
 import qualified Data.Text as T
+import Data.Text.Read(decimal)
+import Data.Maybe (isJust)
+
+algebraicConsts :: [T.Text]
+algebraicConsts = [
+  "node",
+  "leaf",
+  "nil",
+  "cons",
+  "(,)",
+  "true",
+  "false",
+  "num",
+  "error"]
 
 treeT = TAp Tree [TGen 0]
 tupleT = TAp Prod [TGen 0, TGen 1]
@@ -21,6 +35,8 @@ pattern TupleT x y <- TAp Prod [x, y]
 treeSc = Forall 1 treeT
 tupleSc = Forall 2 tupleT
 boolSc = Forall 0 boolT
+
+
 
 constType :: Id -> Scheme
 constType "node" = Forall 1 $ [treeT, TGen 0, treeT] `fn` treeT
@@ -38,24 +54,25 @@ constType "EQ" = Forall 1 $ [TGen 0, TGen 0] `fn` boolT
 constType "GT" = Forall 1 $ [TGen 0, TGen 0] `fn` boolT
 constType "+" = Forall 0 $ [numT, numT] `fn` numT
 constType "-" = Forall 0 $ [numT, numT] `fn` numT
-constType c = error $ "undefined constant '" ++ T.unpack c ++ "'"
+constType c = if isNumConst c
+  then Forall 0 numT
+  else error $ "undefined constant '" ++ T.unpack c ++ "'"
+
+evalConst :: Id -> [Val] -> Val
+evalConst "LT" [x, y] = evalLT x y
+evalConst "EQ" [x, y] = evalEQ x y
+evalConst "GT" [x, y] = evalGT x y
+evalConst "+" [NumVal x, NumVal y] = NumVal (x + y)
+evalConst "-" [NumVal x, NumVal y] = NumVal (x - y)
+evalConst c _ = case T.stripPrefix "num#" c of
+  Just t -> case decimal t of
+    Left e -> error e
+    Right (n, _) -> NumVal n
+  Nothing -> error $ "undefined constant '" ++ T.unpack c ++ "'"
 
 
-constEval :: Id -> [Val] -> Val
-constEval "node" args = ConstVal "node" args
-constEval "leaf" args = ConstVal "leaf" args
-constEval "nil" args = ConstVal "nil" args
-constEval "cons" args = ConstVal "cons" args
-constEval "(,)" args = ConstVal "(,)" args
-constEval "true" args = ConstVal "true" args
-constEval "false" args = ConstVal "false" args
-constEval "error" args = ConstVal "error" args
-constEval "LT" [x, y] = evalLT x y
-constEval "EQ" [x, y] = evalEQ x y
-constEval "GT" [x, y] = evalGT x y
-constEval "+" [LitVal (LitNum x), LitVal (LitNum y)] = LitVal $ LitNum (x + y)
-constEval "-" [LitVal (LitNum x), LitVal (LitNum y)] = LitVal $ LitNum (x - y)
-constEval c _ = error $ "undefined constant '" ++ T.unpack c ++ "'"
+isNumConst :: T.Text -> Bool
+isNumConst c = isJust $ T.stripPrefix "num#" c 
 
 -- basic consts do not change potential
 isBasicConst :: Expr a -> Bool
@@ -65,6 +82,9 @@ isBasicConst (Const "GT" _ ) = True
 isBasicConst (Const "LE" _ ) = True
 isBasicConst (Const "+" _ ) = True
 isBasicConst (Const "-" _ ) = True
+isBasicConst (Const "true" _) = True
+isBasicConst (Const "false" _) = True
+isBasicConst (Const c _) | isNumConst c = True
 isBasicConst _ = False
 
 toBool :: Bool -> Val
@@ -72,15 +92,15 @@ toBool True = ConstVal "true" []
 toBool False = ConstVal "false" []
 
 evalLT :: Val -> Val -> Val
-evalLT (LitVal (LitNum x)) (LitVal (LitNum y)) = toBool $ x < y
+evalLT (NumVal x) (NumVal y) = toBool $ x < y
 evalLT _ _ = error "LT is only implemented for numbers."
 
 evalEQ :: Val -> Val -> Val
-evalEQ (LitVal (LitNum x)) (LitVal (LitNum y)) = toBool $ x == y
+evalEQ (NumVal x) (NumVal y) = toBool $ x == y
 evalEQ _ _ = error "EQ is only implemented for numbers."
 
 evalGT :: Val -> Val -> Val
-evalGT (LitVal (LitNum x)) (LitVal (LitNum y)) = toBool $ x > y
+evalGT (NumVal x) (NumVal y) = toBool $ x > y
 evalGT _ _ = error "GT is only implemented for numbers."
 
 
