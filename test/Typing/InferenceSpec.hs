@@ -42,12 +42,13 @@ spec = do
         let r = evalTI testState (tiExpr ctx e)
         r `shouldBe` Left (UnboundIdentifier "a")
         
-    context "given a number literal expression" $ do
+    context "given a number constant expression" $ do
       it "returns a number type" $ do
         let ctx = M.empty
-        let e = LitAnn sp (LitNum 13)
-        let e' = evalTI testState (tiExpr ctx e)
-        getType <$> e' `shouldBe` Right tNum
+        let e = ConstAnn sp "num#0" []
+        let (e', state) = runTI testState (tiExpr ctx e)
+        let s = subst state 
+        apply s .getType <$> e' `shouldBe` Right tNum
         
     context "given a ite expression" $ do
       it "returns the correct type" $ do
@@ -105,7 +106,7 @@ spec = do
       it "returns the correct type" $ do
         let ctx = M.empty
         let leaf = ConstAnn sp "leaf" []
-        let e1 = ConstAnn sp "node" [leaf, LitAnn sp (LitNum 2), leaf]
+        let e1 = ConstAnn sp "node" [leaf, ConstAnn sp "numLit" [], leaf]
         let e2 = VarAnn sp "x" 
         let e = LetAnn sp "x" e1 e2
         let (e', state) = runTI testState (tiExpr ctx e)
@@ -206,7 +207,7 @@ spec = do
         let tFun = [tTreeNum, tTreeNum] `fn` tTreeNum
         let ctx = M.fromList [("f", toScheme $ TVar (Tyvar "foo"))]
         let args = ["a", "b"]
-        let body = ConstAnn sp "node" [VarAnn sp "a", LitAnn sp (LitNum 2), VarAnn sp "b"]
+        let body = ConstAnn sp "node" [VarAnn sp "a", ConstAnn sp "numLit" [], VarAnn sp "b"]
         let f = FunDef pfann "f" args body
         let (t, state) = runTI testState (tiFun ctx f)
         let s = subst state 

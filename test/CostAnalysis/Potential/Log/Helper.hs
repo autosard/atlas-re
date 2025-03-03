@@ -40,7 +40,7 @@ defaultRanges = (_aRange, _bRange)
 empty :: [Factor]
 empty = []
 
-annArrayFromIdxs :: [CoeffIdx] -> Text -> [(Id,Type)] -> AnnArray
+annArrayFromIdxs :: [CoeffIdx] -> Text -> [Id] -> AnnArray
 annArrayFromIdxs idxs label args = M.fromList $ map annFromIdx idxs
   where annFromIdx idx = (idx, emptyAnn pot 0 (label' idx) "" args)
         printIdx idx = "(" ++ intercalate "," (map show (S.toAscList idx)) ++ ")"

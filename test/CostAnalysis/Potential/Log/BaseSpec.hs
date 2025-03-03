@@ -30,8 +30,7 @@ spec = do
     it "generates a resource annotation of length 2" $ do
       let id = 0
       let (x1, x2, x3) = ("x1", "x2", "x3")
-      let vars = [(x1, treeT), (x2, treeT)]
-      let varsNonTree = (x3, boolT):vars
+      let vars = [x1, x2]
       let coeffs = S.fromList [Pure x1, Pure x2,
                                [mix|x1^1|], [mix|x1^1,1|],
                                [mix|x2^1|], [mix|x2^1,1|],
@@ -41,4 +40,4 @@ spec = do
                                [mix|x2^1|], [mix|x2^1,2|],
                                [mix|x1^1,x2^1|], [mix|x1^1,x2^1,2|]]
       let should = RsrcAnn id vars "Q" "2" coeffs
-      rsrcAnn id "Q" "2" varsNonTree defaultRanges `shouldBe` should
+      rsrcAnn id "Q" "2" vars defaultRanges `shouldBe` should

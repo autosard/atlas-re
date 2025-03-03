@@ -460,6 +460,7 @@ extendWithCtx :: Set ExprCtx -> XExprAnn Typed -> XExprAnn Positioned
 extendWithCtx ctx (TypedExprAnn {..}) = PositionedExprAnn teSrc teType ctx
 
 data Val = ConstVal !Id ![Val] | NumVal Int
+  deriving (Eq)
 
 paren :: String -> String
 paren s = "(" ++ s ++ ")"

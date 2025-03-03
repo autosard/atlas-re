@@ -29,8 +29,6 @@ monoLe [] i j = let c = constFactor i
 monoLe xs _ _ = error $ "Weakening for linlog only supports univariate coefficients." 
 
 monoLe' :: (Int, Int, Int) -> (Int, Int, Int) -> Bool
---monoLe' (0,1,1) (1,0,2) = True -- log(n+1) <= n
---monoLe' (0,1,1) (1,1,1) = True -- log(n+1) <= n*log(n+1)
 monoLe' (0,1,0) (0,1,1) = True -- log(n) <= log(n+1)
 monoLe' (0,1,0) (1,0,2) = True -- log(n) <= n
 monoLe' (0,1,0) (1,1,0) = True -- log(n) <= n*log(n)

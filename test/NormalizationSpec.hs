@@ -36,7 +36,7 @@ spec = do
               VarAnn (testAnn tTreeNum) "l",
               VarAnn (testAnn tNum) "b",
               ConstAnn (testAnn tTreeNum) "leaf" []]
-        let a3 = IteAnn (testAnn tNum) (VarAnn (testAnn tBool) "test") (LitAnn (testAnn tNum) (LitNum 2)) (LitAnn (testAnn tNum) (LitNum 3))
+        let a3 = IteAnn (testAnn tNum) (VarAnn (testAnn tBool) "test") (ConstAnn (testAnn tNum) "num#2" []) (ConstAnn (testAnn tNum) "num#3" [])
         let a4 = VarAnn (testAnn tNum) "x"
         let e = AppAnn (testAnn tNum) "testFn" [a1, a2, a3, a4]
         let a2' = ConstAnn (testAnn tTreeNum) "node" [
