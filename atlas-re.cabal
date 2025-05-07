@@ -1,9 +1,9 @@
 cabal-version:      2.4
-name:               atlas-revisited
+name:               atlas-re
 version:            0.1.0.0
 
 -- A short (one-line) description of the package.
--- synopsis:
+synopsis: Automated Amortized Complexity Analysis
 
 -- A longer description of the package.
 -- description:
@@ -14,7 +14,7 @@ version:            0.1.0.0
 -- The license under which the package is released.
 -- license:
 author:             Armin Walch
-maintainer:         armin695@gmail.com
+maintainer:         armin.walch@student.uibk.ac.at
 
 -- A copyright notice.
 -- copyright:
@@ -95,10 +95,10 @@ library
     default-language: Haskell2010
     ghc-options: -Wunused-imports
 
-executable atlas-revisited
+executable atlas-re
     main-is:          Main.hs
     other-modules:    Cli,
-                      Paths_atlas_revisited
+                      Paths_atlas_re
     -- Modules included in this executable, other than Main.
     -- other-modules:
 
@@ -106,7 +106,7 @@ executable atlas-revisited
     -- other-extensions:
     build-depends:
         base ^>=4.17.2.1,
-        atlas-revisited,
+        atlas-re,
         text,
         directory ^>= 1.3.8.5,
         optparse-applicative ^>= 0.17.1.0,
@@ -127,7 +127,7 @@ test-suite tests
     build-depends:
         base ^>=4.17.2.1,
         containers,
-        atlas-revisited,
+        atlas-re,
         hspec,
         random ^>= 1.2.1,
         text ^>= 2.0.2,
@@ -145,8 +145,6 @@ test-suite tests
         CostAnalysis.Potential.Log.BaseSpec,
         CostAnalysis.Potential.Log.ConstraintsSpec,
         CostAnalysis.Potential.Log.WeakeningSpec
-        CostAnalysis.Potential.NLog.WeakeningSpec
-        -- CostAnalysis.WeakeningSpec
     default-language: Haskell2010
     build-tool-depends: hspec-discover:hspec-discover
  
