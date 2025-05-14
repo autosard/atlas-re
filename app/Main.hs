@@ -57,6 +57,7 @@ import Control.Monad (when)
 import AstContext (contextualizeMod)
 
 import Debug.Trace (trace)
+import System.Directory (createDirectoryIfMissing)
 traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
 
 type App a = LoggerT (Msg Severity) IO a
@@ -69,6 +70,7 @@ app options = do
 
 run :: Options -> AnalyzeOptions -> App ()
 run Options{..} AnalyzeOptions{..} = do
+  liftIO $ createDirectoryIfMissing True "out"
   let (modName, _) = case target of
         (Left mod) -> (mod, Nothing)
         (Right (mod, fn)) -> (mod, Just fn)

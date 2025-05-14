@@ -19,13 +19,10 @@ import Lens.Micro.Platform
 
 import Primitive(Id)
 import CostAnalysis.Coeff
-import CostAnalysis.RsrcAnn
 import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
 import Control.Monad.Extra (whenJust)
 import Data.Maybe (isNothing)
-
-import Debug.Trace
 
 class Encodeable a where
   toZ3 :: (MonadOptimize z3) => a -> z3 AST
