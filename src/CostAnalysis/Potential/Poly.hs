@@ -9,7 +9,6 @@ import Ast (PotentialKind(Polynomial))
 
 pot :: Args -> Potential
 pot args = Potential
-  Polynomial
   rsrcAnn
   (ranges args)
   oneCoeff

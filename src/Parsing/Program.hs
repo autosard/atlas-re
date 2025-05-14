@@ -61,11 +61,11 @@ type Parser = ParsecT Void Text (RWS ParserContext () ParserState)
 
 pModule :: Parser (Map Type PotentialKind, [ParsedFunDef])
 pModule = sc *> do
-  pots <- optional $ try (pPragma "POTENTIAL" pPotentialMapping)
+  pots <- optional $ pPragma "POTENTIAL" pPotentialMapping
   (fromMaybe M.empty pots,) <$> manyTill pFunc eof
 
 pPragma :: Text -> Parser a -> Parser a
-pPragma word p = between (symbol "{-#") (symbol "#-}") $ symbol word *> p
+pPragma word p = between (try (symbol "{-#")) (symbol "#-}") $ symbol word *> p
 
 pPotentialMapping :: Parser (Map Type PotentialKind)
 pPotentialMapping = M.fromList <$> pParens (sepBy (do
@@ -75,9 +75,11 @@ pPotentialMapping = M.fromList <$> pParens (sepBy (do
   return (t, pot)) (symbol ","))
 
 pPotentialMode :: Parser PotentialKind
-pPotentialMode = symbol "logarithmic" $> Logarithmic
-                 <|> symbol "polynomial" $> Polynomial
-                 <|> symbol "linlog" $> LinLog
+pPotentialMode = choice
+  [symbol "loglr" $> LogLR,
+   symbol "polynomial" $> Polynomial,
+   symbol "linlog" $> LinLog,
+   symbol "logr" $> LogR]
 
 data Signature = Signature
   Id

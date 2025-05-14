@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module CostAnalysis.Potential.Log.Base where
+module CostAnalysis.Potential.SumOfLogs.Base where
 
 import Prelude hiding ((^))
 import Data.List(intercalate)
@@ -20,7 +20,11 @@ import CostAnalysis.Constraint (Constraint, zero, eq)
 
 data Args = Args {
   aRange :: ![Int],
-  bRange :: ![Int]}
+  bRange :: ![Int],
+  logL :: Rational,
+  logR :: Rational,
+  logLemmaFactor :: Rational}
+  
 
 potType = TreeType
 

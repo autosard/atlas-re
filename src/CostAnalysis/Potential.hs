@@ -29,7 +29,7 @@ import CostAnalysis.AnnIdxQuoter(mix)
 import Data.Bifunctor (Bifunctor(first))
 import Data.Maybe (fromMaybe)
 
-type LeMatrix = (V.Vector (V.Vector Int), [Int])
+type LeMatrix = (V.Vector (V.Vector Rational), [Rational])
 
 data ExpertKnowledge = ExpertKnowledge {
   matrix :: LeMatrix,
@@ -49,8 +49,6 @@ data MonoFn = Log
 
 
 data Potential = Potential {
-  kind :: PotentialKind,
-  
   -- Annotation
   
   -- | @ 'rsrcAnn' id label comment vars (rangeA, rangeB) @ constructs a fresh resource annotation with arguments from @vars@ (types are considered). @rangeA@, @rangeB@ are used to define non-zero coefficients. @id@ specifies a unique identifier for the annotation and @label@ is the human readable label, e.g \"Q\", \"Q\'\" or \"P\".

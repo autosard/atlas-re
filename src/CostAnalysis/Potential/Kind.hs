@@ -5,7 +5,7 @@ module CostAnalysis.Potential.Kind where
 import qualified Data.Set as S
 
 import CostAnalysis.Potential (Potential)
-import qualified CostAnalysis.Potential.Log as Log
+import qualified CostAnalysis.Potential.SumOfLogs as SumOfLogs
 import qualified CostAnalysis.Potential.Poly as Poly
 import qualified CostAnalysis.Potential.NLog as NLog
 import CostAnalysis.AnnIdxQuoter
@@ -14,13 +14,15 @@ import CostAnalysis.Coeff (CoeffIdx (Pure), Factor(..), idxToSet)
 
 
 fromKind :: PotentialKind -> Potential
-fromKind Logarithmic = Log.defaultPot
+fromKind LogR = SumOfLogs.logrPot
+fromKind LogLR = SumOfLogs.defaultPot
 fromKind Polynomial = Poly.defaultPot
 fromKind LinLog = NLog.defaultPot
                       
 pays :: PotentialKind -> PotentialKind -> Maybe (CoeffIdx -> Maybe CoeffIdx)
 pays p1 p2 | p1 == p2 = Just Just
-pays LinLog Logarithmic = Just logToLinLog
+pays LinLog LogLR = Just logToLinLog
+pays LinLog LogR = Just logToLinLog
 pays _ _ = Nothing
 
 logToLinLog :: CoeffIdx  -> Maybe CoeffIdx

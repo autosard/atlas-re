@@ -1,6 +1,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE OverloadedStrings #-}
-module CostAnalysis.Potential.Log.Optimization(cOptimize) where
+module CostAnalysis.Potential.SumOfLogs.Optimization(cOptimize) where
 
 import qualified Data.Set as S
 import qualified Data.Map as M
@@ -9,7 +9,7 @@ import Prelude hiding (sum)
 import Primitive(Id)
 import CostAnalysis.Potential(symbolicCost)
 import CostAnalysis.AnnIdxQuoter(mix)
-import CostAnalysis.Potential.Log.Base
+import CostAnalysis.Potential.SumOfLogs.Base
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Constraint
 import qualified CostAnalysis.Coeff as Coeff (constFactor, facForVar, (^), Factor(..), CoeffIdx(..))

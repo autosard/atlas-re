@@ -1,6 +1,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE OverloadedStrings #-}
-module CostAnalysis.Potential.Log.Constraints where
+module CostAnalysis.Potential.SumOfLogs.Constraints where
 
 import Prelude hiding (exp, (!!), sum, or)
 import qualified Data.List as L
@@ -12,6 +12,7 @@ import CostAnalysis.RsrcAnn
 import CostAnalysis.Constraint
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Coeff
+import CostAnalysis.Potential.SumOfLogs.Base(Args(..))
 import Data.List.Extra (groupSort)
 import Ast
 import qualified Data.Text as T
@@ -20,8 +21,8 @@ import qualified Data.Text as T
 exp :: Id
 exp = "e1"
 
-cConst :: PositionedExpr -> RsrcAnn -> RsrcAnn -> [Constraint]
-cConst (Leaf {}) q q'
+cConst :: Args -> PositionedExpr -> RsrcAnn -> RsrcAnn -> [Constraint]
+cConst _ (Leaf {}) q q'
   = concat [eqSum (q![mix|c|]) ([q'!?[mix|exp^a,b|]
                                 | a <- [0..c],
                                   let b = c - a,
@@ -35,12 +36,12 @@ cConst (Leaf {}) q q'
          idx <- mixes q',
          idxSum idx >= 2,
          idxSum idx `S.notMember` qConsts]
-cConst e@(Node {}) q q'
+cConst (Args {logL=cL, logR=cR}) e@(Node {}) q q'
   = let [x1, x2] = annVars q in
       eq (q!?x1) (q'!?exp) 
       ++ eq (q!?x2) (q'!?exp)
-      ++ eq (q!?[mix|x1^1|]) (q'!?exp)
-      ++ eq (q!?[mix|x2^1|]) (q'!?exp)
+      ++ eq (q!?[mix|x1^1|]) (Prod [ConstTerm cL, q'!?exp])
+      ++ eq (q!?[mix|x2^1|]) (Prod [ConstTerm cR, q'!?exp])
       ++ concat [eq (q!idx) (q'!?[mix|exp^a,c|])
                 | idx <- mixes q,
                   let a = facForVar idx x1,
@@ -51,11 +52,11 @@ cConst e@(Node {}) q q'
                   let a = facForVar idx exp,
                   let c = constFactor idx,
                   [mix|x1^a,x2^a,c|] `S.notMember` (q^.coeffs)]
-cConst (Ast.Const id _) q q' = error $ "Constructor '" ++ T.unpack id ++ "' not supported."
+cConst _ (Ast.Const id _) q q' = error $ "Constructor '" ++ T.unpack id ++ "' not supported."
       
-cMatch :: RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint])
+cMatch :: Args -> RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint])
 -- leaf  
-cMatch q p x [] = extendAnn p $
+cMatch _ q p x [] = extendAnn p $
   [(`eq` (q!y)) <$> def y | y <- L.delete x (annVars q)]
   ++ [(`eqSum` qs) <$> def [mix|_xs, c|]
      | ((xs, c), qs) <- sums]
@@ -70,11 +71,11 @@ cMatch q p x [] = extendAnn p $
               let xs = varsExcept idx [x]]
               --not (null xs && c == 1)]
 -- node
-cMatch q r x [u, v] = extendAnn r $
+cMatch (Args {logL=cL, logR=cR}) q r x [u, v] = extendAnn r $
   [(`eq` (q!x)) <$> def u,
    (`eq` (q!x)) <$> def v,
-   (`eq` (q!x)) <$> def [mix|u^1|],
-   (`eq` (q!x)) <$> def [mix|v^1|]]
+   (`eq` Prod [ConstTerm cL, q!x]) <$> def [mix|u^1|],
+   (`eq` Prod [ConstTerm cR, q!x]) <$> def [mix|v^1|]]
   ++ [(`eq` (q!idx)) <$> def [mix|_xs,u^a,v^a,b|]
      | idx <- mixes q,
        let a = facForVar idx x,
@@ -82,7 +83,7 @@ cMatch q r x [u, v] = extendAnn r $
        let xs = varsExcept idx [x]]
   ++ [(`eq` (q!y)) <$> def y | y <- L.delete x (annVars q)]
 -- tuple with one tree
-cMatch q r x [v] = extendAnn r $
+cMatch _ q r x [v] = extendAnn r $
   ((`eq` (q!x)) <$> def v)
   : [(`eq` (q!idx)) <$> def [mix|_xs,v^a,b|]
      | idx <- mixes q,
@@ -90,7 +91,7 @@ cMatch q r x [v] = extendAnn r $
        let b = constFactor idx,
        let xs = varsExcept idx [x]]
   ++ [(`eq` (q!y)) <$> def y | y <- L.delete x (annVars q)]
-cMatch _ _ x ys = error $ "x: " ++ show x ++ ", ys: " ++ show ys
+cMatch _ _ _ x ys = error $ "x: " ++ show x ++ ", ys: " ++ show ys
 
 cLetBodyMulti :: RsrcAnn -> AnnArray -> Id -> [CoeffIdx] -> RsrcAnn -> (RsrcAnn, [Constraint])
 cLetBodyMulti _ ps' x is r_ = extendAnn r_ $

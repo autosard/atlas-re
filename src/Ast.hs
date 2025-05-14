@@ -41,7 +41,8 @@ data Module a = Module {
 } 
 
 data PotentialKind
-  = Logarithmic
+  = LogLR
+  | LogR
   | Polynomial
   | LinLog
   deriving (Eq, Ord, Show)

@@ -9,7 +9,6 @@ import Ast (PotentialKind(LinLog))
 
 pot :: Args -> Potential
 pot args = Potential
-  LinLog
   rsrcAnn
   ranges
   oneCoeff

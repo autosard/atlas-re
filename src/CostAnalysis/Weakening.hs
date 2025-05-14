@@ -27,7 +27,7 @@ farkas (ExpertKnowledge (as, bs) ps qs) = do
   let farkasA = [le (pTs V.! i) (sum (qTs V.! i:fas fs as i)) | i <- [0..length ps - 1]]
   let farkasB = [le (sum $ prods fs bs) (ConstTerm 0) | (not . all (== 0)) bs]
   return $ concatMap concat [fsPos, farkasA, farkasB]
-  where prods fs as = zipWith prod2 fs (map (ConstTerm . fromIntegral) as)
+  where prods fs as = zipWith prod2 fs (map ConstTerm as)
         fas fs as i = prods fs ([row V.! i | row <- V.toList as])
 
 ctxFarkas :: Set WeakenArg -> AnnCtx -> AnnCtx -> ProveMonad [Constraint]
@@ -67,7 +67,7 @@ genInterPotKnowledge ks = do
   let bs = concatMap (snd . matrix) $ M.elems ks 
   return $ ExpertKnowledge (V.concat [as, asInter], bs ++ replicate (length asInter) 0) rows' cols'
 
-interCoeffsEqual :: Map Type ExpertKnowledge -> [Type] -> PotFnMap -> (Potential -> Maybe CoeffIdx) -> V.Vector (V.Vector Int)
+interCoeffsEqual :: Map Type ExpertKnowledge -> [Type] -> PotFnMap -> (Potential -> Maybe CoeffIdx) -> V.Vector (V.Vector Rational)
 interCoeffsEqual ks ts pots coeff = V.fromList [
   V.concat $ map (buildSegment tQ tP) ts
   | tP <- ts,

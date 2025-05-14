@@ -36,7 +36,7 @@ import Control.Monad.Extra (concatMapM)
 defaultPotentialMap = M.fromList
   [
     (ListType, Polynomial),
-    (TreeType, Logarithmic)
+    (TreeType, LogLR)
   ]
 
 
