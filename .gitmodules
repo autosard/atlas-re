@@ -1,4 +1,4 @@
 [submodule "examples"]
 	path = examples
-	url = https://github.com/lorenzleutgeb/atlas-examples.git
+	url = https://github.com/autosard/atlas-examples.git
 	branch = atlas-revisited
