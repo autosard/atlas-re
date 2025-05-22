@@ -27,7 +27,9 @@ import Typing.Type
 import CostAnalysis.RsrcAnn ( RsrcSignature,
                              FunRsrcAnn(..), ctxConstEq,
                              ctxConstLe, PointWiseOp,
-                             opCoeffs, ctxGeZero, AnnCtx, annLikeLeftInRight, RsrcAnn(..))
+                             opCoeffs, ctxGeZero, AnnCtx,
+                             annLikeLeftInRight, RsrcAnn(..),
+                             AnnLike(..))
 import CostAnalysis.Potential(ctxSymbolicCost, PotFnMap, Potential (cExternal))
 import CostAnalysis.Potential.Kind (fromKind)
 import Control.Monad.Extra (concatMapM)
@@ -104,6 +106,9 @@ analyzeFn mod fn@(Fn id _ _) = do
 analyzeFn' :: PositionedFunDef -> ProveMonad Derivation
 analyzeFn' def@(FunDef funAnn fnId _ body) = do
   mode <- view analysisMode
+
+  assertNonNegativeSig fnId
+  assertNonNegativeCost fnId
   
   case mode of
     CheckCoefficients -> case tfCostAnn funAnn of
@@ -135,6 +140,29 @@ externalCsForCtx ctxQ ctxQ' = concatMapM csForType (M.assocs ctxQ)
             return $ cExternal (potForType t pots ) q (ctxQ' M.! t)
           else
             return []
+
+assertNonNegativeCtx :: (AnnLike a) => Map Type a -> [Constraint]
+assertNonNegativeCtx qs = concat $
+  [geZero (q!i) |
+   q <- M.elems qs,
+   i <- S.toList $ definedIdxs q]
+
+assertNonNegativeFnAnn :: (AnnCtx, AnnCtx) -> ProveMonad ()
+assertNonNegativeFnAnn (q, q') = tellSigCs $
+  assertNonNegativeCtx q
+  ++ assertNonNegativeCtx q'
+
+assertNonNegativeSig :: Id -> ProveMonad ()
+assertNonNegativeSig fn = do
+  ann <- (M.! fn) <$> use sig
+  assertNonNegativeFnAnn (withCost ann)
+  mapM_ assertNonNegativeFnAnn (withoutCost ann)
+
+assertNonNegativeCost :: Id -> ProveMonad ()
+assertNonNegativeCost fn = do
+  ann <- (M.! fn) <$> use sig
+  let cost = ctxSymbolicCost (withCost ann)
+  tellSigCs $ assertNonNegativeCtx cost
 
 potFnCovered :: AnnCtx -> AnnCtx -> [Constraint]
 potFnCovered qs qs' = concat

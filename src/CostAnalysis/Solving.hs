@@ -114,7 +114,7 @@ solve fns = do
 
 createSolverZ3 :: MonadOptimize z3 => [Coeff] -> [Constraint] -> [Constraint] -> Maybe Term -> z3 (Map String Constraint)
 createSolverZ3 coeffs typingCs extCs optiTarget = do
-  assertCoeffsPos coeffs
+  -- assertCoeffsPos coeffs
   tracker <- assertConstraints (isNothing optiTarget) $ typingCs ++ extCs
   case optiTarget of
     Just target -> do
