@@ -57,7 +57,7 @@ import Control.Monad (when)
 import AstContext (contextualizeMod)
 
 import Debug.Trace (trace)
-import System.Directory (createDirectoryIfMissing)
+
 traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
 
 type App a = LoggerT (Msg Severity) IO a

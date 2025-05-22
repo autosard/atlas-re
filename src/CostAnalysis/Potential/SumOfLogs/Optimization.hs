@@ -3,21 +3,13 @@
 module CostAnalysis.Potential.SumOfLogs.Optimization(cOptimize) where
 
 import qualified Data.Set as S
-import qualified Data.Map as M
 
 import Prelude hiding (sum)
-import Primitive(Id)
-import CostAnalysis.Potential(symbolicCost)
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential.SumOfLogs.Base
 import CostAnalysis.RsrcAnn
 import CostAnalysis.Constraint
-import qualified CostAnalysis.Coeff as Coeff (constFactor, facForVar, (^), Factor(..), CoeffIdx(..))
-
-rankDifference :: RsrcAnn -> RsrcAnn -> Term
-rankDifference q q' = sum $ map (diff (q'!("e" :: Id))) (annVars q)
-  where diff :: Term -> Id -> Term
-        diff rankQ' x = sub [q!x, rankQ']
+import qualified CostAnalysis.Coeff as Coeff (constFactor, facForVar, (^))
 
 weightedAbs :: RsrcAnn -> Term
 weightedAbs q = sum [prod [q!idx, ConstTerm $ indexWeight a b]
@@ -41,7 +33,6 @@ weightedNonRankDifference potArgs q q' = sum $ map weightedDiff pairs
 indexWeight :: Int -> Int -> Rational
 indexWeight 0 2 = 0
 indexWeight 1 0 = 1
---indexWeight a b = fromIntegral (a + (b+1) ^ 2) ^ 2
 indexWeight a b = fromIntegral (1 + a + (2 * (b + 1)) ) ^ 2
 
 
@@ -57,9 +48,6 @@ absNonRank q = sum [q!idx | idx <- mixes q]
 cOptimize :: Args -> RsrcAnn -> RsrcAnn -> Term
 cOptimize potArgs q q' = let weights = [179969, 16127, 997, 97, 2] in
   sum $ zipWith (\w metric -> prod [ConstTerm w, metric]) weights [
---  rankDifference q q',
---  weightedAbs q,
   absRank q,
   weightedNonRankDifference potArgs q q',
   constantDifference q q']
---  absNonRank ]

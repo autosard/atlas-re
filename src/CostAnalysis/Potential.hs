@@ -25,8 +25,6 @@ import Typing.Type (Type)
 import Ast hiding (FunRsrcAnn)
 import CostAnalysis.AnnIdxQuoter(mix)
 
-
-import Data.Bifunctor (Bifunctor(first))
 import Data.Maybe (fromMaybe)
 
 type LeMatrix = (V.Vector (V.Vector Rational), [Rational])
@@ -179,32 +177,21 @@ cLetBodyUni q p p' x r_ = extendAnn r_ $
        (not . justConst) rIdx]
   where ys = L.delete x (annVars r_)
 
-calculateBound :: (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> Map Coeff Rational
-calculateBound (from, to) solution = M.fromList $ map subtract (getCoeffs from)
-  where solutionOrZero coeff = case solution M.!? coeff of
-                                 Just value -> (coeff, value)
-                                 Nothing -> (coeff, 0)           
-        subtract left@(Coeff _ _ _ idx) = let
-          right = if length (annVars from) <= length (annVars to) then
-            to!?substitute (annVars from) (annVars to) idx else to!?idx in
-          case right of
-            (CoeffTerm r) ->
-              case solution M.!? r of
-                Just rightValue -> case solution M.!? left of
-                  Just leftValue -> let diff =  leftValue - rightValue in (left, diff)
-                --if diff >= 0 then (left, diff) else error "Negative coefficient in result bound."
-                  Nothing -> error $ "No such base term on the left hand side for '" ++ show right ++ "'."
-                Nothing -> solutionOrZero left
-            (ConstTerm 0) -> solutionOrZero left
-
+calculateBound :: (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> BoundAnn
+calculateBound (from, to) solution = BoundAnn (from^.args) $ M.fromList
+  [(idx, from' M.! idx - fromMaybe 0 ((to' M.!?) =<< (u M.!? idx)))
+  | idx <- S.toList $ definedIdxs from']
+  where q@(BoundAnn _ from') = bindAnn from solution
+        p@(BoundAnn _ to') = bindAnn to solution
+        u = unify q p
   
 symbolicCost :: (AnnLike a, AnnLike b) => a -> b -> PointWiseOp
-symbolicCost from to = PointWiseOp (argVars from) $
-  M.fromList [(idx, sub [from!idx, to!?idx'])
-             | idx <- S.toList $ definedIdxs from,
-               let idx' = if length (argVars from) <= length (argVars to) then
-                     substitute (argVars from) (argVars to) idx else idx]
-
+symbolicCost q p = PointWiseOp (argVars q) $  
+  M.fromList [(idx, sub [q!idx, tP])
+             | idx <- S.toList $ definedIdxs q,
+               let tP = maybe (ConstTerm 0) (p!?) (u M.!? idx)]
+  where u = unify q p
+             
 ctxSymbolicCost :: (AnnLike a, AnnLike b) => (Map Type a, Map Type b) -> Map Type PointWiseOp
 ctxSymbolicCost (from, to) = ctxZipWith
   (const (`symbolicCost` pointWiseZero))
@@ -212,25 +199,23 @@ ctxSymbolicCost (from, to) = ctxZipWith
   (const symbolicCost) from to
 
 printRHS :: Potential -> RsrcAnn -> Map Coeff Rational -> String
-printRHS pot rhs solution = printPotential pot $ M.toList (M.restrictKeys solution (S.fromList (getCoeffs rhs)))
-
+printRHS pot rhs solution = printPotential pot $ bindAnn rhs solution
 
 printBound :: PotFnMap -> (AnnCtx, AnnCtx) -> Map Coeff Rational -> String
-printBound pots (from, to) solution = L.intercalate " + " (map costForType (M.keys from))
-  where costForType :: Type -> String
+printBound pots (from, to) solution = L.intercalate " + " bounds
+  where bounds = filter (/= "0") (map costForType (M.keys from))
+        costForType :: Type -> String
         costForType t = let pot = fst $ pots M.! t
                             to' = fromMaybe (emptyAnn pot 0 "" "" []) $ to M.!? t
                             from' = fromMaybe (emptyAnn pot 0 "" "" []) $ from M.!? t
-                            solution' = calculateBound (from', to') solution
-                            terms = M.toList $ M.filter (0 /=) solution' in
-                          printPotential pot terms
-        
+                            bound = calculateBound (from', to') solution in
+                          printPotential pot bound
 
-printPotential :: Potential -> [(Coeff, Rational)] -> String
-printPotential pot coeffs = if L.null coeffs' then "0" else
+printPotential :: Potential -> BoundAnn -> String
+printPotential pot (BoundAnn _ coeffs) = if M.null coeffs' then "0" else
   L.intercalate " + " $
-    map (uncurry (printPotTerm pot) . first getIdx) coeffs'
-  where coeffs' = filter (\(_, v) -> v /= 0) coeffs
+    map (uncurry (printPotTerm pot)) (M.assocs coeffs')
+  where coeffs' = M.filter (/= 0) coeffs
         
   
 printPotTerm :: Potential -> CoeffIdx -> Rational -> String

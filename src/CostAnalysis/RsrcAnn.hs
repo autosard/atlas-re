@@ -69,7 +69,13 @@ substArg x y q = q
   & coeffs %~ S.map (substitute (q ^. args) args') 
   where args' = map (\z -> if z == x then y else z) $ q ^. args
 
-class AnnLike a where
+bindAnn :: RsrcAnn -> Map Coeff Rational -> BoundAnn
+bindAnn q values = BoundAnn (q^.args) $ M.fromList
+  [(i, v) |
+    c@(Coeff _ _ _ i) <- getCoeffs q,
+    let v = fromMaybe 0 (values M.!? c)]
+
+class (Show a) => AnnLike a where
   infixl 9 !
   (!) :: (Index i, Show i) => a -> i -> Term
   infixl 9 !?
@@ -126,6 +132,17 @@ instance AnnLike PointWiseOp where
   annEmpty = M.null . opCoeffs
   (!) op idx = opCoeffs op M.! toIdx idx
   (!?) op idx = fromMaybe (ConstTerm 0) $ opCoeffs op M.!? toIdx idx
+
+data BoundAnn = BoundAnn [Id] (Map CoeffIdx Rational)
+  deriving (Show)
+
+instance AnnLike BoundAnn where
+  argVars (BoundAnn args _) = args
+  definedIdxs (BoundAnn _ m) = M.keysSet m
+  annEmpty (BoundAnn _ m) = M.null m
+  (!) (BoundAnn _ m) idx = ConstTerm $ m M.! toIdx idx
+  (!?) (BoundAnn _ m) idx = ConstTerm $ fromMaybe 0 (m M.!? toIdx idx)
+  
 
 instance AnnLike (Map CoeffIdx Rational) where
   argVars m = []
@@ -346,12 +363,45 @@ instance HasCoeffs (Map Type RsrcAnn) where
   getCoeffs = M.foldr (\q coeffs -> coeffs ++ getCoeffs q) []
 
 instance HasCoeffs FunRsrcAnn where
+  getCoeffs :: FunRsrcAnn -> [Coeff]
   getCoeffs ann = (getCoeffs . withCost) ann ++ (getCoeffs . withoutCost) ann
 
 instance HasCoeffs RsrcSignature where
   getCoeffs = concatMap getCoeffs . M.elems
 
--- printSolution :: (RsrcAnn, RsrcAnn) -> Map Coeff Rational -> String
--- printSolution (q, q') solution =
---   where printCoeffs p =
---         printCoeff :: Text -> CoeffIdx -> Rational
+
+-- | @'unify'@ returns a mapping between template indicies, unifying two templates.
+-- 
+-- For two potentials \(\Phi(V), \Psi(W)\), this enables to obtain \(\Psi(V)\), a potential
+-- with the arguments of \(\Phi\), applied to \(\Psi\), which can be used to calculate
+-- the amortized costs by subtracting \(\Phi(V) - \Psi(V)\). Typically we want this potential
+-- to be expressed in terms of the original coefficients of \(\Phi\), which can be accomplished by
+-- appyling the unfier to lookup the coefficients.
+--
+-- If the potentials have an equal number of arguments unification just maps the arguments by
+-- their position.
+-- In the case where \(|V| > |W|\), we rely on a definition from Sleator and Tarjan, where we
+-- define the potential of collection of arguments as the sum of the individual potentials.
+--
+-- \[\Psi(x_1, \dots, x_n) = \Psi(x_1) + \dots + \Psi(x_n)\]
+--
+-- This allows us to apply a potential \(\Psi(x) \), defined for only one argument to multible
+-- arguments.
+--
+-- __Example:__ When calculating the costs of the meld operation that merges to two heaps, the
+-- potentials differ in the number of their arguements. 
+--
+-- \[\Phi(x,y) = \mathcal{A}_{\mathbb{merge}} + \Psi(x) + \Psi(y), \Psi(z) = \Psi(z)\]
+-- after unificication we get
+-- \[\Psi(x,y) = \Psi(x) + \Psi(y)\]
+-- so
+-- \[\Phi(x,y) - \Psi(x,y) = \mathcal{A}_{\mathbb{merge}}\]
+unify :: (AnnLike a, AnnLike b) => a -> b -> Map CoeffIdx CoeffIdx
+unify q p | length (argVars q) == length (argVars p) =
+            let s = M.fromList (zip (argVars q) (argVars p)) in
+              M.fromList [(i, substitute (argVars q) (argVars p) i) | i <- S.toList (definedIdxs q)]
+unify q p = case argVars p of
+              [] -> M.empty
+              [y] -> M.fromList [(i, substitute (argVars q)
+                                   (replicate (length (argVars q)) y) i) | i <- S.toList (definedIdxs q)]
+              _ys_greater_xs -> error $ "cannot apply potential function " ++ show p ++ " to arguements " ++ show (argVars q)   

@@ -171,14 +171,14 @@ instance Show CoeffIdx where
   show (Mixed xs) = "(" ++ L.intercalate "," (map show (S.toDescList xs)) ++ ")"
 
 substitute :: [Id] -> [Id] -> CoeffIdx -> CoeffIdx
-substitute from to (Pure x) = case L.elemIndex x from of
+substitute from to idx@(Pure x) = case L.elemIndex x from of
   Just i -> Pure $ to !! i
-  Nothing -> error "invalid index"
-substitute from to (Mixed factors) = Mixed (S.map subFactor factors)
+  Nothing -> error $ "invalid index " ++ show idx
+substitute from to idx@(Mixed factors) = Mixed (S.map subFactor factors)
   where subFactor (Const c) = Const c
         subFactor (Arg x a) = case L.elemIndex x from of
           Just i -> Arg (to !! i) a
-          Nothing -> error "invalid index"
+          Nothing -> error $ "invalid index" ++ show idx ++ " " ++ show to
 
 stubArgVars :: [Id] -> Int -> [Id]
 stubArgVars args l = args ++ replicate (l - length args) "!"

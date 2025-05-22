@@ -6,6 +6,7 @@ module CostAnalysis.Potential.SumOfLogs.Base where
 import Prelude hiding ((^))
 import Data.List(intercalate)
 import qualified Data.Set as S
+import qualified Data.Map as M
 import Data.Text(Text)
 import qualified Data.Text as T
 
@@ -67,9 +68,9 @@ monoFnCoeff _ args c = Nothing
 cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
 cExternal q q' = 
   -- equal ranks  
-  concat [eq (q!?idx) (q'!?substitute (argVars q) (argVars q') idx)
-  | length (argVars q) == length (argVars q'),
-    idx <- pures q]
+  concat [eq (q!?idx) (q'!?(u M.! idx))
+  | idx <- pures q]
+  where u = unify q q'
     
 
 letCfIdxs :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
