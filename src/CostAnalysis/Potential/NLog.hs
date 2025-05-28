@@ -5,16 +5,15 @@ import CostAnalysis.Potential.NLog.Constraints
 import CostAnalysis.Potential.NLog.Optimization
 import CostAnalysis.Potential.NLog.Weakening
 import CostAnalysis.Potential(Potential(Potential))
-import Ast (PotentialKind(LinLog))
 
 pot :: Args -> Potential
 pot args = Potential
-  rsrcAnn
+  template
   ranges
   oneCoeff
   zeroCoeff
   monoFnCoeff
-  cConst 
+  cConst
   cMatch
   cLetBodyMulti
   (letCfIdxs args)

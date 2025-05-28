@@ -10,7 +10,11 @@ import Lens.Micro.Platform
 import Data.Maybe(catMaybes, isJust, fromJust)
 
 import Primitive(Id)
-import CostAnalysis.RsrcAnn
+import CostAnalysis.Annotation(FreeAnn)
+import CostAnalysis.Template(FreeTemplate,
+                            (!?), (!), idxs, args,
+                            ftCoeffs)
+                            
 import CostAnalysis.Constraint
 import CostAnalysis.Potential
 import CostAnalysis.ProveMonad
@@ -30,18 +34,18 @@ farkas (ExpertKnowledge (as, bs) ps qs) = do
   where prods fs as = zipWith prod2 fs (map ConstTerm as)
         fas fs as i = prods fs ([row V.! i | row <- V.toList as])
 
-ctxFarkas :: Set WeakenArg -> AnnCtx -> AnnCtx -> ProveMonad [Constraint]
-ctxFarkas wArgs ps qs = do
+annFarkas :: Set WeakenArg -> FreeAnn -> FreeAnn -> ProveMonad [Constraint]
+annFarkas wArgs ps qs = do
   ks <- M.fromList <$> mapM go (M.toAscList ps)
   farkas =<< genInterPotKnowledge ks
   --concatMapM farkas (M.elems ks)
-  where go :: (Type, RsrcAnn) -> ProveMonad (Type, ExpertKnowledge)
+  where go :: (Type, FreeTemplate) -> ProveMonad (Type, ExpertKnowledge)
         go (t, p) = do
           pot <- potForType t <$> use potentials
           let q = qs M.! t
-          let m = genExpertKnowledge pot wArgs (p^.args) (p^.coeffs)
-              ps = V.fromList [(idx, p!?idx) | idx <- S.toList (p^.coeffs)]
-              qs = V.fromList [(idx, q!?idx) | idx <- S.toList (p^.coeffs)]
+          let m = genExpertKnowledge pot wArgs (args p) (p^.ftCoeffs)
+              ps = V.fromList [(idx, p!?idx) | idx <- S.toList (p^.ftCoeffs)]
+              qs = V.fromList [(idx, q!?idx) | idx <- S.toList (p^.ftCoeffs)]
           return (t, ExpertKnowledge m ps qs)
 
 
@@ -89,7 +93,7 @@ interCoeffsEqual ks ts pots coeff = V.fromList [
         singletonSegment idx cols x = case V.elemIndex idx (V.map fst cols) of
           Just j -> V.generate (V.length cols) (\i -> if i == j then x else 0)
 
-genInterRow :: Map Type (Potential, RsrcAnn) -> CoeffIdx -> Type -> Type -> V.Vector CoeffIdx -> V.Vector Int
+genInterRow :: Map Type (Potential, FreeTemplate) -> CoeffIdx -> Type -> Type -> V.Vector CoeffIdx -> V.Vector Int
 genInterRow pots p rowT colT cols
   | p == oneCoeff (potForType rowT pots) =
       let colConst = oneCoeff (potForType colT pots) in
@@ -122,7 +126,7 @@ monoLattice monoLe args idxs = merge . catMaybes $
                               | k <- [0..length idxs-1]], [0])
             else Nothing
 
-monoShift :: MonoFn -> [Id] -> Int -> Potential -> RsrcAnn -> RsrcAnn -> Maybe [Constraint]
+monoShift :: MonoFn -> [Id] -> Int -> Potential -> FreeTemplate -> FreeTemplate -> Maybe [Constraint]
 monoShift fn xs c pot p q = do
   idxFn <- monoFnCoeff pot fn xs 0
   idxFnShift <- monoFnCoeff pot fn xs c
@@ -130,11 +134,11 @@ monoShift fn xs c pot p q = do
     eq (q!?idxFnShift) (p!idxFn)
     ++ eq (q!?oneCoeff pot) (p!oneCoeff pot)
     ++ concat [ zero (p!idx)
-              | idx <- S.toList $ definedIdxs p,
+              | idx <- S.toList $ idxs p,
                 idx /= idxFn,
                 idx /= oneCoeff pot]
     ++ concat [ zero (q!idx)
-              | idx <- S.toList $ definedIdxs q,
+              | idx <- S.toList $ idxs q,
                 idx /= idxFnShift,
                 idx /= oneCoeff pot]
 

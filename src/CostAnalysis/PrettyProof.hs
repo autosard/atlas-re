@@ -25,7 +25,8 @@ import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
 import CostAnalysis.Rules
     ( Rule, RuleApp(ExprRuleApp, FunRuleApp) )
-import CostAnalysis.RsrcAnn
+import CostAnalysis.Template(FreeTemplate(..))
+import CostAnalysis.Annotation(FreeAnn)
 import CostAnalysis.Coeff
 
 css = renderCss ([lucius|
@@ -215,7 +216,7 @@ hamDeriv' unsat (T.Node appl children) = [shamlet|
 hamRuleApp :: Maybe (Set Constraint) -> RuleApp -> Html
 hamRuleApp unsat (FunRuleApp (FunDef ann id args body)) = [shamlet|
 <span class="listHead">#{printFqn (tfFqn ann)}|]
-hamRuleApp unsat (ExprRuleApp rule cf q q' cs e) = [shamlet|
+hamRuleApp unsat (ExprRuleApp rule cf (q, qe) q' cs e) = [shamlet|
 <span .listHead :((not . null) cs'):.unsat>
   <math display="inline">
     <mrow>
@@ -223,13 +224,15 @@ hamRuleApp unsat (ExprRuleApp rule cf q q' cs e) = [shamlet|
       <mtext>#{printRule cf rule}
       <mo form="postfix" stretchy="false">)
       <mspace width="1em">
-      ^{hamAnnCtx q}
+      ^{hamAnn qe}
+      <mtext>, 
+      ^{hamAnn q}
       <mo>⊢
       <mtext>
           <code>#{printExprHead e}
           (#{printPos srcPos})  
       <mo lspace="0.22em" rspace="0.22em" stretchy="false">|
-      ^{hamAnnCtx q'}
+      ^{hamAnn q'}
       ^{hamCsList cs (inCore unsat)}
 |]
   where srcPos = case peSrc $ getAnn e of
@@ -255,18 +258,18 @@ hamCsList cs inCore = [shamlet|
                           ^{hamConstraint c}
 |]
   
-hamAnnCtx :: AnnCtx -> Html
-hamAnnCtx ctx = toHtml $ intersperse
+hamAnn :: FreeAnn -> Html
+hamAnn ctx = toHtml $ intersperse
   [shamlet|<mo separator="true">,|]
-  (map hamAnnType (M.toAscList ctx))  
+  (map hamTemplType (M.toAscList ctx))  
 
-hamAnnType :: (Type, RsrcAnn) -> Html
-hamAnnType (t, q) = [shamlet|
-^{hamArgs (_args q)}
+hamTemplType :: (Type, FreeTemplate) -> Html
+hamTemplType (t, q) = [shamlet|
+^{hamArgs (_ftArgs q)}
 <mo>:
 <mtext> #{show t}
 <mo>|
-^{hamAnn q}|]
+^{hamTempl q}|]
 
 hamArgs :: [Id] -> Html
 hamArgs [] = [shamlet|<mi>∅|]
@@ -276,12 +279,12 @@ hamArgs args = toHtml $ intersperse
   where hamArg arg = [shamlet|<mi>#{Text.unpack arg}|]
         
   
-hamAnn :: RsrcAnn -> Html
-hamAnn q = [shamlet|
+hamTempl :: FreeTemplate -> Html
+hamTempl q = [shamlet|
 <msubsup>
     <mi>q
-    <mn>#{_annId q}
-    <mtext>#{_label q}
+    <mn>#{_ftId q}
+    <mtext>#{_ftLabel q}
 |]
 
 hamCoeffIdx (Pure x) = [shamlet|

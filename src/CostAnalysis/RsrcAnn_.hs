@@ -16,6 +16,7 @@ import qualified Data.Set as S
 import Data.Text(Text)
 import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
+import Data.List ((\\), intersect, union)
 
 
 import Primitive(Id)
@@ -38,6 +39,17 @@ data RsrcAnn = RsrcAnn {
 makeLenses ''RsrcAnn
 
 type AnnCtx = Map Type RsrcAnn
+
+mergeAnns :: RsrcAnn -> RsrcAnn -> RsrcAnn
+mergeAnns q p = RsrcAnn {
+  _annId = q^.annId,
+  _args = (q^.args) `union` (p^.args),
+  _label = q^.label,
+  _comment = q^.comment,
+  _coeffs = (q^.coeffs) `S.union` (p^.coeffs)}
+
+mergeCtxs :: AnnCtx -> AnnCtx -> AnnCtx
+mergeCtxs = M.unionWith mergeAnns
 
 fromAnn :: Int -> Text -> Text -> RsrcAnn -> RsrcAnn
 fromAnn id label comment ann = RsrcAnn id (ann^.args) label comment (ann^.coeffs)
@@ -83,11 +95,15 @@ class (Show a) => AnnLike a where
   definedIdxs :: a -> Set CoeffIdx
   argVars :: a -> [Id]
   annEmpty :: a -> Bool
+  restrictArgs :: a -> [Id] -> a
 
 instance AnnLike RsrcAnn where
   argVars = annVars
   definedIdxs q = q^.coeffs
   annEmpty = S.null . _coeffs
+  restrictArgs q vars = q
+    & coeffs %~ S.filter (hasArgs vars)
+    & args %~ intersect vars
   (!) ann idx = case coeffForIdx ann (toIdx idx) of
     Just q -> CoeffTerm q
     Nothing -> error $ "Invalid index '" ++ show idx ++ "' for annotation '" ++ show ann ++ "'."
@@ -97,8 +113,8 @@ instance AnnLike RsrcAnn where
     Nothing -> ConstTerm 0
 
 
-class Index a where
-  toIdx :: a -> CoeffIdx
+-- class Index a where
+--   toIdx :: a -> CoeffIdx
 
 coeffFromAnn :: RsrcAnn -> CoeffIdx -> Coeff
 coeffFromAnn ann = Coeff (ann^.annId) (ann^.label) (ann^.comment)
@@ -130,6 +146,7 @@ instance AnnLike PointWiseOp where
   argVars = opArgs
   definedIdxs op =  M.keysSet $ opCoeffs op
   annEmpty = M.null . opCoeffs
+  restrictArgs (PointWiseOp args coeffs) vars = PointWiseOp args $ M.filterWithKey (\idx _ -> hasArgs vars idx) coeffs
   (!) op idx = opCoeffs op M.! toIdx idx
   (!?) op idx = fromMaybe (ConstTerm 0) $ opCoeffs op M.!? toIdx idx
 
@@ -140,6 +157,7 @@ instance AnnLike BoundAnn where
   argVars (BoundAnn args _) = args
   definedIdxs (BoundAnn _ m) = M.keysSet m
   annEmpty (BoundAnn _ m) = M.null m
+  restrictArgs (BoundAnn args coeffs) vars = BoundAnn (intersect args vars) $ M.filterWithKey (\idx _ -> hasArgs vars idx) coeffs
   (!) (BoundAnn _ m) idx = ConstTerm $ m M.! toIdx idx
   (!?) (BoundAnn _ m) idx = ConstTerm $ fromMaybe 0 (m M.!? toIdx idx)
   
@@ -147,7 +165,8 @@ instance AnnLike BoundAnn where
 instance AnnLike (Map CoeffIdx Rational) where
   argVars m = []
   definedIdxs = M.keysSet
-  annEmpty = M.null 
+  annEmpty = M.null
+  restrictArgs m vars = M.filterWithKey (\idx _ -> hasArgs vars idx) m
   (!) m idx = ConstTerm $ m M.! toIdx idx
   (!?) m idx = ConstTerm $ fromMaybe 0 (m M.!? toIdx idx)
 
@@ -171,16 +190,27 @@ annLikeScalarMul q k = PointWiseOp (argVars q) $
   M.fromList [(idx, prod2 (q!idx) k) | idx <- S.toList (definedIdxs q)]
 
 annLikeAdd :: (AnnLike a, AnnLike b) => a -> b -> PointWiseOp
-annLikeAdd q p | argVars q == argVars p = PointWiseOp (argVars q) $
+annLikeAdd q p = PointWiseOp (argVars q) $
              M.fromList [(idx, sum [q!?idx, p!?idx])
                         | idx <- S.toList $ definedIdxs q `S.union` definedIdxs p]
-               | otherwise = error "point wise operation not valid for annotation likes with different arguments."
+
+
+annLikeSub :: (AnnLike a, AnnLike b) => a -> b -> PointWiseOp
+annLikeSub q p = PointWiseOp (argVars q) $
+             M.fromList [(idx, sub [q!?idx, p!?idx])
+                        | idx <- S.toList $ definedIdxs q `S.union` definedIdxs p]
                
 ctxAdd :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> Map Type PointWiseOp
 ctxAdd = ctxZipWith
   (const (`annLikeAdd` pointWiseZero))
   (const (annLikeAdd pointWiseZero))
   (const annLikeAdd)
+
+ctxSub :: (AnnLike a, AnnLike b) => Map Type a -> Map Type b -> Map Type PointWiseOp
+ctxSub = ctxZipWith
+  (const (`annLikeSub` pointWiseZero))
+  (const (annLikeSub pointWiseZero))
+  (const annLikeSub)  
 
 ctxConstEq :: AnnLike a => Map Type a -> Map Type CoeffAnnotation -> [Constraint]
 ctxConstEq ctx values = concat . M.elems $ ctxZipWith
@@ -260,8 +290,8 @@ infixl 9 !!
   Nothing -> error $ "Invalid index '" ++ show k ++ "' for annotation array."
 
 data FunRsrcAnn = FunRsrcAnn {
-  withCost :: (AnnCtx, AnnCtx),
-  withoutCost :: [(AnnCtx, AnnCtx)],
+  withCost :: ((AnnCtx, AnnCtx), AnnCtx),
+  withoutCost :: [((AnnCtx, AnnCtx), AnnCtx)],
   worstCase :: Bool}
   deriving(Show)
 
@@ -397,11 +427,24 @@ instance HasCoeffs RsrcSignature where
 -- so
 -- \[\Phi(x,y) - \Psi(x,y) = \mathcal{A}_{\mathbb{merge}}\]
 unify :: (AnnLike a, AnnLike b) => a -> b -> Map CoeffIdx CoeffIdx
-unify q p | length (argVars q) == length (argVars p) =
+unify q p = let uniqueArgs = argVars q \\ argVars p in
+                  unify' (restrictArgs q uniqueArgs) p
+
+unify' :: (AnnLike a, AnnLike b) => a -> b -> Map CoeffIdx CoeffIdx
+unify' q p | length (argVars q) == length (argVars p) =
             let s = M.fromList (zip (argVars q) (argVars p)) in
               M.fromList [(i, substitute (argVars q) (argVars p) i) | i <- S.toList (definedIdxs q)]
-unify q p = case argVars p of
+unify' q p = case argVars p of
               [] -> M.empty
               [y] -> M.fromList [(i, substitute (argVars q)
-                                   (replicate (length (argVars q)) y) i) | i <- S.toList (definedIdxs q)]
-              _ys_greater_xs -> error $ "cannot apply potential function " ++ show p ++ " to arguements " ++ show (argVars q)   
+                                   (replicate (length (argVars q)) y) i)
+                                | i <- S.toList (definedIdxs q),
+                                  singleVar i]
+              _ys_greater_xs -> error $ "cannot apply potential function " ++ show p ++ " to arguments " ++ show (argVars q)   
+
+assertNonNegativeCtx :: (AnnLike a) => Map Type a -> [Constraint]
+assertNonNegativeCtx qs = concat $
+  [assertNonNegativeAnn q | q <- M.elems qs]
+
+assertNonNegativeAnn :: (AnnLike a) => a -> [Constraint]
+assertNonNegativeAnn q = concat $ [geZero (q!i) | i <- S.toList $ definedIdxs q]

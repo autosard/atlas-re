@@ -3,16 +3,14 @@
 module CostAnalysis.Potential.NLog.Constraints where
 
 import Prelude hiding (exp, (!!), sum)
-import qualified Data.List as L
 
 import Primitive(Id)
 import CostAnalysis.Potential.NLog.Base
-import CostAnalysis.RsrcAnn
+import CostAnalysis.Template
 import CostAnalysis.Constraint
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Coeff
 import Ast 
-import CostAnalysis.Potential (AnnRanges(rangeA, rangeB))
 import qualified Data.Text as T
 import Data.List.Extra (groupSort)
 
@@ -22,27 +20,9 @@ exp = "e1"
 shiftLogs :: Int -> Int -> Maybe (Int, Int)
 shiftLogs b c | c < 2 || b == 0 = Just (b, c + b)
               | otherwise = Nothing
-              
--- addShiftL :: RsrcAnn -> RsrcAnn -> [Constraint] 
--- addShiftL q q' =
---   let [x] = _args q
---       [y] = _args q' in
---     concat $ [eqs
---              | idx <- mixes q,
---                let (a,b) = facForVar2 idx x,
---                let c = constFactor idx,
---                let a' = a - 1,
---                let eqs = case shiftLogs b c of
---                     Just (b', c') ->
---                       if a > 0 then
---                         eq (q!idx) (q'![mix|y^(a,b'),c'|])
---                         ++ eq (q!idx) (q'![mix|y^(a',b'),c'|])
---                       else
---                         eq (q!idx) (q'![mix|y^(a,b'),c'|])
---                     Nothing -> eq (q!idx) (ConstTerm 0)]
   
-addShiftDefL :: RsrcAnn -> Id -> RsrcAnn -> Id -> (RsrcAnn, [Constraint])
-addShiftDefL q_ x q' y = extendAnn q_ $
+addShiftDefL :: FreeTemplate -> Id -> FreeTemplate -> Id -> (FreeTemplate, [Constraint])
+addShiftDefL q_ x q' y = extend q_ $
   [ (`eqSum` map (q'!) q'Idxs) <$> def qIdx
   | (qIdx, q'Idxs) <- groupSort nonZeroIdxs]
   where split idx (left, right) =
@@ -57,8 +37,8 @@ addShiftDefL q_ x q' y = extendAnn q_ $
                 Nothing -> (idx:left, right)
         (zeroIdxs, nonZeroIdxs) = foldr split ([],[]) (mixes q')
 
-cConst :: PositionedExpr -> RsrcAnn -> RsrcAnn -> [Constraint]
-cConst (Nil {}) q q' = eqSum (q!oneCoeff) [
+cConst :: PositionedExpr -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
+cConst (Nil {}) (q, _) q' = eqSum (q!oneCoeff) [
   q'![mix|exp^(1,0),2|],
   q'![mix|exp^(0,1),1|],
   q'![mix|exp^(1,1),1|],
@@ -66,9 +46,9 @@ cConst (Nil {}) q q' = eqSum (q!oneCoeff) [
   ++ eq (q![mix|1|]) (q'![mix|exp^(0,1)|])
 cConst (Ast.Const id _) _ _ = error $ "Constructor '" ++ T.unpack id ++ "' not supported."
 
-cMatch :: RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint])
+cMatch :: FreeTemplate -> FreeTemplate -> Id -> [Id] -> (FreeTemplate, [Constraint])
 -- nil / leaf
-cMatch q r x [] = extendAnn r $
+cMatch q r x [] = extend r $
   ((`eqSum` [q![mix|x^(1,0),2|],
             q![mix|x^(0,1),1|],
             q![mix|x^(1,1),1|],
@@ -77,11 +57,11 @@ cMatch q r x [] = extendAnn r $
 -- cons                   
 cMatch q p x [l] = addShiftDefL p l q x
 
-cLetBodyMulti :: RsrcAnn -> AnnArray -> Id -> [CoeffIdx] -> RsrcAnn -> (RsrcAnn, [Constraint])
-cLetBodyMulti q _ _ _ r = extendAnn r $
+cLetBodyMulti :: FreeTemplate -> TemplateArray -> Id -> [CoeffIdx] -> FreeTemplate -> (FreeTemplate, [Constraint])
+cLetBodyMulti q _ _ _ r = extend r $
   [ (`eq` (q!idx)) <$> def idx
   | idx <- mixes q,
-    onlyVarsOrConst idx (annVars r)]
+    onlyVarsOrConst idx (args r)]
 
-cLetCf :: Args -> RsrcAnn -> AnnArray -> AnnArray -> Id -> ([Id], [Id]) -> [CoeffIdx] -> (AnnArray, AnnArray, [Constraint])
+cLetCf :: Args -> FreeTemplate -> TemplateArray -> TemplateArray -> Id -> ([Id], [Id]) -> [CoeffIdx] -> (TemplateArray, TemplateArray, [Constraint])
 cLetCf potArgs q ps ps' x (gamma, delta) js = error "undefined for univariate potential."

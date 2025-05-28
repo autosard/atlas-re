@@ -7,7 +7,7 @@ import qualified Data.List as L
 
 import Primitive(Id)
 import CostAnalysis.Potential.Poly.Base
-import CostAnalysis.RsrcAnn
+import CostAnalysis.Template
 import CostAnalysis.Constraint
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Coeff
@@ -17,9 +17,9 @@ exp :: Id
 exp = "e1"
 
 -- additative shift
-addShiftL :: Int -> RsrcAnn -> RsrcAnn -> [Constraint] 
-addShiftL k q q' = let [x] = _args q
-                       [y] = _args q' in
+addShiftL :: Int -> FreeTemplate -> FreeTemplate -> [Constraint] 
+addShiftL k q q' = let [x] = args q
+                       [y] = args q' in
   concat [if idxSum idx < k then
              eqSum (q!idx) [q'!?[mix|_is,y^j|], q'!?[mix|_is,y^j'|]]
           else
@@ -29,8 +29,8 @@ addShiftL k q q' = let [x] = _args q
            let j' = j+1,
            let is = varsExcept idx [x]]
 
-addShiftDefL :: Int -> RsrcAnn -> Id -> RsrcAnn -> Id -> (RsrcAnn, [Constraint])
-addShiftDefL k q_ x q' y = extendAnn q_ $
+addShiftDefL :: Int -> FreeTemplate -> Id -> FreeTemplate -> Id -> (FreeTemplate, [Constraint])
+addShiftDefL k q_ x q' y = extend q_ $
   [if idxSum idx < k then
      (`eqSum` [q'![mix|_is,y^j|], q'![mix|_is,y^j'|]]) <$> def [mix|_is,x^j|]
    else
@@ -40,34 +40,34 @@ addShiftDefL k q_ x q' y = extendAnn q_ $
     let j' = j+1,
     let is = varsExcept idx [y]]
 
-cConst :: Args -> PositionedExpr -> RsrcAnn -> RsrcAnn -> [Constraint]
-cConst potArgs (Nil {}) q q'
+cConst :: Args -> PositionedExpr -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
+cConst potArgs (Nil {}) (q, _) q'
   = eq (q![mix||]) (q'!?[mix||])
   -- cons
-cConst potArgs (Cons {}) q q' = addShiftL (degree potArgs) q q' 
-cConst _ (Tuple (Var x1) (Var x2)) q q' = annLikeUnify' q q' [x1,x2]
+cConst potArgs (Cons {}) (q, _) q' = addShiftL (degree potArgs) q q' 
+cConst _ (Tuple (Var x1) (Var x2)) (q, _) q' = unifyAssertEqBy q q' [x1,x2]
 cConst _ constr _ _ = error $ show constr
 
-cMatch :: Args -> RsrcAnn -> RsrcAnn -> Id -> [Id] -> (RsrcAnn, [Constraint])
+cMatch :: Args -> FreeTemplate -> FreeTemplate -> Id -> [Id] -> (FreeTemplate, [Constraint])
 -- nil 
-cMatch _ q r x [] = extendAnn r $
+cMatch _ q r x [] = extend r $
   [(`eq` (q!idx)) <$> def idx
   | idx <- mixes q,
-    onlyVars idx (argVars r)]
+    onlyVars idx (args r)]
 -- cons                   
 cMatch potArgs q p x [l] = addShiftDefL (degree potArgs) p l q x
 
-cLetBodyMulti :: RsrcAnn -> AnnArray -> Id -> [CoeffIdx] -> RsrcAnn -> (RsrcAnn, [Constraint])
-cLetBodyMulti _ ps' x is r_ = extendAnn r_ $
+cLetBodyMulti :: FreeTemplate -> TemplateArray -> Id -> [CoeffIdx] -> FreeTemplate -> (FreeTemplate, [Constraint])
+cLetBodyMulti _ ps' x is r_ = extend r_ $
   [(`eq` (ps'!!i!pIdx)) <$> def [mix|_b,x^d|]
   | i <- is,
     let b = idxToSet i,
     pIdx <- mixes $ ps'!!i,
     let d = facForVar pIdx exp]
 
-cLetCf :: Args -> RsrcAnn -> AnnArray -> AnnArray -> Id -> ([Id], [Id]) -> [CoeffIdx] -> (AnnArray, AnnArray, [Constraint])
+cLetCf :: Args -> FreeTemplate -> TemplateArray -> TemplateArray -> Id -> ([Id], [Id]) -> [CoeffIdx] -> (TemplateArray, TemplateArray, [Constraint])
 cLetCf potArgs q ps ps' x (gamma, delta) js = (psDefined, ps'Defined, psCs)
-  where (psDefined, psCs) = extendAnns ps $
+  where (psDefined, psCs) = extends ps $
           [(`eq` (q!idx)) <$> defEntry j [mix|_i|]
           | j <- js,
             idx <- mixes q,
@@ -75,7 +75,7 @@ cLetCf potArgs q ps ps' x (gamma, delta) js = (psDefined, ps'Defined, psCs)
             let i = varsRestrict idx gamma,
             (not . null) (varsRestrict idx delta)]
         -- assume shape for p'_j  
-        (ps'Defined, _) = extendAnns ps' $ [L.singleton <$> defEntry j [mix|exp^d|]
+        (ps'Defined, _) = extends ps' $ [L.singleton <$> defEntry j [mix|exp^d|]
                                            | j <- js,
                                              let j' = idxToSet j,
                                              d <- [0..degree potArgs],

@@ -1,4 +1,4 @@
-module CostAnalysis.Potential.SumOfLogs (pot, defaultPot, logrPot, Args (..)) where
+module CostAnalysis.Potential.SumOfLogs (pot, defaultPot, logrPot, loglrxPot, Args (..)) where
 
 import CostAnalysis.Potential.SumOfLogs.Base
 import CostAnalysis.Potential.SumOfLogs.Constraints
@@ -10,7 +10,7 @@ import Data.Ratio((%))
 
 pot :: Args -> Potential
 pot args = Potential
-  rsrcAnn
+  template
   (ranges args)
   oneCoeff
   zeroCoeff
@@ -34,6 +34,7 @@ defaultPot = pot $ Args {
   bRange=defaultBRange,
   logL=1,
   logR=1,
+  logLR=0,
   logLemmaFactor=2} 
 
 logrPot = pot $ Args {
@@ -41,6 +42,15 @@ logrPot = pot $ Args {
   bRange=defaultBRange,
   logL=0,
   logR=1%2,
-  logLemmaFactor=1} 
+  logLR=0,
+  logLemmaFactor=1}
+
+loglrxPot = pot $ Args {
+  aRange=defaultARange,
+  bRange=defaultBRange,
+  logL=(-1)%2,
+  logR=0,
+  logLR=1%2,
+  logLemmaFactor=1}   
 
             

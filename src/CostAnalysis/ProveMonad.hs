@@ -19,11 +19,14 @@ import qualified Data.Tree as T
 
 
 import Primitive(Id)
-import CostAnalysis.RsrcAnn hiding (fromAnn)
-import CostAnalysis.Potential hiding (rsrcAnn, emptyAnn, defaultAnn)
+import CostAnalysis.Annotation hiding (sub, sum)
+import CostAnalysis.Template (FreeTemplate(..),
+                              TemplateArray)
+import CostAnalysis.Potential hiding (rsrcAnn, emptyAnn, defaultTempl)
 import CostAnalysis.Rules
 import qualified CostAnalysis.Potential as P
-import qualified CostAnalysis.RsrcAnn as R
+import qualified CostAnalysis.Template as Templ
+--import qualified CostAnalysis.Template
 import CostAnalysis.Tactic
 import SourceError
 import CostAnalysis.Constraint
@@ -38,7 +41,7 @@ type Derivation = Tree RuleApp
 
 
 data ProofState = ProofState {
-  _sig :: RsrcSignature,
+  _sig :: FreeSignature,
   _sigCs :: [Constraint],
   _optiTargets :: [Term],
   _annIdGen :: Int,
@@ -47,7 +50,6 @@ data ProofState = ProofState {
   _fnDerivs :: [Derivation],
   _solution :: Map Coeff Rational,
   _potentials :: P.PotFnMap}
-
 
 makeLenses ''ProofState
 
@@ -78,10 +80,10 @@ runProof env state proof = let rws = runExceptT proof in
 
 
 
-conclude :: Rule -> Maybe Int -> AnnCtx -> AnnCtx -> [Constraint] -> PositionedExpr -> [Derivation] -> ProveMonad Derivation
-conclude rule cf q q' cs e derivs = do
+conclude :: Rule -> Maybe Int -> (FreeAnn, FreeAnn) -> FreeAnn -> [Constraint] -> PositionedExpr -> [Derivation] -> ProveMonad Derivation
+conclude rule cf (q, qe) q' cs e derivs = do
   tellCs cs
-  return $ T.Node (ExprRuleApp rule (isJust cf) q q' cs e) derivs
+  return $ T.Node (ExprRuleApp rule (isJust cf) (q, qe) q' cs e) derivs
 
 tellCs :: [Constraint] -> ProveMonad ()
 tellCs cs = constraints %= (++cs)
@@ -116,122 +118,109 @@ genVarId = do
 freshVar :: ProveMonad Term
 freshVar = VarTerm <$> genVarId
 
-potForType :: Type -> Map Type (Potential, RsrcAnn) -> Potential
+potForType :: Type -> Map Type (Potential, FreeTemplate) -> Potential
 potForType t m = maybe
   (error $ "No potential function for type '" ++ show t ++ "' defined.")
   fst (m M.!? t)
 
-annForType :: Type -> Map Type (Potential, RsrcAnn) -> RsrcAnn
+annForType :: Type -> Map Type (Potential, FreeTemplate) -> FreeTemplate
 annForType t m = snd $ m M.! t
 
-withPotAndId :: Type -> (Potential -> Int -> Text -> Text -> [Id] -> RsrcAnn)
-  -> (Text -> Text -> [Id] -> ProveMonad RsrcAnn)
+withPotAndId :: Type -> (Potential -> Int -> Text -> Text -> [Id] -> FreeTemplate)
+  -> (Text -> Text -> [Id] -> ProveMonad FreeTemplate)
 withPotAndId t f label comment args = do
   pot <- potForType t <$> use potentials
   id <- genAnnId
   return $ f pot id label comment args
 
-withId :: (Potential -> Int -> Text -> Text -> [Id] -> RsrcAnn)
-  -> (Potential -> Text -> Text -> [Id] -> ProveMonad RsrcAnn)
+withId :: (Potential -> Int -> Text -> Text -> [Id] -> FreeTemplate)
+  -> (Potential -> Text -> Text -> [Id] -> ProveMonad FreeTemplate)
 withId f pot label comment args = do
   id <- genAnnId
   return $ f pot id label comment args
 
-emptyAnn :: Type -> Text -> Text -> [Id] -> ProveMonad RsrcAnn
-emptyAnn t = withPotAndId t P.emptyAnn
+emptyTempl :: Type -> Text -> Text -> [Id] -> ProveMonad FreeTemplate
+emptyTempl t = withPotAndId t P.emptyAnn
 
-emptyAnnCtx :: Map Type [Id] -> Text -> Text -> ProveMonad AnnCtx
-emptyAnnCtx args label comment = do
-  anns <- mapM (\(t, vars) -> (t, ) <$> emptyAnn t label comment vars) $ M.toAscList args
-  return $ M.fromList anns
+emptyAnn :: Map Type [Id] -> Text -> Text -> ProveMonad FreeAnn
+emptyAnn args label comment = do
+  templs <- mapM (\(t, vars) -> (t, ) <$> emptyTempl t label comment vars) $ M.toAscList args
+  return $ M.fromList templs
 
-fromAnn :: Text -> Text -> RsrcAnn -> ProveMonad RsrcAnn
-fromAnn label comment ann = do
+fromTempl :: Text -> Text -> FreeTemplate -> ProveMonad FreeTemplate
+fromTempl label comment ann = do
   id <- genAnnId
-  return $ R.fromAnn id label comment ann
+  return $ Templ.defineFrom id label comment ann
 
-fromCtx :: Text -> Text -> AnnCtx -> ProveMonad AnnCtx
-fromCtx label comment ctx = M.fromList <$> mapM go (M.toList ctx)
-  where go (t, ann) = do
-          ann' <- fromAnn label comment ann
-          return (t, ann')
+fromAnn :: Text -> Text -> FreeAnn -> ProveMonad FreeAnn
+fromAnn label comment ctx = M.fromList <$> mapM go (M.toList ctx)
+  where go (t, templ) = do
+          templ' <- fromTempl label comment templ
+          return (t, templ')
 
-
-enrichWithDefaults :: Bool -> Text -> Text -> AnnCtx -> ProveMonad AnnCtx
+enrichWithDefaults :: Bool -> Text -> Text -> FreeAnn -> ProveMonad FreeAnn
 enrichWithDefaults neg label comment ctx = do
   let qs = M.toAscList ctx
   M.fromList <$> mapM (enrichAnnWithDefaults neg label comment) qs
 
-enrichAnnWithDefaults :: Bool -> Text -> Text -> (Type, RsrcAnn) -> ProveMonad (Type, RsrcAnn)
+enrichAnnWithDefaults :: Bool -> Text -> Text -> (Type, FreeTemplate) -> ProveMonad (Type, FreeTemplate)
 enrichAnnWithDefaults neg label comment (t, ann) = do
   pot <- potForType t <$> use potentials
   id <- genAnnId
   return (t, P.enrichWithDefaults pot neg id label comment ann)
 
-defaultAnnCtx :: Map Type [Id] -> Text -> Text -> ProveMonad AnnCtx
-defaultAnnCtx args label comment = do
-  anns <- mapM (\(t, vars) -> (t, ) <$> defaultAnn t label comment vars) $ M.toAscList args
+defaultAnn :: Map Type [Id] -> Text -> Text -> ProveMonad FreeAnn
+defaultAnn args label comment = do
+  anns <- mapM (\(t, vars) -> (t, ) <$> defaultTempl t label comment vars) $ M.toAscList args
   return $ M.fromList anns
   
-defaultAnn :: Type -> Text -> Text -> [Id] -> ProveMonad RsrcAnn
-defaultAnn t = withPotAndId t P.defaultAnn
+defaultTempl :: Type -> Text -> Text -> [Id] -> ProveMonad FreeTemplate
+defaultTempl t = withPotAndId t P.defaultTempl
 
-defaultAnn' :: Potential -> Text -> Text -> [Id] -> ProveMonad RsrcAnn
-defaultAnn' = withId P.defaultAnn
+defaultTemplFor :: Potential -> Text -> Text -> [Id] -> ProveMonad FreeTemplate
+defaultTemplFor = withId P.defaultTempl
 
-defaultNegAnn :: Type -> Text -> Text -> [Id] -> ProveMonad RsrcAnn
-defaultNegAnn t = withPotAndId t P.defaultNegAnn
+defaultNegTempl :: Type -> Text -> Text -> [Id] -> ProveMonad FreeTemplate
+defaultNegTempl t = withPotAndId t P.defaultNegTempl
 
-emptyArrayFromIdxs :: Type -> [CoeffIdx] -> Text -> [Id] -> ProveMonad AnnArray
-emptyArrayFromIdxs t idxs label args = annArrayFromIdxs t idxs label args emptyAnn
+emptyArrayFromIdxs :: Type -> [CoeffIdx] -> Text -> [Id] -> ProveMonad TemplateArray
+emptyArrayFromIdxs t idxs label args = templArrayFromIdxs t idxs label args emptyTempl
 
-defaultArrayFromIdxs :: Type -> [CoeffIdx] -> Text -> [Id] -> ProveMonad AnnArray
-defaultArrayFromIdxs t idxs label args = annArrayFromIdxs t idxs label args defaultAnn
+defaultArrayFromIdxs :: Type -> [CoeffIdx] -> Text -> [Id] -> ProveMonad TemplateArray
+defaultArrayFromIdxs t idxs label args = templArrayFromIdxs t idxs label args defaultTempl
 
-annArrayFromIdxs :: Type -> [CoeffIdx] -> Text -> [Id] ->
-  (Type -> Text -> Text -> [Id] -> ProveMonad RsrcAnn) -> ProveMonad AnnArray
-annArrayFromIdxs t idxs label args annGen = do
-  anns <- mapM annFromIdx idxs
-  return $ M.fromList anns
-  where annFromIdx idx = (idx,) <$> annGen t (label' idx) "" args
-        printIdx idx = "(" ++ intercalate "," (map show (S.toAscList idx)) ++ ")"
-        label' idx = Te.concat [label, "_", Te.pack $ show idx]  
-
-
-ctxDefineBinding :: AnnCtx -> AnnCtx -> (AnnCtx, [Constraint])
-ctxDefineBinding ps_ qs = foldr go (M.empty, []) (M.keys qs)
-  where go t (ps, css) =
-          let (p, cs) = defineFrom' (ps_ M.! t) (qs M.! t) (const le) in
-            (M.insert t p ps, css ++ cs)
-
-ctxDefineBody :: AnnCtx -> AnnCtx -> AnnCtx -> (AnnCtx, [Constraint])
-ctxDefineBody rs_ qs ps = foldr go (M.empty, []) (M.keys qs)
-  where go t (rs, css) =
-          let (r, cs) = defineBody (rs_ M.! t) (qs M.! t) (ps M.! t) in
-            (M.insert t r rs, css ++ cs)
-
-ctxDefByConstShift :: AnnCtx -> AnnCtx -> (Term -> Term) -> ProveMonad (AnnCtx, [Constraint])
-ctxDefByConstShift qs_ ps shift = do
+defineByShift :: FreeAnn -> FreeAnn -> (Term -> Term) -> ProveMonad (FreeAnn, [Constraint])
+defineByShift qs_ ps shift = do
   pots <- use potentials
   let annsWithPot = map (\(t, q) -> (t, potForType t pots, q, ps M.! t)) $ M.toAscList qs_
   let (qs, css) = unzip $ map eqExceptConst' annsWithPot
   let qConsts = map (\(t, q) -> (t, oneCoeff (potForType t pots))) qs
-  let pConstTerms = M.elems $ M.mapWithKey (\t p -> p!?oneCoeff (potForType t pots)) ps
-  let (qs', cs) = extendCtx (M.fromList qs) $ (`shiftSum` pConstTerms)  <$> defMulti qConsts
+  let pConstTerms = M.elems $ M.mapWithKey (\t p -> p Templ.!? oneCoeff (potForType t pots)) ps
+  let (qs', cs) = extend (M.fromList qs) $ (`shiftSum` pConstTerms)  <$> defMulti qConsts
   return (qs', concat css ++ cs)
-  where eqExceptConst' (t, pot, q, p) = let (q', cs) = eqExceptConst pot q p in
+  where eqExceptConst' (t, pot, q, p) = let (q', cs) = defineByExceptConst pot q p in
           ((t, q'), cs)
         shiftSum qs ps = sum qs `eq` shift (sum ps)
 
-ctxDefByPlus :: AnnCtx -> AnnCtx -> Term -> ProveMonad (AnnCtx, [Constraint])
-ctxDefByPlus qs_ ps t = ctxDefByConstShift qs_ ps (\s -> sum [s,t])
-        
-ctxDefByMinus :: AnnCtx -> AnnCtx -> Term -> ProveMonad (AnnCtx, [Constraint])
-ctxDefByMinus qs_ ps t = ctxDefByConstShift qs_ ps (\s -> sub [s,t])
+defineByMinus :: FreeAnn -> FreeAnn -> Term -> ProveMonad (FreeAnn, [Constraint])
+defineByMinus qs_ ps t = defineByShift qs_ ps (\s -> sub [s,t])
 
-ctxCOptimize :: AnnCtx -> AnnCtx -> ProveMonad Term
-ctxCOptimize qs qs' = sum <$> mapM go (zip (M.assocs qs) (M.assocs qs'))
-  where go :: ((Type, RsrcAnn), (Type, RsrcAnn)) -> ProveMonad Term
+defineByPlus :: FreeAnn -> FreeAnn -> Term -> ProveMonad (FreeAnn, [Constraint])
+defineByPlus qs_ ps t = defineByShift qs_ ps (\s -> sum [s,t])
+
+
+templArrayFromIdxs :: Type -> [CoeffIdx] -> Text -> [Id] ->
+  (Type -> Text -> Text -> [Id] -> ProveMonad FreeTemplate) -> ProveMonad TemplateArray
+templArrayFromIdxs t idxs label args templGen = do
+  anns <- mapM annFromIdx idxs
+  return $ M.fromList anns
+  where annFromIdx idx = (idx,) <$> templGen t (label' idx) "" args
+        printIdx idx = "(" ++ intercalate "," (map show (S.toAscList idx)) ++ ")"
+        label' idx = Te.concat [label, "_", Te.pack $ show idx]  
+
+annCOptimize :: FreeAnn -> FreeAnn -> ProveMonad Term
+annCOptimize qs qs' = sum <$> mapM go (zip (M.assocs qs) (M.assocs qs'))
+  where go :: ((Type, FreeTemplate), (Type, FreeTemplate)) -> ProveMonad Term
         go ((t, q), (_, q')) = do
           pot <- potForType t <$> use potentials
           return $ cOptimize pot q q'          

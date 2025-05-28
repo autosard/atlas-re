@@ -5,11 +5,10 @@ import CostAnalysis.Potential.Poly.Constraints
 import CostAnalysis.Potential.Poly.Optimization
 import CostAnalysis.Potential.Poly.Weakening
 import CostAnalysis.Potential(Potential(Potential))
-import Ast (PotentialKind(Polynomial))
 
 pot :: Args -> Potential
 pot args = Potential
-  rsrcAnn
+  template
   (ranges args)
   oneCoeff
   zeroCoeff

@@ -10,14 +10,12 @@ import qualified Data.Set as S
 
 import Primitive(Id, infinity)
 import CostAnalysis.Rules(WeakenArg(..))
-import CostAnalysis.Potential(ExpertKnowledge, LeMatrix)
+import CostAnalysis.Potential(LeMatrix)
 import CostAnalysis.Coeff
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Weakening
 import CostAnalysis.Potential.SumOfLogs.Base(Args(..))
 
-
-import CostAnalysis.RsrcAnn (isPure)
 
 supportedArgs = S.fromList [Mono, L2xy]
 

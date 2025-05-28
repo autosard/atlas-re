@@ -23,9 +23,9 @@ import Primitive(Id, printRat)
 import Typing.Type (Type, splitProdType, splitFnType)
 import Typing.Subst(Types(apply, tv))
 import Typing.Scheme (Scheme, toType)
-import CostAnalysis.Coeff(CoeffIdx)
 import Data.Tuple (swap)
 import Data.List.Extra (groupSort)
+import CostAnalysis.Annotation(BoundFunAnn, BoundAnn)
     
 type Fqn = (Text, Text)
 
@@ -43,6 +43,7 @@ data Module a = Module {
 data PotentialKind
   = LogLR
   | LogR
+  | LogLRX
   | Polynomial
   | LinLog
   deriving (Eq, Ord, Show)
@@ -108,13 +109,9 @@ data Expr a
 type family XExprAnn a
 type family XFunAnn a
 
-
-type CoeffAnnotation = Map CoeffIdx Rational
-type FunRsrcAnn = (Map Type CoeffAnnotation, Map Type CoeffAnnotation)
-
 data CostAnnotation
-  = Coeffs {caWithCost :: FunRsrcAnn, caWithoutCost :: [FunRsrcAnn]}
-  | Cost {worstCase :: Bool, costCoeffs :: Map Type CoeffAnnotation}
+  = Coeffs BoundFunAnn
+  | Cost {worstCase :: Bool, costCoeffs :: BoundAnn}
   deriving (Eq, Show)
   
 

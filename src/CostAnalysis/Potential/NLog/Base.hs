@@ -11,7 +11,7 @@ import Primitive(Id)
 import Typing.Type
 import qualified CostAnalysis.Potential as P
 import CostAnalysis.Coeff
-import CostAnalysis.RsrcAnn
+import CostAnalysis.Template
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Constraint (Constraint)
 
@@ -29,9 +29,9 @@ bearesPotential _ = False
 ranges :: P.AnnRanges
 ranges = P.AnnRanges [0..1] [0..2] [0..2]
 
-rsrcAnn :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> RsrcAnn
-rsrcAnn id label comment args ranges =
-  RsrcAnn id args label comment $ S.fromList coeffs
+template :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> FreeTemplate
+template id label comment args ranges =
+  FreeTemplate id args label comment $ S.fromList coeffs
   where coeffs = defaultCoeffs args ranges
 
 defaultCoeffs :: [Id] -> ([Int], [Int]) -> [CoeffIdx]
@@ -58,11 +58,11 @@ monoFnCoeff P.Log args c = let xs = S.fromList $ map (`Arg` [0,1]) args in
 monoFnCoeff _ args c = Nothing
 
 
-cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
+cExternal :: FreeTemplate -> FreeTemplate -> [Constraint]
 cExternal q q' = []
 
 -- univariate potential
-letCfIdxs :: Args -> RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
+letCfIdxs :: Args -> FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 letCfIdxs potArgs q xs (rangeA, rangeB) x = []
 
 printBasePot :: CoeffIdx -> String

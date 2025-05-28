@@ -24,7 +24,8 @@ import System.Directory
 import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
-import CostAnalysis.RsrcAnn
+import CostAnalysis.Template
+import CostAnalysis.Annotation
 import CostAnalysis.Potential
 import Ast(Module(..), TypedModule, TypedExpr, Fqn, defs, printProg, PositionedModule)
 import CostAnalysis.PrettyProof(renderProof, css, js)
@@ -107,7 +108,7 @@ printAnalysisInfo (Module {..}) = putStrLn $
   ++ T.unpack (T.intercalate ", " (concat mutRecGroups))
   ++ ")."
 
-printSolution :: Bool -> RsrcSignature -> PotFnMap -> Solution -> IO ()
+printSolution :: Bool -> FreeSignature -> PotFnMap -> Solution -> IO ()
 printSolution dumpCoeffs sig potFns solution = do
   when dumpCoeffs (do
                       mapM_ (\(q, v) -> putStrLn $ show q ++ " = " ++ show v) (M.assocs solution)

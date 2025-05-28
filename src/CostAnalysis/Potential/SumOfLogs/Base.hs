@@ -13,18 +13,19 @@ import qualified Data.Text as T
 import Primitive(Id)
 import CostAnalysis.Coeff
 
-import CostAnalysis.RsrcAnn
+import CostAnalysis.Template
 import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential (AnnRanges(..), MonoFn(..))
-import CostAnalysis.Constraint (Constraint, zero, eq)
+import CostAnalysis.Constraint (Constraint, eq, Term(..))
 
 data Args = Args {
   aRange :: ![Int],
   bRange :: ![Int],
-  logL :: Rational,
-  logR :: Rational,
-  logLemmaFactor :: Rational}
+  logL :: !Rational,
+  logR :: !Rational,
+  logLR :: !Rational,
+  logLemmaFactor :: !Rational}
   
 
 potType = TreeType
@@ -44,9 +45,9 @@ combi' _ z [] = z
 combi' rangeA z (x:xs) = [if a > 0 then x^a:y else y
                        | a <- rangeA, y <- combi' rangeA z xs]
 
-rsrcAnn :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> RsrcAnn
-rsrcAnn id label comment args ranges =
-  RsrcAnn id args label comment $ S.fromList (rankCoeffs ++ logCoeffs)
+template :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> FreeTemplate
+template id label comment args ranges =
+  FreeTemplate id args label comment $ S.fromList (rankCoeffs ++ logCoeffs)
   where rankCoeffs = [Pure x | (x,i) <- zip args [1..]]
         logCoeffs = [idx
                     | idx <- combi ranges args,
@@ -65,18 +66,19 @@ monoFnCoeff Log args c = let xs = S.fromList $ map (^1) args in
 monoFnCoeff _ args c = Nothing
 
 
-cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
+cExternal :: FreeTemplate -> FreeTemplate -> [Constraint]
 cExternal q q' = 
   -- equal ranks  
-  concat [eq (q!?idx) (q'!?(u M.! idx))
-  | idx <- pures q]
-  where u = unify q q'
+  concat [eq (q!?idx) t
+  | idx <- pures q,
+    let t = if M.member idx u then q'!?(u M.! idx) else ConstTerm 0]
+  where u = apply q q'
     
 
-letCfIdxs :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
+letCfIdxs :: FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
 letCfIdxs q xs (rangeA, rangeB) x =
   [[mix|_bs,x^d,e|]
-  | idx <- varsRestrictMixes q xs,
+  | idx <- mixesForVars q xs,
     let bs = idxToSet idx,
     (not . null) bs,
     d <- rangeA,

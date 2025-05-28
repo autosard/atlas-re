@@ -11,7 +11,7 @@ import Primitive(Id)
 import Typing.Type
 import qualified CostAnalysis.Potential as P
 import CostAnalysis.Coeff
-import CostAnalysis.RsrcAnn
+import CostAnalysis.Template
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Constraint (Constraint)
 
@@ -25,17 +25,17 @@ ranges :: Args -> P.AnnRanges
 ranges potArgs = P.AnnRanges [0..degree potArgs] [] []
 
 
-idxs :: Int -> Int -> [[Int]]
-idxs _ 0 = return []
-idxs d l = do
+genIdxs :: Int -> Int -> [[Int]]
+genIdxs _ 0 = return []
+genIdxs d l = do
   nxt <- [0..d]
-  (nxt :) <$> idxs (d - nxt) (l - 1) 
+  (nxt :) <$> genIdxs (d - nxt) (l - 1) 
 
-rsrcAnn :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> RsrcAnn
-rsrcAnn id label comment args (degrees, _) =
-  RsrcAnn id args label comment $ S.fromList coeffs
+template :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> FreeTemplate
+template id label comment args (degrees, _) =
+  FreeTemplate id args label comment $ S.fromList coeffs
   where coeffs = map (mixed . S.fromList . zipWith (^) args)
-          $ idxs (last degrees) (length args)
+          $ genIdxs (last degrees) (length args)
           
 oneCoeff :: CoeffIdx
 oneCoeff = [mix||]
@@ -46,11 +46,11 @@ zeroCoeff = Nothing
 monoFnCoeff :: P.MonoFn -> [Id] -> Int -> Maybe CoeffIdx
 monoFnCoeff _ args c = Nothing
 
-cExternal :: RsrcAnn -> RsrcAnn -> [Constraint]
+cExternal :: FreeTemplate -> FreeTemplate -> [Constraint]
 cExternal q q' = []
 
-letCfIdxs :: RsrcAnn -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
-letCfIdxs q xs (rangeA, rangeB) x = filter (not . null . idxToSet ) $ varsRestrictMixes q xs
+letCfIdxs :: FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
+letCfIdxs q xs (rangeA, rangeB) x = filter (not . null . idxToSet ) $ mixesForVars q xs
 
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = error "pure coefficients are not supported with polynomial potential."

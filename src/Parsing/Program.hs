@@ -8,7 +8,7 @@ module Parsing.Program(parseExpr, parseModule, initialPos, SourcePos) where
 import Control.Monad 
 import Control.Applicative hiding (many, some)
 
-import Data.List(singleton)
+import Data.List(singleton, nub)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Void ( Void )
@@ -33,6 +33,11 @@ import Typing.Scheme
 import Control.Monad.RWS
 import Primitive(Id)
 import qualified CostAnalysis.Coeff as Coeff
+import CostAnalysis.Annotation (FunAnn(..),
+                                BoundAnn,
+                                split)
+import CostAnalysis.Template (BoundTemplate(..))
+import CostAnalysis.Coeff (coeffArgs)
 
 defaultCoinPropability :: Rational
 defaultCoinPropability = 1 % 2
@@ -75,11 +80,13 @@ pPotentialMapping = M.fromList <$> pParens (sepBy (do
   return (t, pot)) (symbol ","))
 
 pPotentialMode :: Parser PotentialKind
-pPotentialMode = choice
-  [symbol "loglr" $> LogLR,
-   symbol "polynomial" $> Polynomial,
-   symbol "linlog" $> LinLog,
-   symbol "logr" $> LogR]
+pPotentialMode =
+  try (symbol "loglrx") $> LogLRX
+  <|> symbol "loglr" $> LogLR
+  <|> symbol "polynomial" $> Polynomial
+  <|> symbol "linlog" $> LinLog
+  <|> symbol "logr" $> LogR
+   
 
 data Signature = Signature
   Id
@@ -122,7 +129,7 @@ pCoeffAnn = do
   symbol "|" 
   withCost <- pFunResourceAnn
   costFree <- optional $ pCurlyParens $ sepBy pFunResourceAnn (symbol ",")
-  return $ Coeffs withCost (fromMaybe [] costFree)
+  return $ Coeffs (FunAnn withCost (fromMaybe [] costFree) False)
 
 pCostAnn :: Parser CostAnnotation
 pCostAnn = do
@@ -174,17 +181,23 @@ pTypeConst
   <|> TAp Prod <$> pParens (sepBy1 pType pCross)
 
 
-pFunResourceAnn :: Parser FunRsrcAnn
-pFunResourceAnn = (,) <$> pTypedResourceAnn <* pArrow <*> pTypedResourceAnn
+pFunResourceAnn :: Parser ((BoundAnn, BoundAnn), BoundAnn)
+pFunResourceAnn = do
+  from <- pTypedResourceAnn
+  pArrow
+  to <- pTypedResourceAnn
+  let (from', fromRef) = split from to
+  return ((from', fromRef), to)
 
-pTypedResourceAnn :: Parser (Map Type (Map Coeff.CoeffIdx Rational))
+pTypedResourceAnn :: Parser BoundAnn
 pTypedResourceAnn = M.fromList <$> sepBy pResourceAnn (symbol ",")
 
-pResourceAnn :: Parser (Type, Map Coeff.CoeffIdx Rational)
+pResourceAnn :: Parser (Type, BoundTemplate)
 pResourceAnn = do
   t <- pType
   coeffs <- M.fromList <$> pSqParens pCoefficients
-  return (t, coeffs)
+  let args = nub $ foldr (\i ids -> ids ++ coeffArgs i) [] (M.keys coeffs)
+  return (t, BoundTemplate args coeffs)
 
 pCoefficients :: Parser [(Coeff.CoeffIdx, Rational)]
 pCoefficients =  sepBy pCoefficient (symbol ",")

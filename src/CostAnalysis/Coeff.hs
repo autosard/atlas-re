@@ -1,6 +1,7 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module CostAnalysis.Coeff where
 
@@ -14,6 +15,28 @@ import qualified Data.List as L
 
 import Primitive(Id)
 
+
+data Factor = Const Int | Arg Id [Int]
+  deriving (Eq, Ord)
+
+data CoeffIdx = Pure Id | Mixed (Set Factor)
+  deriving (Eq, Ord)
+
+class Index a where
+  toIdx :: a -> CoeffIdx
+
+instance Index Id where
+  toIdx = Pure
+
+instance Index CoeffIdx where
+  toIdx = id
+    
+instance Index [Factor] where
+  toIdx = mixed . S.fromList
+
+instance Index (Set Factor) where
+  toIdx = mixed
+
 data Coeff =
   Coeff
     Int -- ^ Unique identifier for the annotation; used together with coefficent index to identify coeffients when encoding them for smt. 
@@ -22,14 +45,17 @@ data Coeff =
     CoeffIdx -- ^ An index to identify the coefficient.
   deriving (Eq, Ord, Show)
 
+
+isPure :: CoeffIdx -> Bool
+isPure (Pure _) = True
+isPure _ = False
+
 getIdx :: Coeff -> CoeffIdx
 getIdx (Coeff _ _ _ idx) = idx
 
 printCoeff :: Coeff -> String
 printCoeff (Coeff id label comment idx) = "q" ++ show id ++ "[" ++ T.unpack label ++ "]" ++ show idx
 
-data Factor = Const Int | Arg Id [Int]
-  deriving (Eq, Ord)
 
 instance Show Factor where
   show (Const c) = show c
@@ -44,8 +70,6 @@ factorNotZero (Arg _ a) = not $ all (==0) a
 factorNotZero (Const c) = c /= 0
 
 
-data CoeffIdx = Pure Id | Mixed (Set Factor)
-  deriving (Eq, Ord)
 
 mixed :: Set Factor -> CoeffIdx
 mixed facs = Mixed (S.filter factorNotZero facs)
@@ -67,7 +91,8 @@ matchesVar x (Arg id _) = id == x
 matchesVar _ _ = False
 
 coeffArgs :: CoeffIdx -> [Id]
-coeffArgs = foldr go [] . S.toList . idxToSet
+coeffArgs (Pure x) = [x]
+coeffArgs idx = foldr go [] . S.toList . idxToSet $ idx
   where go (Const _) xs = xs
         go (Arg x _) xs = x:xs
 
@@ -120,7 +145,19 @@ onlyVars :: CoeffIdx -> [Id] -> Bool
 onlyVars idx xs = null $ except idx xs
 
 onlyVarsOrConst :: CoeffIdx -> [Id] -> Bool
-onlyVarsOrConst idx xs = null $ varsExcept idx xs 
+onlyVarsOrConst idx xs = null $ varsExcept idx xs
+
+singleVar :: CoeffIdx -> Bool
+singleVar (Pure _) = True
+singleVar idx = length (coeffArgs idx) == 1
+
+hasArgs :: [Id] -> CoeffIdx -> Bool
+hasArgs xs (Pure x) = x `elem` xs
+hasArgs xs idx = onlyVars idx xs 
+
+hasArgsOrConst :: [Id] -> CoeffIdx -> Bool
+hasArgsOrConst xs (Pure x) = x `elem` xs
+hasArgsOrConst xs idx = onlyVarsOrConst idx xs 
 
 justConst :: CoeffIdx -> Bool
 justConst (Mixed idx) = all isConst idx
@@ -173,7 +210,7 @@ instance Show CoeffIdx where
 substitute :: [Id] -> [Id] -> CoeffIdx -> CoeffIdx
 substitute from to idx@(Pure x) = case L.elemIndex x from of
   Just i -> Pure $ to !! i
-  Nothing -> error $ "invalid index " ++ show idx
+  Nothing -> error $ "invalid index " ++ show idx ++ show from
 substitute from to idx@(Mixed factors) = Mixed (S.map subFactor factors)
   where subFactor (Const c) = Const c
         subFactor (Arg x a) = case L.elemIndex x from of
@@ -188,3 +225,6 @@ class HasCoeffs a where
 
 instance HasCoeffs a => HasCoeffs [a] where
   getCoeffs = concatMap getCoeffs
+
+instance (HasCoeffs a, HasCoeffs b) => HasCoeffs (a,b) where
+  getCoeffs (x,y) = getCoeffs x ++ getCoeffs y

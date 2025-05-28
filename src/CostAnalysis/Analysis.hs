@@ -17,23 +17,18 @@ import Primitive(Id)
 import Ast hiding (CostAnnotation)
 import CostAnalysis.Solving (solve)
 import CostAnalysis.ProveMonad
-import CostAnalysis.Constraint hiding (and)
+import CostAnalysis.Constraint hiding (and, sum)
 import SourceError
 import CostAnalysis.Rules
 import Control.Monad.Except (MonadError (throwError))
 import CostAnalysis.Deriv
 import CostAnalysis.Coeff
 import Typing.Type
-import CostAnalysis.RsrcAnn ( RsrcSignature,
-                             FunRsrcAnn(..), ctxConstEq,
-                             ctxConstLe, PointWiseOp,
-                             opCoeffs, ctxGeZero, AnnCtx,
-                             annLikeLeftInRight, RsrcAnn(..),
-                             AnnLike(..))
-import CostAnalysis.Potential(ctxSymbolicCost, PotFnMap, Potential (cExternal))
+import CostAnalysis.Annotation
+import CostAnalysis.Potential(PotFnMap, Potential (cExternal))
 import CostAnalysis.Potential.Kind (fromKind)
 import Control.Monad.Extra (concatMapM)
-
+import CostAnalysis.Template (TermTemplate, FreeTemplate)
 
 defaultPotentialMap = M.fromList
   [
@@ -48,13 +43,13 @@ initPotentials mod kinds = do
   M.fromList <$> mapM go (M.toAscList potFnArgs)
   where go (t, args) = do
           let pot = fromKind (kinds M.! t)
-          potFn <- defaultAnn' pot "Q'" "potFn" args
+          potFn <- defaultTemplFor pot "Q'" "potFn" args
           return (t, (pot, potFn))
 
 data AnalysisResult = AnalysisResult
   Derivation
   [Constraint]
-  RsrcSignature
+  FreeSignature
   (Either [Constraint] (Solution, PotFnMap))
 
 analyzeModule :: ProofEnv -> PositionedModule
@@ -99,7 +94,7 @@ analyzeBindingGroup mod fns = do
 
 analyzeFn :: PositionedModule -> PositionedFunDef -> ProveMonad Derivation
 analyzeFn mod fn@(Fn id _ _) = do
-  ann <- genFunRsrcAnn fn
+  ann <- genFunAnn fn
   sig %= M.insert id ann
   analyzeFn' fn
 
@@ -112,28 +107,30 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
   
   case mode of
     CheckCoefficients -> case tfCostAnn funAnn of
-      Just Coeffs {..} -> coeffsMatchAnnotation fnId (caWithCost, caWithoutCost)
-      Just (Cost True cost) -> coeffsMatchAnnotation fnId ((cost, M.empty) , [])
+      Just (Coeffs target) -> coeffsMatchAnnotation fnId target
+      Just (Cost True cost) -> coeffsMatchAnnotation fnId $
+        FunAnn ((cost, M.empty), M.empty) [] False
       _noCoeff -> errorFrom (SynExpr body) "Missing resource coefficient annotation for check-coeffs mode."
     CheckCost -> case tfCostAnn funAnn of
-      Just Cost {..} -> cmpCostWithAnn ctxConstEq fnId costCoeffs
+      Just (Cost _ cost) -> cmpCostWithAnn assertEq fnId cost
       _noCost -> errorFrom (SynExpr body) "Missing cost annotation for check-cost mode."
     ImproveCost -> case tfCostAnn funAnn of
-      Just Cost {..} -> do
-        cmpCostWithAnn ctxConstLe fnId costCoeffs
+      Just (Cost _ cost) -> do
+        cmpCostWithAnn assertLe fnId cost
         addSimpleCostOptimization fnId
       noCost_ -> errorFrom (SynExpr body) "Missing cost annotation for improve-cost mode."
     Infer -> do
       s <- use sig
-      let (q, q') = withCost $ s M.! fnId
-      tellSigCs $ potFnCovered q q'
+      let ((q, qe), q') = withCost $ s M.! fnId
       tellSigCs =<< externalCsForCtx q q'
       addFullCostOptimization fnId
+      --addSimpleCostOptimization fnId
+      optiTargets %= (sum qe:)
   proveFun def
 
-externalCsForCtx :: AnnCtx -> AnnCtx -> ProveMonad [Constraint]
+externalCsForCtx :: FreeAnn -> FreeAnn -> ProveMonad [Constraint]
 externalCsForCtx ctxQ ctxQ' = concatMapM csForType (M.assocs ctxQ) 
-  where csForType :: (Type, RsrcAnn) -> ProveMonad [Constraint]
+  where csForType :: (Type, FreeTemplate) -> ProveMonad [Constraint]
         csForType (t, q) = do
           pots <- use potentials
           if M.member t ctxQ' then
@@ -141,16 +138,11 @@ externalCsForCtx ctxQ ctxQ' = concatMapM csForType (M.assocs ctxQ)
           else
             return []
 
-assertNonNegativeCtx :: (AnnLike a) => Map Type a -> [Constraint]
-assertNonNegativeCtx qs = concat $
-  [geZero (q!i) |
-   q <- M.elems qs,
-   i <- S.toList $ definedIdxs q]
-
-assertNonNegativeFnAnn :: (AnnCtx, AnnCtx) -> ProveMonad ()
-assertNonNegativeFnAnn (q, q') = tellSigCs $
-  assertNonNegativeCtx q
-  ++ assertNonNegativeCtx q'
+assertNonNegativeFnAnn :: ((FreeAnn, FreeAnn), FreeAnn) -> ProveMonad ()
+assertNonNegativeFnAnn ((q, qe), q') = tellSigCs $
+  assertGeZero q
+  ++ assertGeZero qe
+  ++ assertGeZero q'
 
 assertNonNegativeSig :: Id -> ProveMonad ()
 assertNonNegativeSig fn = do
@@ -161,51 +153,44 @@ assertNonNegativeSig fn = do
 assertNonNegativeCost :: Id -> ProveMonad ()
 assertNonNegativeCost fn = do
   ann <- (M.! fn) <$> use sig
-  let cost = ctxSymbolicCost (withCost ann)
-  tellSigCs $ assertNonNegativeCtx cost
+  let cost = symbolicCost (withCost ann)
+  tellSigCs $ assertGeZero cost
 
-potFnCovered :: AnnCtx -> AnnCtx -> [Constraint]
-potFnCovered qs qs' = concat
-  [annLikeLeftInRight q' q
-  | t <- M.keys qs',
-    let q' = qs' M.! t,
-    M.member t qs,
-    let q = qs M.! t]
+-- potFnCovered :: FreeAnn -> FreeAnn -> [Constraint]
+-- potFnCovered qs qs' = concat
+--   [annLikeLeftInRight q' q
+--   | t <- M.keys qs',
+--     let q' = qs' M.! t,
+--     M.member t qs,
+--     let q = qs M.! t]
 
-type CostComparision = Map Type PointWiseOp -> Map Type CoeffAnnotation -> [Constraint]
+type CostComparision = Map Type TermTemplate -> BoundAnn -> [Constraint]
 
-cmpCostWithAnn :: CostComparision -> Id -> Map Type CoeffAnnotation -> ProveMonad ()
+cmpCostWithAnn :: CostComparision -> Id -> BoundAnn -> ProveMonad ()
 cmpCostWithAnn cmp fn costAnn = do
   ann <- (M.! fn) <$> use sig
-  let cost = ctxSymbolicCost (withCost ann)
-  tellSigCs $ ctxGeZero cost
+  let cost = symbolicCost (withCost ann)
+  tellSigCs $ assertGeZero cost
   tellSigCs $ cmp cost costAnn
 
-coeffsMatchAnnotation :: Id -> (Ast.FunRsrcAnn, [Ast.FunRsrcAnn]) -> ProveMonad ()
-coeffsMatchAnnotation fn (annWithCost, annsWithoutCost) = do
+coeffsMatchAnnotation :: Id -> BoundFunAnn -> ProveMonad ()
+coeffsMatchAnnotation fn target = do
   ann <- (M.! fn) <$> use sig
-  let cfAnns = withoutCost ann
-  let (q, q') = withCost ann
-  tellSigCs $ ctxConstEq q $ fst annWithCost
-  tellSigCs $ ctxConstEq q' $ snd annWithCost
-  zipWithM_ matchCf cfAnns annsWithoutCost
-  where matchCf (pIs, pIs') (pShould, pShould') = do
-          tellSigCs $ ctxConstEq pIs pShould
-          tellSigCs $ ctxConstEq pIs' pShould'
+  tellSigCs $ assertFunAnnEq ann target
 
 addSimpleCostOptimization :: Id -> ProveMonad ()
 addSimpleCostOptimization fn = do
   ann <- (M.! fn) <$> use sig
-  let cost = ctxSymbolicCost (withCost ann)
-  let costTerm = sum $ map (sum . M.elems . opCoeffs) $ M.elems cost
+  let cost = symbolicCost (withCost ann)
+  let costTerm = sum cost
   optiTargets %= (costTerm:)
 
   
 addFullCostOptimization :: Id -> ProveMonad ()
 addFullCostOptimization fn = do
   ann <- (M.! fn) <$> use sig
-  let (q, q') = withCost ann
-  costTerm <- ctxCOptimize q q'
+  let ((q, _), q') = withCost ann
+  costTerm <- annCOptimize q q'
   optiTargets %= (costTerm:)
 
 argsWithPot :: (Map Type [Id], Map Type [Id]) -> ProveMonad (Map Type [Id], Map Type [Id])
@@ -215,22 +200,27 @@ argsWithPot (from, to) = do
   let to' = M.restrictKeys to $ M.keysSet pots
   return (from', to')
 
-genFunRsrcAnn :: PositionedFunDef -> ProveMonad CostAnalysis.RsrcAnn.FunRsrcAnn
-genFunRsrcAnn fn@(FunDef funAnn _ _ _) = do
+genFunAnn :: PositionedFunDef -> ProveMonad FreeFunAnn
+genFunAnn fn@(FunDef funAnn _ _ _) = do
   (argsFrom, argsTo) <- argsWithPot $ fnArgsByType fn
   pots <- use potentials
   to <- if hasPotential fn then
           return $ M.mapWithKey (\t _ -> annForType t pots) argsTo
         else if null argsTo then
-               emptyAnnCtx (M.map (const []) argsFrom) "Q'" "fn" 
+               emptyAnn (M.map (const []) argsFrom) "Q'" "fn" 
              else
-               emptyAnnCtx argsTo "Q'" "fn" 
+               emptyAnn argsTo "Q'" "fn" 
 
   let numCfSigs = fromMaybe 1 $ tfNumCf funAnn
-  from <- defaultAnnCtx argsFrom "Q" "fn" 
-  fromCfs <- mapM (const $ defaultAnnCtx argsFrom "P" "fn cf") [1..numCfSigs]
-  toCfs <- mapM (const $ defaultAnnCtx argsTo "P'" "fn cf") [1..numCfSigs]
-  return $ FunRsrcAnn (from, to) (zip fromCfs toCfs) (hasPotential fn)
+  from <- defaultAnn argsFrom "Q" "fn"
+  fromRef <- defaultAnn argsTo "QE" "fn" 
+  fromCfs <- mapM (const $ genCf argsFrom argsTo) [1..numCfSigs]
+  toCfs <- mapM (const $ defaultAnn argsTo "P'" "fn cf") [1..numCfSigs]
+  return $ FunAnn ((from, fromRef), to) (zip fromCfs toCfs) (hasPotential fn)
+  where genCf argsFrom argsTo= do
+          q <- defaultAnn argsFrom "P" "fn cf" 
+          qe <- defaultAnn argsTo "PE" "fn cf" 
+          return (q, qe)
 
   
 addSigCs :: [Id] -> Solution -> ProveMonad ()

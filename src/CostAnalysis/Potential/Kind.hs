@@ -16,6 +16,7 @@ import CostAnalysis.Coeff (CoeffIdx (Pure), Factor(..), idxToSet)
 fromKind :: PotentialKind -> Potential
 fromKind LogR = SumOfLogs.logrPot
 fromKind LogLR = SumOfLogs.defaultPot
+fromKind LogLRX = SumOfLogs.loglrxPot
 fromKind Polynomial = Poly.defaultPot
 fromKind LinLog = NLog.defaultPot
                       
