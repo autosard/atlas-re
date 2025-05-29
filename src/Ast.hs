@@ -33,9 +33,14 @@ printFqn (mod, fn) = T.unpack mod ++ "." ++ T.unpack fn
 
 type Number = Int
 
+data ModConfig = ModConfig {
+  modPotMap :: Map Type PotentialKind,
+  modRhsTerms :: Bool}
+  deriving (Show)
+
 data Module a = Module {
   name :: Text,
-  modPotentialMap :: Map Type PotentialKind,
+  config :: ModConfig,
   mutRecGroups :: [[Id]],
   defs :: Map Id (FunDef a)
 } 

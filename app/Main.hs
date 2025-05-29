@@ -27,7 +27,13 @@ import Data.Tree(drawTree)
 import CostAnalysis.Template
 import CostAnalysis.Annotation
 import CostAnalysis.Potential
-import Ast(Module(..), TypedModule, TypedExpr, Fqn, defs, printProg, PositionedModule)
+import Ast(Module(..),
+           ModConfig(..),
+           TypedModule,
+           TypedExpr,
+           Fqn, defs,
+           printProg,
+           PositionedModule)
 import CostAnalysis.PrettyProof(renderProof, css, js)
 
 
@@ -88,7 +94,8 @@ run Options{..} AnalyzeOptions{..} = do
   let env = ProofEnv {
         _tactics=tactics,
         _analysisMode=analysisMode,
-        _incremental=switchIncremental}
+        _incremental=switchIncremental,
+        _rhsTerms=(modRhsTerms . config) positionedProg}
   result <- liftIO $ analyzeModule env positionedProg
   
   case result of

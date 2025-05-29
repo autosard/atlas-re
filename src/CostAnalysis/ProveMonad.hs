@@ -62,7 +62,8 @@ data AnalysisMode
 data ProofEnv = ProofEnv {
   _tactics :: Map Id Tactic,
   _analysisMode :: AnalysisMode,
-  _incremental :: Bool}
+  _incremental :: Bool,
+  _rhsTerms :: Bool}
 
 data ProofErr
   = DerivErr SourceError

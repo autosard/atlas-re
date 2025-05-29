@@ -27,7 +27,7 @@ import Typing.Type
 import CostAnalysis.Annotation
 import CostAnalysis.Potential(PotFnMap, Potential (cExternal))
 import CostAnalysis.Potential.Kind (fromKind)
-import Control.Monad.Extra (concatMapM)
+import Control.Monad.Extra (concatMapM, ifM)
 import CostAnalysis.Template (TermTemplate, FreeTemplate)
 
 defaultPotentialMap = M.fromList
@@ -76,7 +76,7 @@ analyzeModule env mod = do
 
 analyzeModule' :: PositionedModule -> ProveMonad ()
 analyzeModule' mod = do
-  pots <- initPotentials mod $ modPotentialMap mod `M.union` defaultPotentialMap
+  pots <- initPotentials mod $ (modPotMap . config) mod `M.union` defaultPotentialMap
   potentials %= const pots
   incr <- view incremental
   if incr then
@@ -213,7 +213,9 @@ genFunAnn fn@(FunDef funAnn _ _ _) = do
 
   let numCfSigs = fromMaybe 1 $ tfNumCf funAnn
   from <- defaultAnn argsFrom "Q" "fn"
-  fromRef <- defaultAnn argsTo "QE" "fn" 
+  fromRef <- ifM (view rhsTerms)
+    (defaultAnn argsTo "QE" "fn")
+    (emptyAnn argsTo "QE" "fn")
   fromCfs <- mapM (const $ genCf argsFrom argsTo) [1..numCfSigs]
   toCfs <- mapM (const $ defaultAnn argsTo "P'" "fn cf") [1..numCfSigs]
   return $ FunAnn ((from, fromRef), to) (zip fromCfs toCfs) (hasPotential fn)

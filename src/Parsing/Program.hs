@@ -64,10 +64,14 @@ quantifyTypeVar id = do
 type Parser = ParsecT Void Text (RWS ParserContext () ParserState)
 
 
-pModule :: Parser (Map Type PotentialKind, [ParsedFunDef])
+pModule :: Parser (ModConfig, [ParsedFunDef])
 pModule = sc *> do
   pots <- optional $ pPragma "POTENTIAL" pPotentialMapping
-  (fromMaybe M.empty pots,) <$> manyTill pFunc eof
+  rhsTerms <- optional $ pPragma "RHSTERMS" (return True)
+  let config = ModConfig
+        (fromMaybe M.empty pots)
+        (fromMaybe False rhsTerms)
+  (config,) <$> manyTill pFunc eof
 
 pPragma :: Text -> Parser a -> Parser a
 pPragma word p = between (try (symbol "{-#")) (symbol "#-}") $ symbol word *> p
@@ -373,7 +377,7 @@ sc = L.space
 initState = ParserState 0 M.empty
 
 
-parseModule :: String -> Text -> Text -> (Map Type PotentialKind, [ParsedFunDef])
+parseModule :: String -> Text -> Text -> (ModConfig, [ParsedFunDef])
 parseModule fileName moduleName contents = case fst $ evalRWS rws initEnv initState of
   Left errs -> error $ errorBundlePretty errs
   Right prog -> prog

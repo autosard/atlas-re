@@ -21,7 +21,6 @@ import Control.Monad.Extra
 
 import Primitive(Id)
 import Ast
-import Typing.Type
 import StaticAnalysis(calledFunctions)
 import qualified Parsing.Program(parseModule)
 import qualified System.FilePath.Glob as Glob
@@ -40,12 +39,12 @@ load :: FilePath -> Text -> Maybe Text -> IO (ParsedModule, Text)
 load loadPath modName fn = do
   moduleFile <- findModule loadPath (T.unpack modName)
   contents <- TextIO.readFile moduleFile
-  let (potentials, parsedDefs) = Parsing.Program.parseModule moduleFile modName contents
+  let (modConfig, parsedDefs) = Parsing.Program.parseModule moduleFile modName contents
   let defsWithFqn = M.fromList $ zip (map (pfFqn . funAnn) parsedDefs) parsedDefs
   let todos = case fn of
         Just id -> [(modName, id)]
         Nothing -> M.keys defsWithFqn
-  parsedMod <- evalStateT (buildModule loadPath modName potentials) $
+  parsedMod <- evalStateT (buildModule loadPath modName modConfig) $
     LoaderState
     M.empty
     defsWithFqn
@@ -53,7 +52,7 @@ load loadPath modName fn = do
     todos
   return (parsedMod, contents)
 
-buildModule :: FilePath -> Text -> Map Type PotentialKind -> StateT LoaderState IO ParsedModule
+buildModule :: FilePath -> Text -> ModConfig -> StateT LoaderState IO ParsedModule
 buildModule loadPath modName potentials = do
   fqn@(moduleName, definitionName) <- popTodo
   def <- retrieveDefinition fqn
@@ -66,8 +65,8 @@ buildModule loadPath modName potentials = do
 
   ifM someTodos (buildModule loadPath modName potentials) (moduleFromLoaderState modName potentials)
 
-moduleFromLoaderState :: Text -> Map Type PotentialKind -> StateT LoaderState IO ParsedModule
-moduleFromLoaderState modName potential = do
+moduleFromLoaderState :: Text -> ModConfig -> StateT LoaderState IO ParsedModule
+moduleFromLoaderState modName config = do
   LoaderState{..} <- get
   let edgeList = map (\(key, keys) -> (key, key, S.toList keys)) $ M.toList dependents
   let (g, vertexFqnMap, fqnVertexMap) = G.graphFromEdges edgeList
@@ -75,7 +74,7 @@ moduleFromLoaderState modName potential = do
   let depSccs = G.scc g
   return $ Module
            modName
-           potential
+           config
            (reverse (sccsToRecBindings vertexFqnMap'  depSccs))
            (M.mapKeys snd loadedDefinitions)
   where sccsToRecBindings :: (G.Vertex -> Fqn) -> [Tree G.Vertex] -> [[Id]]

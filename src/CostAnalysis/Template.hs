@@ -241,7 +241,7 @@ apply q p = case args p of
               [y] -> M.fromList [(i, substitute (args q)
                                    (replicate (length (args q)) y) i)
                                 | i <- S.toList (idxs q),
-                                  singleVar i]
+                                  isPure i]
               _ys_greater_xs -> error $ "cannot apply potential function " ++ show p ++ " to arguments " ++ show (args q)
 
 symbolicCost :: (Template a, Template b) => a -> b -> TermTemplate
