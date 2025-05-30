@@ -25,8 +25,8 @@ data Rule
   | TickDefer
   | WeakenVar
   | Weaken [WeakenArg]
-  | WeakenShift 
-  | Shift
+  | ShiftConst
+  | ShiftTerm 
   deriving(Eq, Show)
 
 data RuleApp

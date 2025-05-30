@@ -40,7 +40,8 @@ pNonAtomic = Rule Ite <$ symbol "ite" <*> count 2 pRule
   <|> Rule WeakenVar <$ symbol "w:var" <*> count 1 pRule
   <|> (do rule <- Weaken <$ symbol "w" <*> pRuleArgs pWeakenArg
           Rule rule <$> count 1 pRule)
-  <|> Rule Shift <$ symbol "shift" <*> count 1 pRule
+  <|> Rule ShiftConst <$ try (symbol "shift") <*> count 1 pRule
+  <|> Rule ShiftTerm <$ symbol "shift:term" <*> count 1 pRule
   <?> "rule"
 
 pLetArg :: Parser LetArg

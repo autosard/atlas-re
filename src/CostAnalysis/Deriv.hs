@@ -304,14 +304,14 @@ proveWeaken tactic@(Rule (R.Weaken wArgs) _) cf e (q, qe) q' = do
   deriv <- proveExpr t cf e (p, qe) p'
   conclude (R.Weaken wArgs) cf (q, qe) q' (pCs ++ p'Cs) e [deriv]
 
-proveWeakenShift :: Prove PositionedExpr Derivation
-proveWeakenShift tactic cf e (q, qe) q' = do
+proveShiftTerm :: Prove PositionedExpr Derivation
+proveShiftTerm tactic cf e (q, qe) q' = do
   let [subTactic] = subTactics 1 tactic
 
-  pe <- fromAnn "PE" "weaken shift" qe
-  p' <- fromAnn "P'" "weaken shift" q'
+  pe <- fromAnn "PE" "shift:term" qe
+  p' <- fromAnn "P'" "shift:term" q'
 
-  r <- fromAnn "R" "weaken shift cf" q'
+  r <- fromAnn "R" "shift:term" q'
   
 
   let cs = unifyAssertEq pe (add qe r)
@@ -320,11 +320,11 @@ proveWeakenShift tactic cf e (q, qe) q' = do
 
   deriv <- proveExpr subTactic cf e (q, pe) p'
 
-  conclude R.WeakenShift cf (q, qe) q' cs e [deriv]
+  conclude R.ShiftTerm cf (q, qe) q' cs e [deriv]
   
 
-proveShift :: Prove PositionedExpr Derivation
-proveShift tactic cf@Nothing e (q, qe) q' = do
+proveShiftConst :: Prove PositionedExpr Derivation
+proveShiftConst tactic cf@Nothing e (q, qe) q' = do
   let [subTactic] = subTactics 1 tactic
 
   k <- freshVar
@@ -339,8 +339,8 @@ proveShift tactic cf@Nothing e (q, qe) q' = do
   let cs = pCs ++ p'Cs ++ geZero k
   
   deriv <- proveExpr subTactic cf e (ps, qe) ps'
-  conclude R.Shift cf (q, qe) q' cs e [deriv]
-proveShift tactic cf@(Just _) e (qs, qe) qs' = do
+  conclude R.ShiftConst cf (q, qe) q' cs e [deriv]
+proveShiftConst tactic cf@(Just _) e (qs, qe) qs' = do
   let [subTactic] = subTactics 1 tactic
   let wArgs = S.fromList [R.Mono]
 
@@ -383,7 +383,7 @@ proveShift tactic cf@(Just _) e (qs, qe) qs' = do
   let cs = or $ constShiftCs ++ concat monoShiftCs
   
   deriv <- proveExpr subTactic cf e (ps, qe) ps'
-  conclude R.Shift cf (qs, qe) qs' cs e [deriv]  
+  conclude R.ShiftConst cf (qs, qe) qs' cs e [deriv]  
 
 proveTickDefer :: Prove PositionedExpr Derivation
 proveTickDefer tactic cf e@(Tick c e1) (q, qe) q' = do
@@ -415,8 +415,8 @@ proveExpr tactic@(Rule (R.Let _) _) cf e@(Let {}) = proveLet tactic cf e
 proveExpr tactic@(Rule R.TickDefer _) cf e@(Tick {}) = removeRedundantVars proveTickDefer tactic cf e
 proveExpr tactic@(Rule R.WeakenVar _) cf e = proveWeakenVar tactic cf e
 proveExpr tactic@(Rule (R.Weaken _) _) cf e = proveWeaken tactic cf e
-proveExpr tactic@(Rule R.WeakenShift _) cf e = proveWeakenShift tactic cf e
-proveExpr tactic@(Rule R.Shift _) cf e = proveShift tactic cf e
+proveExpr tactic@(Rule R.ShiftTerm _) cf e = proveShiftTerm tactic cf e
+proveExpr tactic@(Rule R.ShiftConst _) cf e = proveShiftConst tactic cf e
 proveExpr tactic@(Rule R.App _) cf e@(App id _) = removeRedundantVars proveApp tactic cf e
 -- auto tactic
 proveExpr Auto cf e = proveExpr (genTactic cf e) cf e 
@@ -431,9 +431,9 @@ genTactic cf (Match _ arms) = Rule R.Match $ map (genTactic cf . armExpr) arms
 genTactic cf e@(Ite _ e2 e3) = let t1 = genTactic cf e2 
                                    t2 = genTactic cf e3 in
   autoWeaken cf e $ Rule R.Ite [t1, t2]
-genTactic _ (App {}) = Rule R.Shift [Rule R.App []]
+genTactic _ (App {}) = Rule R.ShiftConst [Rule R.App []]
 genTactic cf e@(Let _ binding body) = let tBinding = genTactic cf binding
-                                          t1 = Rule R.WeakenShift [tBinding]
+                                          t1 = Rule R.ShiftTerm [tBinding]
                                           --t1 = tBinding
                                           t2 = genTactic cf body
                                           ctx = peCtx $ getAnn e 
