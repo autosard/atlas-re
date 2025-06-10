@@ -19,13 +19,21 @@ import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential (AnnRanges(..), MonoFn(..))
 import CostAnalysis.Constraint (Constraint, eq, Term(..))
 
+-- c log(x + y) >= a log(x) + b log(y) + d
+data LogLemmaCoeffs = LogLemmaCoeffs {
+  llA :: !Rational,
+  llB :: !Rational,
+  llC :: !Rational,
+  llD :: !Rational}
+                                     
+
 data Args = Args {
   aRange :: ![Int],
   bRange :: ![Int],
   logL :: !Rational,
   logR :: !Rational,
   logLR :: !Rational,
-  logLemmaFactor :: !Rational}
+  logLemmaInstance :: !LogLemmaCoeffs}
   
 
 potType = TreeType

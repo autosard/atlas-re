@@ -19,6 +19,7 @@ fromKind LogLR = SumOfLogs.defaultPot
 fromKind LogLRX = SumOfLogs.loglrxPot
 fromKind Polynomial = Poly.defaultPot
 fromKind LinLog = NLog.defaultPot
+fromKind LogGolden = SumOfLogs.goldenPot
                       
 pays :: PotentialKind -> PotentialKind -> Maybe (CoeffIdx -> Maybe CoeffIdx)
 pays p1 p2 | p1 == p2 = Just Just

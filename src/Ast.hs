@@ -51,6 +51,7 @@ data PotentialKind
   | LogLRX
   | Polynomial
   | LinLog
+  | LogGolden
   deriving (Eq, Ord, Show)
 
 fns :: Module a -> [FunDef a]

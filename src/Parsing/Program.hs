@@ -90,6 +90,7 @@ pPotentialMode =
   <|> symbol "polynomial" $> Polynomial
   <|> symbol "linlog" $> LinLog
   <|> symbol "logr" $> LogR
+  <|> symbol "log_golden" $> LogGolden
    
 
 data Signature = Signature
