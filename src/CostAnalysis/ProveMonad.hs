@@ -15,11 +15,13 @@ import Data.Text(Text)
 import qualified Data.Text as Te
 import Data.Tree(Tree)
 import qualified Data.Set as S
+import Data.Set(Set)
 import qualified Data.Tree as T
 
 
 import Primitive(Id)
 import CostAnalysis.Annotation hiding (sub, sum)
+import CostAnalysis.Predicate
 import CostAnalysis.Template (FreeTemplate(..),
                               TemplateArray)
 import CostAnalysis.Potential hiding (rsrcAnn, emptyAnn, defaultTempl)
@@ -81,10 +83,17 @@ runProof env state proof = let rws = runExceptT proof in
 
 
 
-conclude :: Rule -> Maybe Int -> (FreeAnn, FreeAnn) -> FreeAnn -> [Constraint] -> PositionedExpr -> [Derivation] -> ProveMonad Derivation
-conclude rule cf (q, qe) q' cs e derivs = do
+conclude :: Rule
+  -> Maybe Int
+  -> (FreeAnn, FreeAnn, Set Predicate)
+  -> FreeAnn
+  -> [Constraint]
+  -> PositionedExpr
+  -> [Derivation]
+  -> ProveMonad Derivation
+conclude rule cf ctx ctx' cs e derivs = do
   tellCs cs
-  return $ T.Node (ExprRuleApp rule (isJust cf) (q, qe) q' cs e) derivs
+  return $ T.Node (ExprRuleApp rule (isJust cf) ctx ctx' cs e) derivs
 
 tellCs :: [Constraint] -> ProveMonad ()
 tellCs cs = constraints %= (++cs)

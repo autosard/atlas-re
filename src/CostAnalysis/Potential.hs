@@ -30,6 +30,7 @@ import Typing.Type (Type)
 import Ast hiding (FunRsrcAnn)
 
 import Data.Maybe (fromMaybe)
+import CostAnalysis.Predicate (Predicate)
 
 type LeMatrix = (V.Vector (V.Vector Rational), [Rational])
 
@@ -82,7 +83,7 @@ data Potential = Potential {
   -- | @ 'cLetCf' q ps_ ps'_ x is = (ps, ps', cs)@
   cLetCf :: FreeTemplate -> TemplateArray -> TemplateArray -> Id -> ([Id], [Id]) -> [CoeffIdx] -> (TemplateArray, TemplateArray, [Constraint]),
 
-  genExpertKnowledge :: Set WeakenArg -> [Id] -> Set CoeffIdx -> LeMatrix,
+  genExpertKnowledge :: Set WeakenArg -> Set Predicate -> [Id] -> Set CoeffIdx -> LeMatrix,
 
   -- | @ 'cExternal' q q' @ returns constraints over the annoations q and q'. 
   cExternal :: FreeTemplate -> FreeTemplate -> [Constraint],

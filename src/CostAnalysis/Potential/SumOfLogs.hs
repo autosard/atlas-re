@@ -60,6 +60,6 @@ goldenPot = pot $ Args {
   logR=0,
   logLR=a,
   logLemmaInstance=LogLemmaCoeffs b a (a+b) 1}
-  where -- a = \phi b where \phi is the (approximated golden ratio)
+  where -- a = \phi b where \phi is the (approximated) golden ratio
         a = 105 % 163
         b = 3115 % 7824

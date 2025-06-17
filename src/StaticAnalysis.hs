@@ -8,6 +8,7 @@ import Data.Text(Text)
 import qualified Data.Text as T
 import Data.Set(Set)
 import qualified Data.Set as S
+import Constants (isBasicConst)
 
 resolveFunId :: Text -> Id -> Fqn
 resolveFunId currentModule identifier = case suffix of
@@ -42,3 +43,11 @@ freeVars (App _ exps) = unionMap freeVars exps
 freeVars (Let id e1 e2) = S.delete id $ freeVars e1 `S.union` freeVars e2
 freeVars (Tick _ e) = freeVars e
 freeVars _ = S.empty
+
+isZeroCostExpr :: Expr a -> Bool
+isZeroCostExpr (Var _) = True
+isZeroCostExpr c@(Const _ exps) = isBasicConst c && all isZeroCostExpr exps
+isZeroCostExpr (Ite e1 e2 e3) = isZeroCostExpr e1 && isZeroCostExpr e2 && isZeroCostExpr e3
+isZeroCostExpr (Match m arms) = all (\(MatchArm _ e) -> isZeroCostExpr e) arms
+isZeroCostExpr (Let _ e1 e2) = isZeroCostExpr e1 && isZeroCostExpr e2
+isZeroCostExpr _ = False

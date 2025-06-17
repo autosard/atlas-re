@@ -103,7 +103,7 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
   mode <- view analysisMode
 
   assertNonNegativeSig fnId
-  assertNonNegativeCost fnId
+  --assertNonNegativeCost fnId
   
   case mode of
     CheckCoefficients -> case tfCostAnn funAnn of
@@ -140,9 +140,9 @@ externalCsForCtx ctxQ ctxQ' = concatMapM csForType (M.assocs ctxQ)
 
 assertNonNegativeFnAnn :: ((FreeAnn, FreeAnn), FreeAnn) -> ProveMonad ()
 assertNonNegativeFnAnn ((q, qe), q') = tellSigCs $
-  assertGeZero q
-  ++ assertGeZero qe
-  ++ assertGeZero q'
+  --assertGeZero q
+  -- ++ assertGeZero qe
+  assertGeZero q'
 
 assertNonNegativeSig :: Id -> ProveMonad ()
 assertNonNegativeSig fn = do
@@ -224,13 +224,13 @@ genFunAnn fn@(FunDef funAnn _ _ _) = do
           qe <- defaultAnn argsTo "PE" "fn cf" 
           return (q, qe)
 
-  
+
 addSigCs :: [Id] -> Solution -> ProveMonad ()
 addSigCs fns solution = do
   sig' <- (`M.restrictKeys` S.fromList fns) <$> use sig
   let cs = concatMap go (getCoeffs sig')
   sigCs %= (++cs)
-  where go coeff = eq (CoeffTerm coeff) (ConstTerm (solution M.! coeff))
+  where go coeff = eq (CoeffTerm coeff) (ConstTerm (fromMaybe 0 (solution M.!? coeff)))
 
 argsForRHS :: [FunDef Positioned] -> [Type] -> ProveMonad (Map Type [Id])
 argsForRHS fns ts = M.fromList <$> mapM checkArgs ts

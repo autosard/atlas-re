@@ -27,6 +27,7 @@ import CostAnalysis.Rules
     ( Rule, RuleApp(ExprRuleApp, FunRuleApp) )
 import CostAnalysis.Template(FreeTemplate(..))
 import CostAnalysis.Annotation(FreeAnn)
+import qualified CostAnalysis.Predicate as P
 import CostAnalysis.Coeff
 
 css = renderCss ([lucius|
@@ -216,7 +217,7 @@ hamDeriv' unsat (T.Node appl children) = [shamlet|
 hamRuleApp :: Maybe (Set Constraint) -> RuleApp -> Html
 hamRuleApp unsat (FunRuleApp (FunDef ann id args body)) = [shamlet|
 <span class="listHead">#{printFqn (tfFqn ann)}|]
-hamRuleApp unsat (ExprRuleApp rule cf (q, qe) q' cs e) = [shamlet|
+hamRuleApp unsat (ExprRuleApp rule cf (q, qe, preds) q' cs e) = [shamlet|
 <span .listHead :((not . null) cs'):.unsat>
   <math display="inline">
     <mrow>
@@ -227,6 +228,9 @@ hamRuleApp unsat (ExprRuleApp rule cf (q, qe) q' cs e) = [shamlet|
       ^{hamAnn qe}
       <mtext>, 
       ^{hamAnn q}
+      <mo form="prefix" stretchy="false">[
+      ^{hamPredicates preds}
+      <mo form="postfix" stretchy="false">]
       <mo>⊢
       <mtext>
           <code>#{printExprHead e}
@@ -257,11 +261,35 @@ hamCsList cs inCore = [shamlet|
                       <mrow :(unsat):class="unsat" :(not unsat):class="sat">
                           ^{hamConstraint c}
 |]
+
+hamPredOp :: P.PredOp -> Html
+hamPredOp P.Le = [shamlet|<mo>≤|]
+hamPredOp P.Lt = [shamlet|<mo><|]
+hamPredOp P.Eq = [shamlet|<mo>=|]
+hamPredOp P.Neq = [shamlet|<mo>≠|]
+
+hamPredicates :: Set P.Predicate -> Html
+hamPredicates preds = toHtml $ intersperse
+  [shamlet|<mo separator="true">,|]
+  (map hamPredicate (S.toAscList preds))
+  
+hamPredicate :: P.Predicate -> Html
+hamPredicate (P.Predicate m op x y) =
+  [shamlet|
+<apply>
+  <apply>
+    #{m}
+    <ci>#{x}
+  ^{hamPredOp op}
+  <apply>
+    #{m}
+    <ci>#{y}|]
   
 hamAnn :: FreeAnn -> Html
 hamAnn ctx = toHtml $ intersperse
   [shamlet|<mo separator="true">,|]
-  (map hamTemplType (M.toAscList ctx))  
+  (map hamTemplType (M.toAscList ctx))
+  
 
 hamTemplType :: (Type, FreeTemplate) -> Html
 hamTemplType (t, q) = [shamlet|
@@ -414,17 +442,4 @@ hamConstraintList op cs = [shamlet|
           <mtr>
             <mrow>
               ^{hamConstraint c}
-|] 
-  -- where args = [shamlet|
-  -- -- where args = toHtml $ intersperse
-  -- --         [shamlet|<mo separator="true">,|]
-  -- --         (map hamConstraint cs)c
--- hamConstraint (And cs) = [shamlet|
--- <mo form="prefix" stretchy="false" lspace="0em" rspace="0em">and
--- <mo form="prefix" stretchy="false">(
--- #{args}
--- <mo form="postfix" stretchy="false">)
--- |]
---   where args = toHtml $ intersperse
---           [shamlet|<mo separator="true">,|]
---           (map hamConstraint cs)
+|]  

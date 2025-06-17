@@ -4,6 +4,7 @@ import Ast
 import Control.Monad.State (State, foldM, get, put, evalState)
 import Typing.Type
 import Primitive(Id, enumId)
+import StaticAnalysis (isZeroCostExpr)
 
 type Norm = State Int
 
@@ -53,7 +54,11 @@ nmExpr' e@(IteAnn ann e1@(Coin _) e2 e3) = do
 nmExpr' ite@(IteAnn ann e1 e2 e3) = do
   (holeE2, e2') <- nmExpr' e2
   (holeE3, e3') <- nmExpr' e3
-  (holeE1, e1') <- nmBind (idHole, e1)
+  (holeE1, e1') <- if isZeroCostExpr e1
+    then return (idHole, e1)
+    else do
+      normedE1 <- nmExpr' e1
+      nmBind normedE1
   return (holeE1, IteAnn ann e1'
            (holeE2 (getType e2') e2')
            (holeE3 (getType e3') e3'))

@@ -8,11 +8,12 @@ import CostAnalysis.Rules(WeakenArg(..))
 import CostAnalysis.Coeff
 import CostAnalysis.Potential
 import CostAnalysis.Weakening
+import CostAnalysis.Predicate (Predicate)
 
 supportedArgs = S.fromList [Mono]
 
-genExpertKnowledge :: Set WeakenArg -> [Id] -> Set CoeffIdx -> LeMatrix
-genExpertKnowledge wArgs args idxs = merge $ map select wArgs'
+genExpertKnowledge :: Set WeakenArg -> Set Predicate -> [Id] -> Set CoeffIdx -> LeMatrix
+genExpertKnowledge wArgs _ args idxs = merge $ map select wArgs'
   where wArgs' = S.toList $ S.intersection wArgs supportedArgs
         select Mono = monoLattice monoLe args idxs
  

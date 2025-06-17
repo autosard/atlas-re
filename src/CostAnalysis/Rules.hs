@@ -4,8 +4,10 @@ module CostAnalysis.Rules where
 
 import CostAnalysis.Constraint
 import CostAnalysis.Annotation
+import CostAnalysis.Predicate
 import Ast
 import Data.Text(unpack)
+import Data.Set(Set)
 
 data WeakenArg = Mono | L2xy | Neg
   deriving (Eq, Ord, Show)
@@ -30,7 +32,13 @@ data Rule
   deriving(Eq, Show)
 
 data RuleApp
-  = ExprRuleApp Rule Bool (FreeAnn, FreeAnn) FreeAnn [Constraint] PositionedExpr
+  = ExprRuleApp
+    Rule
+    Bool
+    (FreeAnn, FreeAnn, Set Predicate)
+    FreeAnn
+    [Constraint]
+    PositionedExpr
   | FunRuleApp PositionedFunDef
   | ProgRuleApp PositionedModule
 

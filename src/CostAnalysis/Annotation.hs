@@ -11,7 +11,6 @@ import qualified Data.Set as S
 import qualified Data.Map.Merge.Strict as Merge(merge, zipWithMatched, mapMissing)
 import Control.Monad.State
 import Lens.Micro.Platform
-import Data.List((\\))
 
 import Primitive(Id)
 import CostAnalysis.Template (Template,
@@ -34,7 +33,6 @@ type BoundAnn = Ann BoundTemplate
 instance HasCoeffs FreeAnn where
   getCoeffs = M.foldr (\q coeffs -> coeffs ++ getCoeffs q) []
 
-
 merge :: FreeAnn -> FreeAnn -> FreeAnn
 merge = M.unionWith Templ.merge
 
@@ -43,19 +41,6 @@ split qs ps = foldr go (M.empty, M.empty) $ M.assocs qs
   where go (t, q) (xs, ys) = let args' = maybe [] Templ.args (ps M.!? t)
                                  (x, y) = Templ.split q args' in
                                (M.insert t x xs, M.insert t y ys)
-
-                   
-          
-
--- restrictArgs :: BoundAnn -> BoundAnn -> BoundAnn
--- restrictArgs qs ps = M.mapWithKey go qs
---   where go t q = let args' = maybe [] Templ.args (ps M.!? t) in
---           Templ.restrictArgs q args'
-
--- withoutArgs :: BoundAnn -> BoundAnn -> BoundAnn
--- withoutArgs qs ps = M.mapWithKey go qs
---   where go t q = let args' = Templ.args q \\ maybe [] Templ.args (ps M.!? t) in
---           Templ.restrictArgs q args'
 
 zipWith :: (Template a, Template b) => (Type -> a -> c) -> (Type -> b -> c) -> (Type -> a -> b -> c) -> Ann a -> Ann b -> Ann c
 zipWith fL fR zipper = Merge.merge missingStrategyL missingStrategyR (Merge.zipWithMatched zipper)
@@ -179,3 +164,4 @@ instance HasCoeffs FreeSignature where
 
 type FreeSignature = Map Id FreeFunAnn
 type BoundSignature = Map Id BoundFunAnn
+

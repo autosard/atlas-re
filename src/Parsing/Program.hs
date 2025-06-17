@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Parsing.Program(parseExpr, parseModule, initialPos, SourcePos) where
 
@@ -17,9 +18,11 @@ import Data.Char (isAlphaNum)
 import qualified Data.Map as M
 import Data.Map(Map)
 import qualified Data.Set as S
+import Data.Set(Set)
 import Data.Ratio((%))
 import Data.Maybe(isJust, fromMaybe)
 import Data.Functor(($>))
+import Lens.Micro.Platform
 
 import Prelude hiding (LT, EQ, GT, LE)
 
@@ -43,20 +46,24 @@ defaultCoinPropability :: Rational
 defaultCoinPropability = 1 % 2
 
 newtype ParserContext = ParserContext { ctxModuleName :: Text }
-data ParserState = ParserState { varIdGen :: Int, typeVarMapping :: Map Id Type }
+data ParserState = ParserState { _varIdGen :: Int,
+                                 _typeVarMapping :: Map Id Type,
+                                 _varIdentifiers :: Set Id}
+
+makeLenses ''ParserState
 
 quantifyTypeVar :: Id -> Parser Type
 quantifyTypeVar id = do
   state <- get
-  varMap <- gets typeVarMapping
-  lastId <- gets varIdGen
+  varMap <- use typeVarMapping
+  lastId <- use varIdGen
   let nextId = lastId + 1
   case M.lookup id varMap of
     Nothing -> do
       let var = TGen lastId
       put state{
-        varIdGen = nextId,
-        typeVarMapping = M.insert id var varMap
+        _varIdGen = nextId,
+        _typeVarMapping = M.insert id var varMap
         }
       return var
     Just var -> return var
@@ -118,6 +125,7 @@ pFunc = do
   modName <- asks ctxModuleName
   let funFqn = (modName, funName)
   args <- manyTill pIdentifier (symbol "=")
+  varIdentifiers %= (\s -> foldr S.insert s args) 
   FunDef (ParsedFunAnn pos funFqn _type cost numCfs) funName args <$> pExpr
 
 pSignature :: Parser Signature
@@ -157,13 +165,13 @@ pTypeClass
 pFunctionType :: Parser Scheme
 pFunctionType = do
   modify (\s@ParserState{..} -> s{
-             varIdGen = 0,
-             typeVarMapping = M.empty
+             _varIdGen = 0,
+             _typeVarMapping = M.empty
              })
   tArgs <- pArgsType
   pArrow
   tResult <- pType
-  len <- gets varIdGen
+  len <- use varIdGen
   return $ Forall len (TAp Arrow [tArgs, tResult])
 
 pArgsType :: Parser Type
@@ -231,17 +239,25 @@ pFactor = Coeff.Const <$> pInt
 
 pExpr :: Parser ParsedExpr
 pExpr = pKeywordExpr
-  <|> try pApplication
   <|> try pInfixExpr 
   <?> "expression"
 
 pKeywordExpr :: Parser ParsedExpr
 pKeywordExpr
-  = pConst
-  <|> pParenExpr
-  <|> IteAnn <$> getSourcePos <* symbol "if" <*> pExpr <* symbol "then" <*> pExpr <* symbol "else" <*> pExpr
-  <|> MatchAnn <$> getSourcePos <* symbol "match" <*> pExpr <* symbol "with" <* symbol "|" <*> sepBy1 pMatchArm (symbol "|")
-  <|> LetAnn <$> getSourcePos <* symbol "let" <*> pIdentifier <* symbol "=" <*> pExpr <* symbol "in" <*> pExpr
+  = pParenExpr
+  <|> (do
+          vars <- use varIdentifiers
+          pos <- getSourcePos
+          symbol "if"
+          e1 <- pExpr
+          symbol "then"
+          e2 <- pExpr
+          symbol "else"
+          varIdentifiers %= const vars
+          e3 <- pExpr
+          return $ IteAnn pos e1 e2 e3)
+  <|> MatchAnn <$> getSourcePos <* symbol "match" <*> (try pUndefVar <|> pExpr) <* symbol "with" <* symbol "|" <*> sepBy1 pMatchArm (symbol "|")
+  <|> LetAnn <$> getSourcePos <* symbol "let" <*> pDefIdentifier <* symbol "=" <*> pExpr <* symbol "in" <*> pExpr
   <|> TickAnn <$> getSourcePos <* symbol "~" <*> optional pRational <*> pExpr
   <|> CoinAnn <$> getSourcePos <* symbol "coin" <*> ((pRational <?> "coin probability") <|> pure defaultCoinPropability)
 
@@ -257,6 +273,7 @@ pConst = do
     <|> (,) <$> symbol' "leaf" <*> pure []
     <|> (,) <$> symbol' "cons" <*> count 2 pArg
     <|> (,) <$> symbol' "error" <*> pure []
+    <|> (,) <$> symbol' "weight" <*> count 1 pArg
     <|> (do
             n <- pNumber
             return (T.append "num#" (T.pack (show n)), []))
@@ -265,14 +282,17 @@ pConst = do
   return $ ConstAnn pos name args
   
 pMatchArm :: Parser ParsedMatchArm
-pMatchArm = MatchArmAnn <$> getSourcePos <*> pPattern <* pArrow <*> pExpr
+pMatchArm = MatchArmAnn <$> getSourcePos <*> pPattern <* pArrow <*> pExpr 
 
 pPattern :: Parser ParsedPattern
 pPattern = do
   pos <- getSourcePos
   pConstPattern pos 
     <|> WildcardPat pos <$ symbol "_"
-    <|> Alias pos <$> pIdentifier
+    <|> (do
+            iden <- pIdentifier
+            varIdentifiers %= (iden `S.insert`)
+            return $ Alias pos iden)
 
 pConstPattern :: SourcePos -> Parser ParsedPattern
 pConstPattern pos = do
@@ -286,7 +306,11 @@ pConstPattern pos = do
 pPatternVar :: Parser ParsedPatternVar
 pPatternVar = do
   pos <- getSourcePos
-  WildcardVar pos <$ symbol "_" <|> (Id pos <$> pIdentifier)
+  WildcardVar pos <$ symbol "_"
+    <|> (do
+            iden <- pIdentifier
+            varIdentifiers %= (iden `S.insert`)
+            return $ Id pos iden)
 
 pApplication :: Parser ParsedExpr
 pApplication = AppAnn <$> getSourcePos <*> pIdentifier <*> some pArg
@@ -294,12 +318,17 @@ pApplication = AppAnn <$> getSourcePos <*> pIdentifier <*> some pArg
 pArg :: Parser ParsedExpr
 pArg = pParenExpr
   <|> pConst
-  <|> pParens pInfixExpr
   <|> try (pVar <* notFollowedBy (symbol "= " <|> pDoubleColon2))
+  <|> try pApplication
   <?> "function argument"
 
 pVar :: Parser ParsedExpr
-pVar = VarAnn <$> getSourcePos <*> pIdentifier
+pVar = do
+  vars <- use varIdentifiers
+  pos <- getSourcePos
+  iden <- pIdentifier
+  unless (iden `S.member` vars) (fail $ "Unknown variable " ++ T.unpack iden)
+  return $ VarAnn pos iden 
 
 pInfixExpr :: Parser ParsedExpr
 pInfixExpr = makeExprParser pArg operatorTable 
@@ -318,6 +347,7 @@ operatorTable =
   [
     [
       binaryApp (symbol' "<=") "LE",
+      binaryApp (symbol' ">=") "GE",
       binaryApp (symbol' "<") "LT",
       binaryApp (symbol' "==" <|> symbol' "⩵") "EQ",
       binaryApp (symbol' ">") "GT",
@@ -327,6 +357,18 @@ operatorTable =
   ]
 
 keywords = [ "if", "then", "else", "match", "with", "let", "in"]
+
+pDefIdentifier :: Parser Text
+pDefIdentifier = do
+  iden <- pIdentifier
+  varIdentifiers %= (iden `S.insert`)
+  return iden
+
+pUndefVar :: Parser (Expr Parsed)
+pUndefVar = do
+  v@(VarAnn _ iden) <- pVar
+  varIdentifiers %= (iden `S.delete`)
+  return v
 
 pIdentifier :: Parser Text
 pIdentifier = do
@@ -349,7 +391,12 @@ pInteger :: Parser Integer
 pInteger = lexeme L.decimal
 
 pRational :: Parser Rational
-pRational = (%) <$> pInteger <* symbol "/" <*> pInteger
+pRational = do
+  sign <- maybe 1 (const (-1)) <$> optional (symbol "-")
+  num <- pInteger
+  symbol "/"
+  den <- pInteger
+  return $ (sign * num) % den
 
 pParens = between (symbol "(") (symbol ")")
 pSqParens = between (symbol "[") (symbol "]")
@@ -375,7 +422,7 @@ sc = L.space
   (L.skipLineComment "(*)")       
   (L.skipBlockComment "(*" "*)")
 
-initState = ParserState 0 M.empty
+initState = ParserState 0 M.empty S.empty
 
 
 parseModule :: String -> Text -> Text -> (ModConfig, [ParsedFunDef])
