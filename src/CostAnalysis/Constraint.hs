@@ -52,7 +52,11 @@ eq t1 t2 = [Eq t1 t2]
 
 sum :: [Term] -> Term
 sum ts | all termIsZero ts = ConstTerm 0
-       | otherwise = Sum (filter (not. termIsZero) ts)
+       | otherwise = sum' (filter (not. termIsZero) ts)
+
+sum' :: [Term] -> Term
+sum' [t] = t
+sum' ts = Sum ts
 
 prod :: [Term] -> Term
 prod ts | any termIsZero ts = ConstTerm 0
@@ -66,6 +70,8 @@ prod2 (ConstTerm (-1)) t2 = minus t2
 prod2 t1 t2 = prod [t1, t2]
 
 sub :: [Term] -> Term
+sub [t] = t
+sub [t, ConstTerm 0] = t
 sub ts | all termIsZero ts = ConstTerm 0
        | otherwise = Diff ts
 

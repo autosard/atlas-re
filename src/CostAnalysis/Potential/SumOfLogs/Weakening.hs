@@ -21,9 +21,6 @@ import CostAnalysis.Potential.SumOfLogs.Base(Args(..), LogLemmaCoeffs(..))
 import qualified CostAnalysis.Predicate as P
 import Data.Maybe (fromMaybe)
 
-import Debug.Trace hiding (traceShow)
-traceShow x = trace (show x) x
-
 
 supportedArgs = S.fromList [Mono, L2xy]
 

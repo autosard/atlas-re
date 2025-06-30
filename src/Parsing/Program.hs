@@ -114,7 +114,8 @@ pNumCf = do
 pFunc :: Parser ParsedFunDef
 pFunc = do
   pos <- getSourcePos
-  numCfs <- optional $ pPragma "NUMCF" pNumCf
+  numCfs <- optional $ try (pPragma "NUMCF" pNumCf)
+  strongCf <- optional $ pPragma "STRONGCF" (return True)
   sig <- optional pSignature
   funName <- pIdentifier
   (_type, cost) <- case sig of
@@ -125,8 +126,9 @@ pFunc = do
   modName <- asks ctxModuleName
   let funFqn = (modName, funName)
   args <- manyTill pIdentifier (symbol "=")
-  varIdentifiers %= (\s -> foldr S.insert s args) 
-  FunDef (ParsedFunAnn pos funFqn _type cost numCfs) funName args <$> pExpr
+  varIdentifiers %= (\s -> foldr S.insert s args)
+  let cfg = FnConfig numCfs (fromMaybe False strongCf)
+  FunDef (ParsedFunAnn pos funFqn _type cost cfg) funName args <$> pExpr
 
 pSignature :: Parser Signature
 pSignature = do
@@ -236,33 +238,33 @@ pFactor = Coeff.Const <$> pInt
           symbol "^"
           Coeff.Arg id <$> pListInt)
 
+pParenExpr :: Parser ParsedExpr
+pParenExpr = pParens pExpr
 
 pExpr :: Parser ParsedExpr
-pExpr = pKeywordExpr
-  <|> try pInfixExpr 
+pExpr = try pParenExpr
+  <|> pKeywordExpr
+  <|> pInfixExpr 
   <?> "expression"
 
 pKeywordExpr :: Parser ParsedExpr
 pKeywordExpr
-  = pParenExpr
-  <|> (do
-          vars <- use varIdentifiers
-          pos <- getSourcePos
-          symbol "if"
-          e1 <- pExpr
-          symbol "then"
-          e2 <- pExpr
-          symbol "else"
-          varIdentifiers %= const vars
-          e3 <- pExpr
-          return $ IteAnn pos e1 e2 e3)
+  = (do
+        vars <- use varIdentifiers
+        pos <- getSourcePos
+        symbol "if"
+        e1 <- pExpr
+        symbol "then"
+        e2 <- pExpr
+        symbol "else"
+        varIdentifiers %= const vars
+        e3 <- pExpr
+        return $ IteAnn pos e1 e2 e3)
   <|> MatchAnn <$> getSourcePos <* symbol "match" <*> (try pUndefVar <|> pExpr) <* symbol "with" <* symbol "|" <*> sepBy1 pMatchArm (symbol "|")
   <|> LetAnn <$> getSourcePos <* symbol "let" <*> pDefIdentifier <* symbol "=" <*> pExpr <* symbol "in" <*> pExpr
   <|> TickAnn <$> getSourcePos <* symbol "~" <*> optional pRational <*> pExpr
   <|> CoinAnn <$> getSourcePos <* symbol "coin" <*> ((pRational <?> "coin probability") <|> pure defaultCoinPropability)
 
-pParenExpr :: Parser ParsedExpr
-pParenExpr = pParens pExpr
 
 pConst :: Parser ParsedExpr
 pConst = do
@@ -316,8 +318,9 @@ pApplication :: Parser ParsedExpr
 pApplication = AppAnn <$> getSourcePos <*> pIdentifier <*> some pArg
 
 pArg :: Parser ParsedExpr
-pArg = pParenExpr
-  <|> pConst
+pArg = 
+  pConst
+  <|> pParenExpr
   <|> try (pVar <* notFollowedBy (symbol "= " <|> pDoubleColon2))
   <|> try pApplication
   <?> "function argument"

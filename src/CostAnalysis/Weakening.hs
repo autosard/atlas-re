@@ -10,8 +10,9 @@ import Lens.Micro.Platform
 import Data.Maybe(catMaybes, isJust, fromJust)
 
 import Primitive(Id)
-import CostAnalysis.Annotation(FreeAnn)
+import CostAnalysis.Annotation(FreeAnn, Ann)
 import CostAnalysis.Template(FreeTemplate,
+                             Template,
                             (!?), (!), idxs, args,
                             ftCoeffs)
                             
@@ -35,18 +36,17 @@ farkas (ExpertKnowledge (as, bs) ps qs) = do
   where prods fs as = zipWith prod2 fs (map ConstTerm as)
         fas fs as i = prods fs ([row V.! i | row <- V.toList as])
 
-annFarkas :: Set WeakenArg -> Set Predicate -> FreeAnn -> FreeAnn -> ProveMonad [Constraint]
+annFarkas :: (Template a, Template b) => Set WeakenArg -> Set Predicate -> Ann a -> Ann b -> ProveMonad [Constraint]
 annFarkas wArgs preds ps qs = do
   ks <- M.fromList <$> mapM go (M.toAscList ps)
   farkas =<< genInterPotKnowledge ks
-  --concatMapM farkas (M.elems ks)
-  where go :: (Type, FreeTemplate) -> ProveMonad (Type, ExpertKnowledge)
+  where go :: (Template a) => (Type, a) -> ProveMonad (Type, ExpertKnowledge)
         go (t, p) = do
           pot <- potForType t <$> use potentials
           let q = qs M.! t
-          let m = genExpertKnowledge pot wArgs preds (args p) (p^.ftCoeffs)
-              ps = V.fromList [(idx, p!?idx) | idx <- S.toList (p^.ftCoeffs)]
-              qs = V.fromList [(idx, q!?idx) | idx <- S.toList (p^.ftCoeffs)]
+          let m = genExpertKnowledge pot wArgs preds (args p) (idxs p)
+              ps = V.fromList [(idx, p!?idx) | idx <- S.toList (idxs p)]
+              qs = V.fromList [(idx, q!?idx) | idx <- S.toList (idxs p)]
           return (t, ExpertKnowledge m ps qs)
 
 

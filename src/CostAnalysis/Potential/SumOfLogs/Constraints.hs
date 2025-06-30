@@ -51,13 +51,13 @@ cConst (Args {logL=cL, logR=cR, logLR=cLR}) e@(Node (Var x1) _ (Var x2)) (q, qe)
                   a == facForVar idx x2,
                   let c = constFactor idx,
                   c /= 0]
-      ++ concat [zero (q![mix|x1^a,c|])
+      ++ concat [geZero (q![mix|x1^a,c|])
                 | idx <- mixes q,
                   onlyVarsOrConst idx [x1],
                   let c = constFactor idx,
                   c /= 0,
                   let a = facForVar idx x1]
-      ++ concat [zero (q![mix|x2^a,c|])
+      ++ concat [geZero (q![mix|x2^a,c|])
                 | idx <- mixes q,
                   onlyVarsOrConst idx [x2],
                   let c = constFactor idx,

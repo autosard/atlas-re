@@ -3,6 +3,7 @@ module Primitive where
 import Data.Text(Text)
 import qualified Data.Text as T
 import Data.Ratio
+import Debug.Trace hiding (traceShow)
 
 type Id = Text
 
@@ -42,3 +43,5 @@ printRat r = let n = numerator r
                case d of
                  1 -> show n
                  _ -> show n ++ "/" ++ show d
+
+traceShow x = trace (show x) x

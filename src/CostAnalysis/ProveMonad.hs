@@ -51,7 +51,8 @@ data ProofState = ProofState {
   _constraints :: [Constraint],
   _fnDerivs :: [Derivation],
   _solution :: Map Coeff Rational,
-  _potentials :: P.PotFnMap}
+  _potentials :: P.PotFnMap,
+  _fnConfig :: FnConfig}
 
 makeLenses ''ProofState
 
@@ -228,9 +229,9 @@ templArrayFromIdxs t idxs label args templGen = do
         printIdx idx = "(" ++ intercalate "," (map show (S.toAscList idx)) ++ ")"
         label' idx = Te.concat [label, "_", Te.pack $ show idx]  
 
-annCOptimize :: FreeAnn -> FreeAnn -> ProveMonad Term
-annCOptimize qs qs' = sum <$> mapM go (zip (M.assocs qs) (M.assocs qs'))
-  where go :: ((Type, FreeTemplate), (Type, FreeTemplate)) -> ProveMonad Term
-        go ((t, q), (_, q')) = do
+annCOptimize :: (FreeAnn, FreeAnn) -> FreeAnn -> ProveMonad Term
+annCOptimize (qs, qes) qs' = sum <$> mapM go (zip3 (M.assocs qs) (M.assocs qes) (M.assocs qs'))
+  where go :: ((Type, FreeTemplate), (Type, FreeTemplate), (Type, FreeTemplate)) -> ProveMonad Term
+        go ((t, q), (_, qe), (_, q')) = do
           pot <- potForType t <$> use potentials
-          return $ cOptimize pot q q'          
+          return $ cOptimize pot (q, qe) q'          

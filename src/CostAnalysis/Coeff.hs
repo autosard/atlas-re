@@ -118,11 +118,11 @@ facForVar3 idx x =
     [] -> (0, 0, 0)
     [x1, x2, x3] -> (x1, x2, x3)
 
--- with const
+-- without const
 except :: CoeffIdx -> [Id] -> Set Factor
 except (Mixed idx) xs = S.filter (\f -> not (any (`matchesVar` f) xs)) idx
 
--- without const
+-- with const
 varsExcept :: CoeffIdx -> [Id] -> Set Factor
 varsExcept (Mixed idx) xs = S.filter (\f -> not (any (`matchesVar` f) xs || isConst f)) idx
 varsExcept _ _ = error "pure index"
@@ -167,11 +167,21 @@ justVars :: CoeffIdx -> Bool
 justVars (Mixed idx) = not $ any isConst idx
 justVars _ = False
 
+idxNull :: CoeffIdx -> Bool
+idxNull (Mixed s) = null s
+idxNull _ = False
+
 idxSum :: CoeffIdx -> Int
 idxSum (Mixed idx) = foldr go 0 idx
   where go (Const c) s = s + c
         go (Arg _ a) s = s + sum a
 idxSum _ = error "idx sum only makes sense for mixed indicies."
+
+idxSumVar :: CoeffIdx -> Int
+idxSumVar (Mixed idx) = foldr go 0 idx
+  where go (Const c) s = 0
+        go (Arg _ a) s = s + sum a
+idxSumVar _ = error "idx sum only makes sense for mixed indicies."        
 
 facToTuple :: Factor -> (Id, [Int])
 facToTuple (Arg x a) = (x,a)

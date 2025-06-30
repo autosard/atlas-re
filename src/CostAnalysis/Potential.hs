@@ -88,8 +88,8 @@ data Potential = Potential {
   -- | @ 'cExternal' q q' @ returns constraints over the annoations q and q'. 
   cExternal :: FreeTemplate -> FreeTemplate -> [Constraint],
   
-  -- | @ 'cOptimize' q q' @ returns a cost function that minimizes \[\Phi(\Gamma\mid Q) - \Phi(\Gamma\mid Q')\] as a term.
-  cOptimize :: FreeTemplate -> FreeTemplate -> Term,
+  -- | @ 'cOptimize' (q, qe) q' @ returns a cost function that minimizes \[\Phi(\Gamma\mid Q) - \Phi(\Gamma\mid Q')\] as a term.
+  cOptimize :: (FreeTemplate, FreeTemplate) -> FreeTemplate -> Term,
   
   printBasePot :: CoeffIdx -> String}
 

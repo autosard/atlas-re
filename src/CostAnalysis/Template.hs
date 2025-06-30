@@ -23,8 +23,6 @@ import  CostAnalysis.Constraint(Term, Constraint, Term(..))
 import qualified CostAnalysis.Constraint as C
 import CostAnalysis.AnnIdxQuoter(mix)
 
-import Debug.Trace hiding (traceShow)
-traceShow x = trace (show x) x
 
 class (Show a) => Template a where
   infixl 9 !
@@ -131,7 +129,7 @@ split (BoundTemplate args coeffs) argsY =
       x = BoundTemplate argsX
         (M.filterWithKey (\idx _ -> hasArgsOrConst argsX idx) coeffs)
       y = BoundTemplate argsY
-        (M.filterWithKey (\idx _ -> hasArgs argsY idx) coeffs) in
+        (M.filterWithKey (\idx _ -> hasArgs argsY idx && (not . idxNull) idx) coeffs) in
     (x,y)
                                     
 
@@ -165,12 +163,12 @@ scale q k = TermTemplate (args q) $
   M.fromList [(idx, C.prod2 (q!idx) k) | idx <- S.toList (idxs q)]
 
 add :: (Template a, Template b) => a -> b -> TermTemplate
-add q p = TermTemplate (args q) $
+add q p = TermTemplate (args q `L.union` args p) $
              M.fromList [(idx, C.sum [q!?idx, p!?idx])
                         | idx <- S.toList $ idxs q `S.union` idxs p]
 
 sub :: (Template a, Template b) => a -> b -> TermTemplate
-sub q p = TermTemplate (args q) $
+sub q p = TermTemplate (args q `L.union` args p) $
              M.fromList [(idx, C.sub [q!?idx, p!?idx])
                         | idx <- S.toList $ idxs q `S.union` idxs p]
 

@@ -43,7 +43,12 @@ data Module a = Module {
   config :: ModConfig,
   mutRecGroups :: [[Id]],
   defs :: Map Id (FunDef a)
-} 
+}
+
+data FnConfig = FnConfig {
+  numCf :: Maybe Int,
+  strongCf :: Bool}
+  deriving (Eq, Show)
 
 data PotentialKind
   = LogLR
@@ -324,7 +329,7 @@ data ParsedFunAnn = ParsedFunAnn {
   pfFqn :: Fqn,
   pfType :: Maybe Scheme,
   pfCostAnn :: Maybe CostAnnotation,
-  pfNumCf :: Maybe Int}
+  pfFnConfig :: FnConfig}
   deriving (Eq, Show)
 
 data Parsed
@@ -358,7 +363,7 @@ data TypedFunAnn = TypedFunAnn {
   tfFqn :: Fqn,
   tfType :: Scheme,
   tfCostAnn :: Maybe CostAnnotation,
-  tfNumCf :: Maybe Int}
+  tfFnConfig :: FnConfig}
   deriving (Eq, Show)
 
 data ExprSrc = Loc SourcePos | DerivedFrom SourcePos

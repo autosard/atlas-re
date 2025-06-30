@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StrictData #-}
 
 module CostAnalysis.Analysis where
@@ -29,6 +28,7 @@ import CostAnalysis.Potential(PotFnMap, Potential (cExternal))
 import CostAnalysis.Potential.Kind (fromKind)
 import Control.Monad.Extra (concatMapM, ifM)
 import CostAnalysis.Template (TermTemplate, FreeTemplate)
+import CostAnalysis.Weakening (annFarkas)
 
 defaultPotentialMap = M.fromList
   [
@@ -56,7 +56,8 @@ analyzeModule :: ProofEnv -> PositionedModule
   -> IO (Either SourceError AnalysisResult)
 analyzeModule env mod = do
   
-  let state = ProofState M.empty [] [] 0 0 [] [] M.empty M.empty 
+  let state = ProofState M.empty [] [] 0 0 [] [] M.empty M.empty
+              (FnConfig (Just 1) False)
   (result, state', solution) <- runProof env state (analyzeModule' mod)
   let deriv = T.Node (ProgRuleApp mod) (state'^.fnDerivs)
   case result of
@@ -103,7 +104,7 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
   mode <- view analysisMode
 
   assertNonNegativeSig fnId
-  --assertNonNegativeCost fnId
+  assertNonNegativeCost fnId
   
   case mode of
     CheckCoefficients -> case tfCostAnn funAnn of
@@ -124,7 +125,6 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
       let ((q, qe), q') = withCost $ s M.! fnId
       tellSigCs =<< externalCsForCtx q q'
       addFullCostOptimization fnId
-      --addSimpleCostOptimization fnId
       optiTargets %= (sum qe:)
   proveFun def
 
@@ -140,9 +140,8 @@ externalCsForCtx ctxQ ctxQ' = concatMapM csForType (M.assocs ctxQ)
 
 assertNonNegativeFnAnn :: ((FreeAnn, FreeAnn), FreeAnn) -> ProveMonad ()
 assertNonNegativeFnAnn ((q, qe), q') = tellSigCs $
-  --assertGeZero q
-  -- ++ assertGeZero qe
-  assertGeZero q'
+  assertGeZero qe
+  ++ assertGeZero q'
 
 assertNonNegativeSig :: Id -> ProveMonad ()
 assertNonNegativeSig fn = do
@@ -154,15 +153,9 @@ assertNonNegativeCost :: Id -> ProveMonad ()
 assertNonNegativeCost fn = do
   ann <- (M.! fn) <$> use sig
   let cost = symbolicCost (withCost ann)
-  tellSigCs $ assertGeZero cost
-
--- potFnCovered :: FreeAnn -> FreeAnn -> [Constraint]
--- potFnCovered qs qs' = concat
---   [annLikeLeftInRight q' q
---   | t <- M.keys qs',
---     let q' = qs' M.! t,
---     M.member t qs,
---     let q = qs M.! t]
+  let zero = zeroAnnFrom cost
+  cs <- annFarkas (S.fromList [Mono]) S.empty zero cost
+  tellSigCs cs
 
 type CostComparision = Map Type TermTemplate -> BoundAnn -> [Constraint]
 
@@ -189,8 +182,8 @@ addSimpleCostOptimization fn = do
 addFullCostOptimization :: Id -> ProveMonad ()
 addFullCostOptimization fn = do
   ann <- (M.! fn) <$> use sig
-  let ((q, _), q') = withCost ann
-  costTerm <- annCOptimize q q'
+  let ((q, qe), q') = withCost ann
+  costTerm <- annCOptimize (q, qe) q'
   optiTargets %= (costTerm:)
 
 argsWithPot :: (Map Type [Id], Map Type [Id]) -> ProveMonad (Map Type [Id], Map Type [Id])
@@ -211,7 +204,7 @@ genFunAnn fn@(FunDef funAnn _ _ _) = do
              else
                emptyAnn argsTo "Q'" "fn" 
 
-  let numCfSigs = fromMaybe 1 $ tfNumCf funAnn
+  let numCfSigs = fromMaybe 1 $ (numCf . tfFnConfig) funAnn
   from <- defaultAnn argsFrom "Q" "fn"
   fromRef <- ifM (view rhsTerms)
     (defaultAnn argsTo "QE" "fn")
@@ -221,7 +214,9 @@ genFunAnn fn@(FunDef funAnn _ _ _) = do
   return $ FunAnn ((from, fromRef), to) (zip fromCfs toCfs) (hasPotential fn)
   where genCf argsFrom argsTo= do
           q <- defaultAnn argsFrom "P" "fn cf" 
-          qe <- defaultAnn argsTo "PE" "fn cf" 
+          qe <- ifM (view rhsTerms)
+            (defaultAnn argsTo "PE" "fn cf")
+            (emptyAnn argsTo "PE" "fn cf")
           return (q, qe)
 
 

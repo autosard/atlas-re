@@ -3,6 +3,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+
 module CostAnalysis.Solving where
 
 import Prelude hiding (sum)
@@ -23,6 +24,7 @@ import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
 import Control.Monad.Extra (whenJust)
 import Data.Maybe (isNothing)
+
 
 class Encodeable a where
   toZ3 :: (MonadOptimize z3) => a -> z3 AST
@@ -97,6 +99,7 @@ solve fns = do
                ts -> Just . sum $ ts
   extCs <- use sigCs
   cs <- use constraints
+  --let cs = cs' ++ maybe [] geZero opti
   let dump = True
   (result, smt) <- liftIO . evalZ3 $
     do
@@ -114,7 +117,7 @@ solve fns = do
 
 createSolverZ3 :: MonadOptimize z3 => [Coeff] -> [Constraint] -> [Constraint] -> Maybe Term -> z3 (Map String Constraint)
 createSolverZ3 coeffs typingCs extCs optiTarget = do
-  -- assertCoeffsPos coeffs
+--  assertCoeffsPos coeffs
   tracker <- assertConstraints (isNothing optiTarget) $ typingCs ++ extCs
   case optiTarget of
     Just target -> do

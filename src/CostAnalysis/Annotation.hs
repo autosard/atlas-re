@@ -30,6 +30,12 @@ type Ann a = Map Type a
 type FreeAnn = Ann FreeTemplate
 type BoundAnn = Ann BoundTemplate
 
+zeroAnnFrom :: (Template a) => Ann a -> BoundAnn
+zeroAnnFrom = M.map go
+  where go t = Templ.BoundTemplate (Templ.args t) $
+          M.fromList [(q, 0) | q <- S.toList $ Templ.idxs t]
+          
+
 instance HasCoeffs FreeAnn where
   getCoeffs = M.foldr (\q coeffs -> coeffs ++ getCoeffs q) []
 

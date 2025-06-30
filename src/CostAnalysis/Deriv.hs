@@ -39,10 +39,8 @@ import CostAnalysis.ProveMonad
 import StaticAnalysis(freeVars)
 import Data.Maybe (fromMaybe, mapMaybe, isJust, catMaybes)
 
-import Debug.Trace hiding (traceShow)
-import CostAnalysis.Coeff (coeffArgs, justVars)
 
-traceShow x = trace (show x) x
+import CostAnalysis.Coeff (coeffArgs, justVars)
   
 type ProofResult = (Derivation, [Constraint], FreeSignature)
 
@@ -335,10 +333,16 @@ proveShiftTerm tactic cf e (q, qe, preds) q' = do
   deriv <- proveExpr subTactic cf e (q, pe, preds) p'
 
   conclude R.ShiftTerm cf (q, qe, preds) q' cs e [deriv]
-  
 
 proveShiftConst :: Prove PositionedExpr Derivation
-proveShiftConst tactic cf@Nothing e (q, qe, preds) q' = do
+proveShiftConst tactic cf e q q' = do
+  sCf <- strongCf <$> use fnConfig 
+  if isJust cf && sCf
+    then proveShiftConstMono tactic cf e q q'
+    else proveShiftConstSimple tactic cf e q q'
+
+proveShiftConstSimple :: Prove PositionedExpr Derivation
+proveShiftConstSimple tactic cf e (q, qe, preds) q' = do
   let [subTactic] = subTactics 1 tactic
 
   k <- freshVar
@@ -354,7 +358,7 @@ proveShiftConst tactic cf@Nothing e (q, qe, preds) q' = do
   
   deriv <- proveExpr subTactic cf e (ps, qe, preds) ps'
   conclude R.ShiftConst cf (q, qe, preds) q' cs e [deriv]
-proveShiftConst tactic cf@(Just _) e (qs, qe, preds) qs' = do
+proveShiftConstMono tactic cf e (qs, qe, preds) qs' = do
   let [subTactic] = subTactics 1 tactic
   let wArgs = S.fromList [R.Mono]
 
@@ -433,50 +437,57 @@ proveExpr tactic@(Rule R.ShiftTerm _) cf e = proveShiftTerm tactic cf e
 proveExpr tactic@(Rule R.ShiftConst _) cf e = proveShiftConst tactic cf e
 proveExpr tactic@(Rule R.App _) cf e@(App id _) = removeRedundantVars proveApp tactic cf e
 -- auto tactic
-proveExpr Auto cf e = proveExpr (genTactic cf e) cf e 
+proveExpr Auto cf e = \q q' -> do
+  fnCfg <- use fnConfig
+  proveExpr (genTactic fnCfg cf e) cf e q q'
 proveExpr tactic _ e = \_ _ -> errorFrom (SynExpr e) $ "Could not apply tactic to given "
   ++ printExprHead e ++ " expression. Tactic: '" ++ printTacticHead tactic ++ "'"
 
-genTactic :: Maybe Int -> PositionedExpr -> Tactic
-genTactic cf e@(Var {}) = autoWeaken cf e (Rule R.Var [])
-genTactic _ e@(Const {}) | isBasicConst e = Rule R.ConstBase []
-genTactic cf e@(Const {}) = autoWeaken cf e (Rule R.Const [])
-genTactic cf (Match _ arms) = Rule R.Match $ map (genTactic cf . armExpr) arms
-genTactic cf e@(Ite _ e2 e3) = let t1 = genTactic cf e2 
-                                   t2 = genTactic cf e3 in
-  autoWeaken cf e $ Rule R.Ite [t1, t2]
-genTactic _ (App {}) = Rule R.ShiftConst [Rule R.App []]
-genTactic cf e@(Let _ binding body) = let tBinding = genTactic cf binding
-                                          t1 = Rule R.ShiftTerm [tBinding]
-                                          --t1 = tBinding
-                                          t2 = genTactic cf body
-                                          ctx = peCtx $ getAnn e 
-                                          neg = S.member BindsAppOrTickRec ctx in
-  autoWeaken cf e $ Rule (R.Let [R.NegE | neg]) [t1, t2]
-genTactic cf (Tick _ e) = Rule R.TickDefer [genTactic cf e]
-genTactic _ e = error $ "genTactic: " ++ printExprHead e
+genTactic :: FnConfig -> Maybe Int -> PositionedExpr -> Tactic
+genTactic cfg cf e@(Var {}) = autoWeaken cfg cf e (Rule R.Var [])
+genTactic _ _ e@(Const {}) | isBasicConst e = Rule R.ConstBase []
+genTactic cfg cf e@(Const {}) = autoWeaken cfg cf e (Rule R.Const [])
+genTactic cfg cf (Match _ arms) = Rule R.Match $ map (genTactic cfg cf . armExpr) arms
+genTactic cfg cf e@(Ite _ e2 e3) = let t1 = genTactic cfg cf e2 
+                                       t2 = genTactic cfg cf e3 in
+  autoWeaken cfg cf e $ Rule R.Ite [t1, t2]
+genTactic cfg cf e@(App {}) = autoWeaken cfg cf e $ Rule R.ShiftConst [Rule R.App []]
+genTactic cfg cf e@(Let _ binding body) = let tBinding = genTactic cfg cf binding
+                                              t1 = Rule R.ShiftTerm [tBinding]
+                                              t2 = genTactic cfg cf body
+                                              ctx = peCtx $ getAnn e 
+                                              neg = S.member BindsAppOrTickRec ctx in
+  autoWeaken cfg cf e $ Rule (R.Let [R.NegE | neg]) [t1, t2]
+genTactic cfg cf (Tick _ e) = Rule R.TickDefer [genTactic cfg cf e]
+genTactic _ _ e = error $ "genTactic: " ++ printExprHead e
 
-autoWeaken :: Maybe Int -> PositionedExpr -> Tactic -> Tactic
-autoWeaken (Just _) _ tactic = tactic -- no weakening for cf
-autoWeaken _ e tactic = case wArgsForExpr e of
+autoWeaken :: FnConfig -> Maybe Int -> PositionedExpr -> Tactic -> Tactic
+autoWeaken cfg cf e tactic = case wArgsForExpr cfg e (isJust cf)  of
   [] -> tactic
   wArgs -> Rule (R.Weaken wArgs) [tactic]
 
-wArgsForExpr :: PositionedExpr -> [R.WeakenArg]
-wArgsForExpr e = S.toList $ foldr checkCtx S.empty
+wArgsForExpr :: FnConfig -> PositionedExpr -> Bool -> [R.WeakenArg]
+wArgsForExpr cfg e cf = S.toList $ foldr checkCtx S.empty (wArgMap cf cfg)
+  where ctx = peCtx $ getAnn e
+        checkCtx (flags, impliedArgs) wArgs = if all (`S.member` ctx) flags then
+          S.union wArgs (S.fromList impliedArgs) else wArgs
+
+wArgMap :: Bool -> FnConfig -> [([ExprCtx], [R.WeakenArg])]
+wArgMap cf@False _ =
   [ ([PseudoLeaf], [R.Mono]),
     ([BindsAppOrTickRec], [R.Neg]),
     ([BindsAppOrTick], [R.Mono, R.L2xy]),
     ([FirstAfterApp, OutermostLet], [R.L2xy, R.Mono]),
     ([FirstAfterMatch], [R.Mono]),
     ([IteCoin], [R.L2xy])]
-  where ctx = peCtx $ getAnn e
-        checkCtx (flags, impliedArgs) wArgs = if all (`S.member` ctx) flags then
-          S.union wArgs (S.fromList impliedArgs) else wArgs
+wArgMap cf@True cfg | strongCf cfg =
+                      [([FirstAfterMatch], [R.Mono])]
+                    | otherwise = []
 
 proveFunBody :: Prove PositionedFunDef Derivation
 proveFunBody _ cf (FunDef ann id args e) q q' = do
   let tFrom = fst . splitFnType . toType . tfType $ ann
+  fnConfig .= tfFnConfig ann
   tactic <- fromMaybe Auto . M.lookup id <$> view tactics
   proveExpr tactic cf e q q'
 

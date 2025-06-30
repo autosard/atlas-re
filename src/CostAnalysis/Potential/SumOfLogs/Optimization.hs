@@ -10,6 +10,8 @@ import CostAnalysis.Potential.SumOfLogs.Base
 import CostAnalysis.Template hiding (sub, sum)
 import CostAnalysis.Constraint
 import qualified CostAnalysis.Coeff as Coeff (constFactor, facForVar, (^))
+import CostAnalysis.Coeff hiding ((^))
+import CostAnalysis.ProveMonad (fromAnn)
 
 weightedAbs :: FreeTemplate -> Term
 weightedAbs q = sum [prod [q!idx, ConstTerm $ indexWeight a b]
@@ -35,19 +37,32 @@ indexWeight 0 2 = 0
 indexWeight 1 0 = 1
 indexWeight a b = fromIntegral (1 + a + (2 * (b + 1)) ) ^ 2
 
+indexWeight' :: CoeffIdx -> Rational
+indexWeight' i@(Mixed _) | justConst i = 0
+indexWeight' i@(Pure _) = 0
+indexWeight' i@(Mixed _) | singleVar i && idxSum i == 1 = 1
+indexWeight' i@(Mixed _) = fromIntegral $
+  (1 + idxSumVar i + 2 * (constFactor i + 1)) ^2
+
+
+indexWeightedSum :: FreeTemplate -> Term
+indexWeightedSum q = sum [prod [ConstTerm (indexWeight' i), q!i] | i <- S.toList $ idxs q]
+
 
 constantDifference :: FreeTemplate -> FreeTemplate -> Term
 constantDifference q q' = sub [q![mix|2|], q'!?[mix|2|]]
 
 absRank :: FreeTemplate -> Term
-absRank q = sum [q!x | x <- args q]
+absRank q = sum [q!?x | x <- args q]
 
 absNonRank :: FreeTemplate -> Term
 absNonRank q = sum [q!idx | idx <- mixes q]
   
-cOptimize :: Args -> FreeTemplate -> FreeTemplate -> Term
-cOptimize potArgs q q' = let weights = [179969, 16127, 997, 97, 2] in
+cOptimize :: Args -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> Term
+cOptimize potArgs (q, qe) q' = let weights = [179969, 179969, 16127, 16127, 997, 97, 2] in
   sum $ zipWith (\w metric -> prod [ConstTerm w, metric]) weights [
   absRank q,
+  absRank qe,
   weightedNonRankDifference potArgs q q',
+  indexWeightedSum qe,
   constantDifference q q']

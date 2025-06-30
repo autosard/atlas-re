@@ -63,10 +63,6 @@ import CostAnalysis.Constraint (Constraint)
 import Control.Monad (when)
 import AstContext (contextualizeMod)
 
-import Debug.Trace (trace)
-
-traceShow s x = Debug.Trace.trace (s ++ ": " ++ show x) x
-
 type App a = LoggerT (Msg Severity) IO a
 
 app :: Options -> App ()

@@ -315,7 +315,7 @@ tiProg ctx mod = do
           tfCostAnn = pfCostAnn ann,
           tfLoc = pfLoc ann,
           tfFqn = pfFqn ann,
-          tfNumCf = pfNumCf ann}
+          tfFnConfig = pfFnConfig ann}
         extendDef :: (ParsedFunDef, Scheme, TypedExpr) -> TypedFunDef
         extendDef (FunDef ann id args e, t, e')
           = FunDef (extendAnn t ann) id args e'
