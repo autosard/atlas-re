@@ -92,15 +92,17 @@ proveIte tactic cf e@(Ite (Coin p) e1 e2) (q, qe, preds) q' = do
   deriv2 <- proveExpr t2 cf e2 (q2, qe2, preds) q'
   conclude R.Ite cf (q, qe, preds) q' cs e [deriv1, deriv2]
 proveIte tactic cf e@(Ite condExp e1 e2) (q, qe, preds) q' = do
-  let [t1, t2] = subTactics 2 tactic
+  let [t0, t1, t2] = subTactics 3 tactic
 
   let cond = predFromCondition condExp
   let preds1 = maybe preds (`S.insert` preds) cond
   let preds2 = maybe preds (\p -> negate p `S.insert` preds) cond
-  
+
+  condResult <- emptyAnn M.empty "0" "ite cond"
+  derivCond <- proveExpr t0 cf condExp (q, qe, preds) condResult
   deriv1 <- proveExpr t1 cf e1 (q, qe, preds1) q'
   deriv2 <- proveExpr t2 cf e2 (q, qe, preds2) q'
-  conclude R.Ite cf (q, qe, preds) q' [] e [deriv1, deriv2]
+  conclude R.Ite cf (q, qe, preds) q' [] e [derivCond, deriv1, deriv2]
 
 getVar :: Type -> (PositionedPatternVar, Int) -> Maybe Id
 getVar t (v@(Id _ id), _) | matchesType (getType v) t = Just id
@@ -426,7 +428,7 @@ removeRedundantVars prove tactic cf e (q, qe, preds) q' = if (not . null) (redun
 proveExpr :: Prove PositionedExpr Derivation
 -- manual tactic
 proveExpr tactic@(Rule R.Var []) cf e@(Var _) = removeRedundantVars proveVar tactic cf e
-proveExpr tactic@(Rule R.ConstBase []) cf e@(Const {}) | isBasicConst e = proveConstBase tactic cf e
+proveExpr tactic@(Rule R.ConstBase []) cf e@(Const {}) | isBasicConst e = removeRedundantVars proveConstBase tactic cf e
 proveExpr tactic@(Rule R.Const []) cf e@(Const {}) = removeRedundantVars proveConst tactic cf e 
 proveExpr tactic@(Rule R.Match _) cf e@(Match {}) = proveMatch tactic cf e
 proveExpr tactic@(Rule R.Ite _) cf e@(Ite {}) = proveIte tactic cf e
@@ -449,9 +451,10 @@ genTactic cfg cf e@(Var {}) = autoWeaken cfg cf e (Rule R.Var [])
 genTactic _ _ e@(Const {}) | isBasicConst e = Rule R.ConstBase []
 genTactic cfg cf e@(Const {}) = autoWeaken cfg cf e (Rule R.Const [])
 genTactic cfg cf (Match _ arms) = Rule R.Match $ map (genTactic cfg cf . armExpr) arms
-genTactic cfg cf e@(Ite _ e2 e3) = let t1 = genTactic cfg cf e2 
-                                       t2 = genTactic cfg cf e3 in
-  autoWeaken cfg cf e $ Rule R.Ite [t1, t2]
+genTactic cfg cf e@(Ite e1 e2 e3) = let t1 = genTactic cfg cf e1 
+                                        t2 = genTactic cfg cf e2 
+                                        t3 = genTactic cfg cf e3 in
+  autoWeaken cfg cf e $ Rule R.Ite [t1, t2, t3]
 genTactic cfg cf e@(App {}) = autoWeaken cfg cf e $ Rule R.ShiftConst [Rule R.App []]
 genTactic cfg cf e@(Let _ binding body) = let tBinding = genTactic cfg cf binding
                                               t1 = Rule R.ShiftTerm [tBinding]
