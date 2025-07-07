@@ -1,4 +1,4 @@
-module CostAnalysis.Potential.SumOfLogs (pot, defaultPot, logrPot, loglrxPot, goldenPot, Args (..)) where
+module CostAnalysis.Potential.SumOfLogs (pot, defaultPot, loglPot, logrPot, loglrxPot, goldenPot, Args (..)) where
 
 import CostAnalysis.Potential.SumOfLogs.Base
 import CostAnalysis.Potential.SumOfLogs.Constraints
@@ -44,6 +44,14 @@ logrPot = pot $ Args {
   logR=1%2,
   logLR=0,
   logLemmaInstance=LogLemmaCoeffs (1%2) (1%2) 1 1}
+
+loglPot = pot $ Args {
+  aRange=defaultARange,
+  bRange=defaultBRange,
+  logL=0,
+  logR=(-1)%2,
+  logLR=1,
+  logLemmaInstance=LogLemmaCoeffs (1%2) (1%2) 1 1}  
 
 loglrxPot = pot $ Args {
   aRange=defaultARange,

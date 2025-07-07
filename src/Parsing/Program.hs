@@ -97,7 +97,9 @@ pPotentialMode =
   <|> symbol "polynomial" $> Polynomial
   <|> symbol "linlog" $> LinLog
   <|> symbol "logr" $> LogR
+  <|> symbol "logl" $> LogL
   <|> symbol "log_golden" $> LogGolden
+  <|> symbol "rank" $> Rank
    
 
 data Signature = Signature

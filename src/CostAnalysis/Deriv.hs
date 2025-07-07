@@ -214,7 +214,8 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) (q, qe, preds) q' = 
       r_ <-  emptyTempl t "R" "let:base e2" (x:delta)
 
       let (p, pCs) = Templ.defineByWith (annP_ M.! t) bindingQ (\idx p q -> geZero p ++ p `le` q)
-      let (ps, ps', cfCs) = cLetCf potE1 bindingQ ps_ ps'_ x (gamma, delta) is
+      let (ps, ps', cfCs) | M.null ps_ = (ps_, ps'_, [])
+                          | otherwise = cLetCf potE1 bindingQ ps_ ps'_ x (gamma, delta) is
       let (r, rCs) = Templ.chainDef [
             Templ.cLetBodyUni bindingQ p bindingP' x,
             cLetBodyMulti potE1 bindingQ ps' x is] r_ 

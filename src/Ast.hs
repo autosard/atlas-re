@@ -53,10 +53,12 @@ data FnConfig = FnConfig {
 data PotentialKind
   = LogLR
   | LogR
+  | LogL
   | LogLRX
   | Polynomial
   | LinLog
   | LogGolden
+  | Rank
   deriving (Eq, Ord, Show)
 
 fns :: Module a -> [FunDef a]
