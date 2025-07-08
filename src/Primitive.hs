@@ -2,13 +2,21 @@ module Primitive where
 
 import Data.Text(Text)
 import qualified Data.Text as T
+import Data.Map(Map)
+import qualified Data.Map as M
 import Data.Ratio
 import Debug.Trace hiding (traceShow)
+import Data.Maybe
 
 type Id = Text
 
 enumId :: Int -> Id
 enumId n = T.pack $ "?" ++ show n
+
+type Substitution = Map Id Id
+
+applySubst :: Substitution -> Id -> Id
+applySubst s x = fromMaybe x (s M.!? x)
 
 data IntWithInf = Inf | NotInf Int
   deriving Eq

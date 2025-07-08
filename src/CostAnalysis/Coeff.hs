@@ -12,12 +12,16 @@ import qualified Data.Set as S
 import Data.Map(Map)
 import qualified Data.Map as M
 import qualified Data.List as L
+import Data.Maybe (mapMaybe)
 
-import Primitive(Id)
-
+import Primitive(Id, Substitution, applySubst)
 
 data Factor = Const Int | Arg Id [Int]
   deriving (Eq, Ord)
+
+var :: Factor -> Maybe Id
+var (Const _) = Nothing
+var (Arg x _) = Just x
 
 data CoeffIdx = Pure Id | Mixed (Set Factor)
   deriving (Eq, Ord)
@@ -141,6 +145,10 @@ varsRestrict (Mixed idx) xs = S.filter go idx
         go (Const _) = False
 varsRestrict _ _ = error "pure index"
 
+intersect :: CoeffIdx -> [Id] -> [Id]
+intersect (Mixed idx) xs = let s = mapMaybe var (S.toList idx) in
+  xs `L.intersect` s
+
 onlyVars :: CoeffIdx -> [Id] -> Bool
 onlyVars idx xs = null $ except idx xs
 
@@ -153,7 +161,11 @@ singleVar idx = length (coeffArgs idx) == 1
 
 hasArgs :: [Id] -> CoeffIdx -> Bool
 hasArgs xs (Pure x) = x `elem` xs
-hasArgs xs idx = onlyVars idx xs 
+hasArgs xs idx = onlyVars idx xs
+
+containsArgs :: [Id] -> CoeffIdx -> Bool
+containsArgs xs (Pure x) = x `elem` xs
+containsArgs xs idx = not . null $ intersect idx xs 
 
 hasArgsOrConst :: [Id] -> CoeffIdx -> Bool
 hasArgsOrConst xs (Pure x) = x `elem` xs
@@ -226,6 +238,14 @@ substitute from to idx@(Mixed factors) = Mixed (S.map subFactor factors)
         subFactor (Arg x a) = case L.elemIndex x from of
           Just i -> Arg (to !! i) a
           Nothing -> error $ "invalid index" ++ show idx ++ " " ++ show to
+
+
+substitute' :: Substitution -> CoeffIdx -> CoeffIdx
+substitute' s (Pure x) = Pure $ applySubst s x
+substitute' s (Mixed factors) = Mixed (S.map subFactor factors)
+  where subFactor (Const c) = Const c
+        subFactor (Arg x a) = Arg (applySubst s x) a
+
 
 stubArgVars :: [Id] -> Int -> [Id]
 stubArgVars args l = args ++ replicate (l - length args) "!"

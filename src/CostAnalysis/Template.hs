@@ -16,7 +16,7 @@ import Data.Text(Text)
 import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
 
-import Primitive(Id)
+import Primitive(Id, Substitution)
 import CostAnalysis.Coeff
 import Control.Monad.State
 import  CostAnalysis.Constraint(Term, Constraint, Term(..))
@@ -32,7 +32,6 @@ class (Show a) => Template a where
   idxs :: a -> Set CoeffIdx
   args :: a -> [Id]
   empty :: a -> Bool
---  restrictArgs :: a -> [Id] -> a
 
 mixes :: (Template a) => a -> [CoeffIdx]
 mixes = S.toList . S.filter (not . isPure) . idxs
@@ -59,9 +58,6 @@ instance Template FreeTemplate where
   args = _ftArgs
   idxs q = q^.ftCoeffs
   empty = S.null . _ftCoeffs
-  -- restrictArgs q vars = q
-  --   & coeffs %~ S.filter (hasArgs vars)
-  --   & args %~ intersect vars
   (!) templ idx = case coeffForIdx templ (toIdx idx) of
     Just q -> CoeffTerm q
     Nothing -> error $ "Invalid index '" ++ show idx ++ "' for template '" ++ show templ ++ "'."
@@ -105,9 +101,6 @@ instance Template BoundTemplate where
   args (BoundTemplate vars _) = vars
   idxs (BoundTemplate _ m) = M.keysSet m
   empty (BoundTemplate _ m) = M.null m
-  -- restrictArgs (BoundTemplate args coeffs) vars = BoundTemplate
-  --   (args `intersect` vars)
-  --   (M.filterWithKey (\idx _ -> hasArgs vars idx) coeffs)
   (!) (BoundTemplate _ m) idx = ConstTerm $ m M.! toIdx idx
   (!?) (BoundTemplate _ m) idx = ConstTerm $ fromMaybe 0 (m M.!? toIdx idx)
 
@@ -117,11 +110,6 @@ bindTemplate q values = BoundTemplate
   (M.fromList [(i, v)
               | c@(Coeff _ _ _ i) <- getCoeffs q,
                 let v = fromMaybe 0 (values M.!? c)])
-
--- restrictArgs :: BoundTemplate -> [Id] -> BoundTemplate
--- restrictArgs (BoundTemplate args coeffs) vars = BoundTemplate
---   (args `L.intersect` vars)
---   (M.filterWithKey (\idx _ -> hasArgs vars idx) coeffs)
 
 split :: BoundTemplate -> [Id] -> (BoundTemplate, BoundTemplate)
 split (BoundTemplate args coeffs) argsY =
@@ -149,7 +137,6 @@ instance Template TermTemplate where
   args = ttArgs
   idxs templ =  M.keysSet $ terms templ
   empty = M.null . terms
-  -- restrictArgs (PointWiseOp args coeffs) vars = PointWiseOp args $ M.filterWithKey (\idx _ -> hasArgs vars idx) coeffs
   (!) templ idx = terms templ M.! toIdx idx
   (!?) templ idx = fromMaybe (ConstTerm 0) $ terms templ M.!? toIdx idx
 
@@ -283,7 +270,16 @@ def i = do
   templ <- get
   return $ templ!idx
 
-chainDef :: [FreeTemplate -> (FreeTemplate, [Constraint])] -> FreeTemplate -> (FreeTemplate, [Constraint])
+def2 :: (Index i, Index j) => i -> j -> CoeffDef FreeTemplate Term
+def2 i j = do
+  let idx1 = toIdx i
+  let idx2 = toIdx j
+  ftCoeffs %= (idx1 `S.insert`)
+  ftCoeffs %= (idx2 `S.insert`)
+  templ <- get
+  return $ C.sum [templ!idx1, templ!idx2]
+
+chainDef :: [a -> (a, [Constraint])] -> a -> (a, [Constraint])
 chainDef fs q_ = foldr go (q_, []) fs
   where go f (q, css) = let (q', cs) = f q in
           (q', cs ++ css)
@@ -294,7 +290,7 @@ defEntry arrIdx coeffIdx = do
   arr <- get
   return $ (arr M.! arrIdx)!coeffIdx
 
-extend :: FreeTemplate -> [CoeffDef FreeTemplate [Constraint]] -> (FreeTemplate, [Constraint])
+extend :: a -> [CoeffDef a [Constraint]] -> (a, [Constraint])
 extend ann defs = (ann', concat cs)
   where (cs, ann') = runState def ann
         def = sequence defs
@@ -352,10 +348,16 @@ cLetBodyUni q p p' x r_ = extend r_ $
        (not . justConst) rIdx]
   where ys = L.delete x (args r_)
 
-  
-
-
--- instance HasCoeffs RsrcSignature where
---   getCoeffs = concatMap getCoeffs . M.elems
-
-
+share :: FreeTemplate -> FreeTemplate -> [Id] -> Substitution -> Substitution -> (FreeTemplate, [Constraint]) 
+share q p_ zs s1 s2 =
+  let (pCommon_, csCommon) =
+        extend p_ [(`C.eq` (q!idx)) <$> def idx
+                          | idx <- S.toList (idxs q),
+                            not (containsArgs zs idx)]
+      (p, cs) =
+        extend pCommon_ [(`C.eq` (q!idx)) <$> def2 idx1 idx2
+                          | idx <- S.toList (idxs q),
+                            containsArgs zs idx,
+                            let idx1 = substitute' s1 idx,
+                            let idx2 = substitute' s2 idx] in
+    (p, cs ++ csCommon)

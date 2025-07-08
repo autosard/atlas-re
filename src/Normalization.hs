@@ -51,9 +51,10 @@ nmExpr' e@(IteAnn ann e1@(Coin _) e2 e3) = do
            (holeE2 (getType e2') e2')
            (holeE3 (getType e3') e3'))
 nmExpr' ite@(IteAnn ann e1 e2 e3) = do
+  (holeE1, e1') <- nmExpr' e1
   (holeE2, e2') <- nmExpr' e2
   (holeE3, e3') <- nmExpr' e3
-  return (idHole, IteAnn ann e1
+  return (idHole, IteAnn ann (holeE1 (getType e1') e1')
            (holeE2 (getType e2') e2')
            (holeE3 (getType e3') e3'))
 nmExpr' const@(ConstAnn ann id args) = do

@@ -137,7 +137,9 @@ printRHS :: Potential -> FreeTemplate -> Map Coeff Rational -> String
 printRHS pot rhs solution = printPotential pot $ bindTemplate rhs solution
 
 printBound :: PotFnMap -> ((FreeAnn, FreeAnn), FreeAnn) -> Map Coeff Rational -> String
-printBound pots ((from, fromRef), to) solution = L.intercalate " + " bounds
+printBound pots ((from, fromRef), to) solution =
+  let bound = L.intercalate " + " bounds in
+    if null bound then "0" else bound
   where bounds = filter (/= "0") (map costForType (M.keys from))
         costForType :: Type -> String
         costForType t = let pot = fst $ pots M.! t

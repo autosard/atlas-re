@@ -19,7 +19,7 @@ import Text.Megaparsec(SourcePos, unPos, sourceLine, sourceColumn)
 import Data.List(intercalate)
 import Prelude hiding (break)
 
-import Primitive(Id, printRat)
+import Primitive(Id, printRat, Substitution)
 import Typing.Type (Type, splitProdType, splitFnType)
 import Typing.Subst(Types(apply, tv))
 import Typing.Scheme (Scheme, toType)

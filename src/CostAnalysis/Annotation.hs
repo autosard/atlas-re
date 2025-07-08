@@ -12,7 +12,7 @@ import qualified Data.Map.Merge.Strict as Merge(merge, zipWithMatched, mapMissin
 import Control.Monad.State
 import Lens.Micro.Platform
 
-import Primitive(Id)
+import Primitive(Id, Substitution)
 import CostAnalysis.Template (Template,
                               TermTemplate,
                               BoundTemplate,
@@ -34,7 +34,9 @@ zeroAnnFrom :: (Template a) => Ann a -> BoundAnn
 zeroAnnFrom = M.map go
   where go t = Templ.BoundTemplate (Templ.args t) $
           M.fromList [(q, 0) | q <- S.toList $ Templ.idxs t]
-          
+
+annArgs :: (Template a) => Ann a -> [Id]
+annArgs qs = concatMap Templ.args (M.elems qs)
 
 instance HasCoeffs FreeAnn where
   getCoeffs = M.foldr (\q coeffs -> coeffs ++ getCoeffs q) []
@@ -171,3 +173,8 @@ instance HasCoeffs FreeSignature where
 type FreeSignature = Map Id FreeFunAnn
 type BoundSignature = Map Id BoundFunAnn
 
+share :: FreeAnn -> FreeAnn -> [Id] -> Substitution -> Substitution -> (FreeAnn, [Constraint])
+share qs ps_ zs s1 s2 = foldr go (M.empty, []) (M.keys ps_)
+  where go :: Type -> (FreeAnn, [Constraint]) -> (FreeAnn, [Constraint])
+        go t (ps, css) = let (p, cs) = Templ.share (qs M.! t) (ps_ M.! t) zs s1 s2 in
+                           (M.insert t p ps, css ++ cs)

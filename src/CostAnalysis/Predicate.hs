@@ -5,16 +5,21 @@ module CostAnalysis.Predicate where
 
 import qualified Data.Set as S
 import Data.Set(Set)
+import qualified Data.Map as M
+import Data.Map(Map)
 
-import Primitive(Id)
+import Primitive(Id, Substitution, applySubst)
 import Ast 
 import Control.Monad (guard)
 
 data PredOp = Le | Lt | Eq | Neq
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Show)
 
 data Predicate = Predicate Id PredOp Id Id
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Show)
+
+predApplySubst :: Substitution -> Predicate -> Predicate
+predApplySubst s (Predicate m op x y) = Predicate m op (applySubst s x) (applySubst s y)
 
 predVars :: Predicate -> Set Id
 predVars (Predicate _ _ x y) = S.fromList [x,y]
@@ -33,12 +38,22 @@ measure (Const m [Var x]) = Just (m,x)
 measure _ = Nothing
 
 predFromCondition :: PositionedExpr -> Maybe Predicate
-predFromCondition (Const "EQ" args) = buildPredicate Eq args
-predFromCondition (Const "LE" args) = buildPredicate Le args
-predFromCondition (Const "LT" args) = buildPredicate Lt args
-predFromCondition (Const "GE" [x,y]) = buildPredicate Le [y,x]
-predFromCondition (Const "GT" [x,y]) = buildPredicate Lt [y,x]
-predFromCondition _ = Nothing
+predFromCondition = predFromCondition' M.empty
+
+predFromCondition' :: Map Id PositionedExpr -> PositionedExpr -> Maybe Predicate
+predFromCondition' env (Let x e1 e2) = predFromCondition' (M.insert x e1 env) e2
+predFromCondition' env (Const op args) = do
+  args' <- mapM (env M.!?) =<< mapM toVar args
+  constToPredicate op args'
+predFromCondition' _ _ = Nothing
+
+constToPredicate :: Id -> [PositionedExpr] -> Maybe Predicate
+constToPredicate "EQ" args = buildPredicate Eq args
+constToPredicate "LE" args = buildPredicate Le args
+constToPredicate "LT" args = buildPredicate Lt args
+constToPredicate "GE" [x,y] = buildPredicate Le [y,x]
+constToPredicate "GT" [x,y] = buildPredicate Lt [y,x]
+constToPredicate _ _ = Nothing
 
 buildPredicate :: PredOp -> [PositionedExpr] -> Maybe Predicate
 buildPredicate op [arg1, arg2] = do

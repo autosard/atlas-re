@@ -28,7 +28,7 @@ data Rule
   | WeakenVar
   | Weaken [WeakenArg]
   | ShiftConst
-  | ShiftTerm 
+  | ShiftTerm
   deriving(Eq, Show)
 
 data RuleApp

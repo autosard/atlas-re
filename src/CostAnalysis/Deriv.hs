@@ -9,11 +9,11 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Set(Set)
 import qualified Data.Text as Text
-import Prelude hiding (or, and, negate)
+import Prelude hiding (or, and, negate, sum)
 
 import Ast hiding (Coefficient, CostAnnotation(..))
 import Constants (isBasicConst)
-import Primitive(Id)
+import Primitive(Id, applySubst, traceShow)
 import Control.Monad.RWS
 
 import Lens.Micro.Platform
@@ -93,16 +93,19 @@ proveIte tactic cf e@(Ite (Coin p) e1 e2) (q, qe, preds) q' = do
   conclude R.Ite cf (q, qe, preds) q' cs e [deriv1, deriv2]
 proveIte tactic cf e@(Ite condExp e1 e2) (q, qe, preds) q' = do
   let [t0, t1, t2] = subTactics 3 tactic
+  q1 <- fromAnn "Q1" "ite cond" q
+  q2 <- fromAnn "Q2" "ite body" q
+  let cs = assertEq q (add q1 q2)
 
   let cond = predFromCondition condExp
   let preds1 = maybe preds (`S.insert` preds) cond
   let preds2 = maybe preds (\p -> negate p `S.insert` preds) cond
 
   condResult <- emptyAnn M.empty "0" "ite cond"
-  derivCond <- proveExpr t0 cf condExp (q, qe, preds) condResult
-  deriv1 <- proveExpr t1 cf e1 (q, qe, preds1) q'
-  deriv2 <- proveExpr t2 cf e2 (q, qe, preds2) q'
-  conclude R.Ite cf (q, qe, preds) q' [] e [derivCond, deriv1, deriv2]
+  derivCond <- proveExpr t0 cf condExp (q1, qe, preds) condResult
+  deriv1 <- proveExpr t1 cf e1 (q2, qe, preds1) q'
+  deriv2 <- proveExpr t2 cf e2 (q2, qe, preds2) q'
+  conclude R.Ite cf (q, qe, preds) q' cs e [derivCond, deriv1, deriv2]
 
 getVar :: Type -> (PositionedPatternVar, Int) -> Maybe Id
 getVar t (v@(Id _ id), _) | matchesType (getType v) t = Just id
@@ -295,12 +298,11 @@ proveWeakenVar tactic cf e (q, qe, preds) q' = do
   
   r_ <- emptyTempl tVar "R" "weaken var" $ L.delete var (Templ.args redundantQ)
   let (r,rCs) = Templ.defineBy r_ redundantQ
-  let cs = Templ.assertGeZero (Templ.sub redundantQ r)
   let annR = M.insert tVar r q
   let preds' = excludeByVars preds (S.singleton var)
   
   deriv <- proveExpr t cf e (annR, qe, preds') q'
-  conclude R.WeakenVar cf (q, qe, preds) q' cs e [deriv]
+  conclude R.WeakenVar cf (q, qe, preds) q' [] e [deriv]
   
 proveWeaken :: Prove PositionedExpr Derivation
 proveWeaken tactic@(Rule (R.Weaken wArgs) _) cf e (q, qe, preds) q' = do
@@ -453,8 +455,9 @@ genTactic cfg cf e@(Const {}) = autoWeaken cfg cf e (Rule R.Const [])
 genTactic cfg cf (Match _ arms) = Rule R.Match $ map (genTactic cfg cf . armExpr) arms
 genTactic cfg cf e@(Ite e1 e2 e3) = let t1 = genTactic cfg cf e1 
                                         t2 = genTactic cfg cf e2 
-                                        t3 = genTactic cfg cf e3 in
-  autoWeaken cfg cf e $ Rule R.Ite [t1, t2, t3]
+                                        t3 = genTactic cfg cf e3
+                                        tactic = Rule R.Ite [t1, t2, t3] in
+  autoWeaken cfg cf e tactic
 genTactic cfg cf e@(App {}) = autoWeaken cfg cf e $ Rule R.ShiftConst [Rule R.App []]
 genTactic cfg cf e@(Let _ binding body) = let tBinding = genTactic cfg cf binding
                                               t1 = Rule R.ShiftTerm [tBinding]
