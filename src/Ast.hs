@@ -483,3 +483,7 @@ instance Show Val where
 
 printPos :: SourcePos -> String
 printPos pos = show (unPos . sourceLine $ pos) ++ ","  ++ show (unPos $ sourceColumn pos)
+
+toVar :: Expr a -> Maybe Id
+toVar (Var x) = Just x
+toVar _ = Nothing

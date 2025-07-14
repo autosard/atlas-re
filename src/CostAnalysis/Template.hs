@@ -32,6 +32,7 @@ class (Show a) => Template a where
   idxs :: a -> Set CoeffIdx
   args :: a -> [Id]
   empty :: a -> Bool
+  merge :: a -> a -> a
 
 mixes :: (Template a) => a -> [CoeffIdx]
 mixes = S.toList . S.filter (not . isPure) . idxs
@@ -64,6 +65,12 @@ instance Template FreeTemplate where
   (!?) templ idx = case coeffForIdx templ (toIdx idx) of
     Just q -> CoeffTerm q
     Nothing -> ConstTerm 0
+  merge q p = FreeTemplate {
+    _ftId = q^.ftId,
+    _ftArgs = (q^.ftArgs) `L.union` (p^.ftArgs),
+    _ftLabel = q^.ftLabel,
+    _ftComment = q^.ftComment,
+    _ftCoeffs = (q^.ftCoeffs) `S.union` (p^.ftCoeffs)}
 
 coeffForIdx :: FreeTemplate -> CoeffIdx -> Maybe Coeff
 coeffForIdx templ idx =
@@ -77,13 +84,6 @@ coeffForTemplate templ = Coeff (templ^.ftId) (templ^.ftLabel) (templ^.ftComment)
 instance HasCoeffs FreeTemplate where
   getCoeffs templ = map (coeffForTemplate templ) $ S.toList (templ^.ftCoeffs)
 
-merge :: FreeTemplate -> FreeTemplate -> FreeTemplate
-merge q p = FreeTemplate {
-  _ftId = q^.ftId,
-  _ftArgs = (q^.ftArgs) `L.union` (p^.ftArgs),
-  _ftLabel = q^.ftLabel,
-  _ftComment = q^.ftComment,
-  _ftCoeffs = (q^.ftCoeffs) `S.union` (p^.ftCoeffs)}
 
 defineFrom :: Int -> Text -> Text -> FreeTemplate -> FreeTemplate
 defineFrom id label comment templ = FreeTemplate id (templ^.ftArgs) label comment (templ^.ftCoeffs)
@@ -103,6 +103,8 @@ instance Template BoundTemplate where
   empty (BoundTemplate _ m) = M.null m
   (!) (BoundTemplate _ m) idx = ConstTerm $ m M.! toIdx idx
   (!?) (BoundTemplate _ m) idx = ConstTerm $ fromMaybe 0 (m M.!? toIdx idx)
+  merge (BoundTemplate xs ma) (BoundTemplate ys mb)
+    = BoundTemplate (xs `L.union` ys) (M.union ma mb)
 
 bindTemplate :: FreeTemplate -> Map Coeff Rational -> BoundTemplate
 bindTemplate q values = BoundTemplate
@@ -139,6 +141,8 @@ instance Template TermTemplate where
   empty = M.null . terms
   (!) templ idx = terms templ M.! toIdx idx
   (!?) templ idx = fromMaybe (ConstTerm 0) $ terms templ M.!? toIdx idx
+  merge (TermTemplate argsA termsA) (TermTemplate argsB termsB)
+    = TermTemplate (argsA `L.union` argsB) (M.union termsA termsB)
 
 zeroTemplate = TermTemplate [] M.empty
 

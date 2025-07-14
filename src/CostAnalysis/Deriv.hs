@@ -298,11 +298,12 @@ proveWeakenVar tactic cf e (q, qe, preds) q' = do
   
   r_ <- emptyTempl tVar "R" "weaken var" $ L.delete var (Templ.args redundantQ)
   let (r,rCs) = Templ.defineBy r_ redundantQ
+  let cs = Templ.assertGeZero (Templ.sub redundantQ r)
   let annR = M.insert tVar r q
   let preds' = excludeByVars preds (S.singleton var)
   
   deriv <- proveExpr t cf e (annR, qe, preds') q'
-  conclude R.WeakenVar cf (q, qe, preds) q' [] e [deriv]
+  conclude R.WeakenVar cf (q, qe, preds) q' cs e [deriv]
   
 proveWeaken :: Prove PositionedExpr Derivation
 proveWeaken tactic@(Rule (R.Weaken wArgs) _) cf e (q, qe, preds) q' = do
@@ -330,7 +331,6 @@ proveShiftTerm tactic cf e (q, qe, preds) q' = do
 
   r <- fromAnn "R" "shift:term" q'
   
-
   let cs = unifyAssertEq pe (add qe r)
         ++ unifyAssertEq p' (add q' r)
         ++ assertGeZero r
@@ -453,6 +453,10 @@ genTactic cfg cf e@(Var {}) = autoWeaken cfg cf e (Rule R.Var [])
 genTactic _ _ e@(Const {}) | isBasicConst e = Rule R.ConstBase []
 genTactic cfg cf e@(Const {}) = autoWeaken cfg cf e (Rule R.Const [])
 genTactic cfg cf (Match _ arms) = Rule R.Match $ map (genTactic cfg cf . armExpr) arms
+genTactic cfg cf e@(Ite (Coin _) e2 e3) = let t1 = genTactic cfg cf e2 
+                                              t2 = genTactic cfg cf e3
+                                              tactic = Rule R.Ite [t1, t2] in
+  autoWeaken cfg cf e tactic
 genTactic cfg cf e@(Ite e1 e2 e3) = let t1 = genTactic cfg cf e1 
                                         t2 = genTactic cfg cf e2 
                                         t3 = genTactic cfg cf e3

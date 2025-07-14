@@ -48,7 +48,8 @@ constType "true" = Forall 0 boolT
 constType "false" = Forall 0 boolT
 constType "numLit" = Forall 0 (TAp Num [])
 constType "error" = Forall 1 (TGen 0)
-constType "weight" = Forall 1 $ [treeT] `fn` boolT
+constType "weight" = Forall 1 $ [treeT] `fn` numT
+constType "rank" = Forall 1 $ [treeT] `fn` numT
 constType "LT" = Forall 1 $ [TGen 0, TGen 0] `fn` boolT
 constType "LE" = Forall 1 $ [TGen 0, TGen 0] `fn` boolT
 constType "EQ" = Forall 1 $ [TGen 0, TGen 0] `fn` boolT
@@ -88,6 +89,7 @@ isBasicConst (Const "-" _ ) = True
 isBasicConst (Const "true" _) = True
 isBasicConst (Const "false" _) = True
 isBasicConst (Const "weight" _) = True
+isBasicConst (Const "rank" _) = True
 isBasicConst (Const c _) | isNumConst c = True
 isBasicConst _ = False
 

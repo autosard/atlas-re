@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE TupleSections #-}
 
 module CostAnalysis.Annotation where
 
@@ -24,6 +25,7 @@ import CostAnalysis.Constraint
 import qualified CostAnalysis.Constraint as C
 import Typing.Type
 import CostAnalysis.Coeff
+import Data.Maybe (fromMaybe)
 
 type Ann a = Map Type a
 
@@ -41,7 +43,7 @@ annArgs qs = concatMap Templ.args (M.elems qs)
 instance HasCoeffs FreeAnn where
   getCoeffs = M.foldr (\q coeffs -> coeffs ++ getCoeffs q) []
 
-merge :: FreeAnn -> FreeAnn -> FreeAnn
+merge :: (Template a) => Ann a -> Ann a -> Ann a
 merge = M.unionWith Templ.merge
 
 split :: BoundAnn -> BoundAnn -> (BoundAnn, BoundAnn)
@@ -50,7 +52,7 @@ split qs ps = foldr go (M.empty, M.empty) $ M.assocs qs
                                  (x, y) = Templ.split q args' in
                                (M.insert t x xs, M.insert t y ys)
 
-zipWith :: (Template a, Template b) => (Type -> a -> c) -> (Type -> b -> c) -> (Type -> a -> b -> c) -> Ann a -> Ann b -> Ann c
+zipWith :: (Type -> a -> c) -> (Type -> b -> c) -> (Type -> a -> b -> c) -> Ann a -> Ann b -> Ann c
 zipWith fL fR zipper = Merge.merge missingStrategyL missingStrategyR (Merge.zipWithMatched zipper)
   where missingStrategyL = Merge.mapMissing fL
         missingStrategyR = Merge.mapMissing fR
@@ -74,10 +76,13 @@ sum :: (Template a) => Ann a -> Term
 sum q = C.sum . M.elems $  M.map Templ.sum q
 
 symbolicCost :: (Template a, Template b) => ((Ann a, Ann a), Ann b) -> Ann TermTemplate
-symbolicCost ((from, fromRef), to) = add fromRef $ zipWith
-  (const (`Templ.symbolicCost` zeroTemplate))
-  (const (Templ.symbolicCost zeroTemplate))
-  (const Templ.symbolicCost) from to
+symbolicCost ((from, fromRef), to)
+  = let diff = zipWith
+               (const (`Templ.symbolicCost` zeroTemplate))
+               (const (Templ.symbolicCost zeroTemplate))
+               (const Templ.symbolicCost) from to in
+      add diff fromRef
+
 
 assertEq :: (Template a, Template b) => Ann a -> Ann b -> [Constraint]
 assertEq qs ps = concat . M.elems $ zipWith

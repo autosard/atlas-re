@@ -3,17 +3,13 @@
 module CostAnalysis.Potential.Rank.Constraints where
 
 import Prelude hiding (exp, (!!), sum, or)
-import qualified Data.List as L
-import qualified Data.Set as S
-import Lens.Micro.Platform
+
 
 import Primitive(Id)
-import CostAnalysis.Template hiding (sum)
+import CostAnalysis.Template hiding (sum, sub)
 import CostAnalysis.Constraint
-import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Coeff
 import CostAnalysis.Potential.Rank.Base(oneCoeff)
-import Data.List.Extra (groupSort)
 import Ast
 import qualified Data.Text as T
 
@@ -22,16 +18,18 @@ exp :: Id
 exp = "e1"
 
 cConst :: PositionedExpr -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
-cConst (Leaf {}) (q, _) q' = eq (q!oneCoeff) (q'!?oneCoeff)
+cConst (Leaf {}) (q, qe) q' = eq (q!oneCoeff) (q'!?oneCoeff)
 cConst e@(Node (Var x1) _ (Var x2)) (q, qe) q'
-  = eq (q!?x2) (q'!?exp)
-    ++ eqSum (q!?oneCoeff) [q'!?exp, q'!oneCoeff]
+  = eq (q!?x2) (sub [q'!?exp, qe!?exp])
+    ++ eqSum (q!?oneCoeff) [sub [q'!?exp, qe!?exp], q'!oneCoeff]
     ++ zero (q!?x1)
 cConst (Ast.Const id _) (q, _) q' = error $ "Constructor '" ++ T.unpack id ++ "' not supported."
       
 cMatch :: FreeTemplate -> FreeTemplate -> Id -> [Id] -> (FreeTemplate, [Constraint])
 -- leaf  
-cMatch q p x [] = extend p [(`eq` (q!?oneCoeff)) <$> def oneCoeff]
+cMatch q p x [] = extend p $
+  ((`eq` (q!?oneCoeff)) <$> def oneCoeff)
+  : [(`eq` (q!?z)) <$> def z | (Pure z) <- pures q, z /= x]
 -- node
 cMatch q r x [u, v] = extend r $
   [

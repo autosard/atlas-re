@@ -278,6 +278,7 @@ pConst = do
     <|> (,) <$> symbol' "cons" <*> count 2 pArg
     <|> (,) <$> symbol' "error" <*> pure []
     <|> (,) <$> symbol' "weight" <*> count 1 pArg
+    <|> (,) <$> symbol' "rank" <*> count 1 pArg
     <|> (do
             n <- pNumber
             return (T.append "num#" (T.pack (show n)), []))
