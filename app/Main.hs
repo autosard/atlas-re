@@ -54,7 +54,11 @@ import CostAnalysis.ProveMonad
 import CostAnalysis.Rules
 import CostAnalysis.Analysis
 
-import Cli(Options(..), AnalyzeOptions(..), EvalOptions(..), Command(..), cliP)
+import Cli(Options(..),
+           AnalyzeOptions(..),
+           EvalOptions(..),
+           BenchOptions(..),
+           Command(..), cliP)
 
 import System.Random (getStdGen)
 import Module (load)
@@ -62,6 +66,7 @@ import SourceError (printSrcError)
 import CostAnalysis.Constraint (Constraint)
 import Control.Monad (when)
 import AstContext (contextualizeMod)
+import Benchmark(sort, genBenchmark, median)
 
 type App a = LoggerT (Msg Severity) IO a
 
@@ -70,6 +75,7 @@ app options = do
   case optCommand options of
     Analyze runOptions -> run options runOptions
     Eval evalOptions -> eval options evalOptions
+    Bench benchOptions -> bench options benchOptions
 
 run :: Options -> AnalyzeOptions -> App ()
 run Options{..} AnalyzeOptions{..} = do
@@ -150,10 +156,25 @@ red s = setSGRCode [SetColor Foreground Vivid Red] ++ s ++ setSGRCode [Reset]
 eval :: Options -> EvalOptions -> App ()
 eval Options{..} EvalOptions{..} = do
   (mod, _) <- liftIO $ loadMod searchPath (Left modName)
-  expr' <- liftIO $ loadExpr expr mod
+  --expr' <- liftIO $ loadExpr expr mod
   rng <- liftIO getStdGen
-  let val = evalWithModule mod expr' rng
+  -- let val = evalWithModule mod expr' rng
+  --e <- liftIO $ genBenchmark "gtree" ["4"] mod
+  e <- liftIO $ genBenchmark "golden_delmin" ["4"] mod
+  let val = snd $ evalWithModule mod e rng
   liftIO $ print val
+
+bench :: Options -> BenchOptions -> App ()
+bench Options{..} BenchOptions{..} = do
+  (mod, _) <- liftIO $ loadMod searchPath (Left benchMod)
+  let args = words $ T.unpack benchmark
+  expr <- liftIO $ genBenchmark (head args) (tail args) mod 
+  rng <- liftIO getStdGen
+  let (_, vs) = foldr (eval mod expr) (rng, []) [1..samples] 
+  let val = median vs
+  liftIO $ print val
+  where eval mod expr _ (rng, vs) = let (rng', v) = evalWithModule mod expr rng in
+          (rng', fst v : vs)
 
 
 loadExpr :: Text -> TypedModule -> IO TypedExpr

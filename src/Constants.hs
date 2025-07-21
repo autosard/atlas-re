@@ -63,15 +63,20 @@ constType c = if isNumConst c
 
 evalConst :: Id -> [Val] -> Val
 evalConst "LT" [x, y] = evalLT x y
+evalConst "LE" [x, y] = evalLE x y
 evalConst "EQ" [x, y] = evalEQ x y
 evalConst "GT" [x, y] = evalGT x y
 evalConst "+" [NumVal x, NumVal y] = NumVal (x + y)
 evalConst "-" [NumVal x, NumVal y] = NumVal (x - y)
 evalConst c _ = case T.stripPrefix "num#" c of
-  Just t -> case decimal t of
-    Left e -> error e
-    Right (n, _) -> NumVal n
+  Just t -> if T.isPrefixOf "-" t
+    then NumVal $ - toInt (T.tail t)
+    else NumVal (toInt t)
   Nothing -> error $ "undefined constant '" ++ T.unpack c ++ "'"
+  where toInt :: T.Text -> Int
+        toInt t = case decimal t of
+          Left e -> error e
+          Right (n, _) -> n
 
 
 isNumConst :: T.Text -> Bool
@@ -100,6 +105,10 @@ toBool False = ConstVal "false" []
 evalLT :: Val -> Val -> Val
 evalLT (NumVal x) (NumVal y) = toBool $ x < y
 evalLT _ _ = error "LT is only implemented for numbers."
+
+evalLE :: Val -> Val -> Val
+evalLE (NumVal x) (NumVal y) = toBool $ x <= y
+evalLE _ _ = error "LE is only implemented for numbers."
 
 evalEQ :: Val -> Val -> Val
 evalEQ (NumVal x) (NumVal y) = toBool $ x == y

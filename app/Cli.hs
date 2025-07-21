@@ -2,7 +2,13 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE StrictData #-}
 
-module Cli(Options(..), Command(..), AnalyzeOptions(..), optionsP, EvalOptions(..), cliP) where
+module Cli(Options(..),
+           Command(..),
+           AnalyzeOptions(..),
+           optionsP,
+           EvalOptions(..),
+           BenchOptions(..),
+           cliP) where
 
 import Ast(Fqn)
 
@@ -16,7 +22,9 @@ data Options = Options
   , optCommand :: !Command
   }
 
-data Command = Analyze !AnalyzeOptions | Eval !EvalOptions
+data Command = Analyze !AnalyzeOptions
+  | Eval !EvalOptions
+  | Bench !BenchOptions
 
 cliP :: ParserInfo Options
 cliP = info (optionsP <**> helper) ( fullDesc
@@ -34,6 +42,8 @@ optionsP = do
                              (info analyzeCommandP (progDesc "Perform amortized resource analysis for the given functions.")))
                  <|> hsubparser (command "eval"
                                  (info evalCommandP (progDesc "Evaluate the given expression in the context of the given module.")))
+                 <|> hsubparser (command "bench"
+                                 (info benchCommandP (progDesc "Run the given benchmark.")))
    return Options{..}
 
 data AnalyzeOptions = AnalyzeOptions {
@@ -100,7 +110,26 @@ data EvalOptions = EvalOptions { modName :: !Text, expr :: !Text }
 evalOptionsP :: Parser EvalOptions
 evalOptionsP = EvalOptions
   <$> argument str (metavar "MODULE")
-  <*> argument str (metavar "EXPR") 
+  <*> argument str (metavar "EXPR")
 
 evalCommandP :: Parser Command
 evalCommandP = Eval <$> evalOptionsP
+
+
+data BenchOptions = BenchOptions { benchMod :: !Text, benchmark :: !Text, samples:: !Int }
+
+benchOptionsP :: Parser BenchOptions
+benchOptionsP = do
+  benchMod <- argument str (metavar "MODULE")
+  benchmark <- argument str (metavar "BENCHMARK")
+  samples <- option auto (long "samples"
+                           <> short 'n'
+                           <> metavar "N"
+                           <> help "Run N samples and return the median."
+                           <> value 1
+                           <> showDefault)
+  return $ BenchOptions{..}
+
+benchCommandP :: Parser Command
+benchCommandP = Bench <$> benchOptionsP
+

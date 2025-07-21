@@ -62,16 +62,16 @@ find id env = do
   let maybeVal = M.lookup id env
   lift $ liftEither (maybeToEither (UnboundIdentifier id) maybeVal)
 
-evalEval :: DefMap -> EvalState -> Eval a -> Either EvalError (Rational, a)
+evalEval :: DefMap -> EvalState -> Eval a -> Either EvalError (StdGen, (Rational, a))
 evalEval defs initState eval = runExcept (
   do
     (val, s) <- (`runStateT` initState) . (`runReaderT` defs) $ eval
-    return (s ^. cost, val))
+    return (s^.rng, (s ^. cost, val)))
 
-evalWithModule :: TypedModule -> TypedExpr -> StdGen -> Val
+evalWithModule :: TypedModule -> TypedExpr -> StdGen -> (StdGen, (Rational, Val))
 evalWithModule mod exp rng = case evalEval (defs mod) (EvalState rng 0) (evalExpr M.empty exp) of
   Left e -> error $ show e
-  Right (cost, val) -> val
+  Right r -> r
   where splitDef fun@(Fn id _ _) = (id, fun)
 
 matchPatterns :: Val -> [TypedMatchArm] -> Maybe (Env, TypedExpr)
