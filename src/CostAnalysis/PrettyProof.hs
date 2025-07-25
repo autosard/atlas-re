@@ -274,7 +274,7 @@ hamPredicates preds = toHtml $ intersperse
   (map hamPredicate (S.toAscList preds))
   
 hamPredicate :: P.Predicate -> Html
-hamPredicate (P.Predicate m op x y) =
+hamPredicate (P.Predicate m op x y _) =
   [shamlet|
 <apply>
   <apply>

@@ -29,7 +29,7 @@ genExpertKnowledge :: Args -> Set WeakenArg -> Set P.Predicate -> [Id] -> Set Co
 genExpertKnowledge (Args {logLemmaInstance = llCoeffs}) wArgs preds args idxs = merge $ map select wArgs' 
   where wArgs' = S.toList $ S.intersection wArgs supportedArgs
         preds' = [ (x,y)
-          | (P.Predicate m op x y) <- S.toList preds,
+          | (P.Predicate m op x y Nothing) <- S.toList preds,
             m == "weight",
             op == P.Le || op == P.Lt || op == P.Eq]
         select Mono = monoLattice (monoLe preds') args idxs

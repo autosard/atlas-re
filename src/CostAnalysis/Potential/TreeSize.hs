@@ -1,9 +1,9 @@
-module CostAnalysis.Potential.Rank (pot, defaultPot) where
+module CostAnalysis.Potential.TreeSize (pot, defaultPot) where
 
-import CostAnalysis.Potential.Rank.Base
-import CostAnalysis.Potential.Rank.Constraints
-import CostAnalysis.Potential.Rank.Optimization
-import CostAnalysis.Potential.Rank.Weakening
+import CostAnalysis.Potential.TreeSize.Base
+import CostAnalysis.Potential.TreeSize.Constraints
+import CostAnalysis.Potential.TreeSize.Optimization
+import CostAnalysis.Potential.TreeSize.Weakening
 import CostAnalysis.Potential(Potential(Potential))
 
 

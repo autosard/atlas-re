@@ -12,9 +12,14 @@ import CostAnalysis.Constraint
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Coeff
 import Ast 
+import CostAnalysis.Predicate (Predicate)
+import Data.Set (Set)
 
 exp :: Id
 exp = "e1"
+
+constCases :: Pattern Positioned -> [Predicate]
+constCases _ = []
 
 -- additative shift
 addShiftL :: Int -> FreeTemplate -> FreeTemplate -> [Constraint] 
@@ -40,22 +45,22 @@ addShiftDefL k q_ x q' y = extend q_ $
     let j' = j+1,
     let is = varsExcept idx [y]]
 
-cConst :: Args -> PositionedExpr -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
-cConst potArgs (Nil {}) (q, _) q'
+cConst :: Args -> PositionedExpr -> Set Predicate -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
+cConst potArgs (Nil {}) _ (q, _) q'
   = eq (q![mix||]) (q'!?[mix||])
   -- cons
-cConst potArgs (Cons {}) (q, _) q' = addShiftL (degree potArgs) q q' 
-cConst _ (Tuple (Var x1) (Var x2)) (q, _) q' = unifyAssertEqBy q q' [x1,x2]
-cConst _ constr _ _ = error $ show constr
+cConst potArgs (Cons {}) _ (q, _) q' = addShiftL (degree potArgs) q q' 
+cConst _ (Tuple (Var x1) (Var x2)) _ (q, _) q' = unifyAssertEqBy q q' [x1,x2]
+cConst _ constr _ _ _ = error $ show constr
 
-cMatch :: Args -> FreeTemplate -> FreeTemplate -> Id -> [Id] -> (FreeTemplate, [Constraint])
+cMatch :: Args -> FreeTemplate -> FreeTemplate -> Maybe Predicate -> Id -> [Id] -> (FreeTemplate, [Constraint])
 -- nil 
-cMatch _ q r x [] = extend r $
+cMatch _ q r _ x [] = extend r $
   [(`eq` (q!idx)) <$> def idx
   | idx <- mixes q,
     onlyVars idx (args r)]
 -- cons                   
-cMatch potArgs q p x [l] = addShiftDefL (degree potArgs) p l q x
+cMatch potArgs q p _ x [l] = addShiftDefL (degree potArgs) p l q x
 
 cLetBodyMulti :: FreeTemplate -> TemplateArray -> Id -> [CoeffIdx] -> FreeTemplate -> (FreeTemplate, [Constraint])
 cLetBodyMulti _ ps' x is r_ = extend r_ $

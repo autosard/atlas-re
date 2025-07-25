@@ -25,7 +25,7 @@ import CostAnalysis.Potential hiding (Factor(..), emptyAnn, defaultAnn, defaultT
 --import CostAnalysis.RsrcAnn hiding (fromAnn)
 import CostAnalysis.Annotation hiding (sub)
 import CostAnalysis.Predicate
-import CostAnalysis.Template(FreeTemplate)
+import CostAnalysis.Template(FreeTemplate (FreeTemplate))
 import qualified CostAnalysis.Template as Templ
 import CostAnalysis.Constraint ( and,
                                  or,
@@ -41,42 +41,45 @@ import Data.Maybe (fromMaybe, mapMaybe, isJust, catMaybes)
 
 
 import CostAnalysis.Coeff (coeffArgs, justVars)
+import Data.List (singleton)
   
 type ProofResult = (Derivation, [Constraint], FreeSignature)
 
-type Prove e a = Tactic -> Maybe Int -> e -> (FreeAnn, FreeAnn, Set Predicate) -> FreeAnn -> ProveMonad a
+data ProveKind = Upper | Lower 
+
+type Prove e a = Tactic -> Maybe Int -> ProveKind -> e -> (FreeAnn, FreeAnn, Set Predicate) -> FreeAnn -> ProveMonad a
 
 proveConst :: Prove PositionedExpr Derivation
-proveConst _ cf e@Error (q, qe, preds) q' = do
+proveConst _ cf _ e@Error (q, qe, preds) q' = do
   let cs = unifyAssertEq q q'
   conclude R.Const cf (q, qe, preds) q' cs e []
-proveConst _ cf e@(Const "(,)" args) (q, qe, preds) q' = do
+proveConst _ cf _ e@(Const "(,)" args) (q, qe, preds) q' = do
   let cs = unifyAssertEqBy q q' (varsByType args)
   conclude R.Const cf (q, qe, preds) q' cs e []
-proveConst _ cf e@(Const "numLit" _) (q, qe, preds) q' = do
+proveConst _ cf _ e@(Const "numLit" _) (q, qe, preds) q' = do
   let cs = unifyAssertEq q q'
   conclude R.Var cf (q, qe, preds) q' cs e []
-proveConst _ cf e@(Const id _) (q, qe, preds) q' = do
+proveConst _ cf _ e@(Const id _) (q, qe, preds) q' = do
   pots <- use potentials
   let t = getType e
   cs <- (unifyAssertEq (M.delete t q) (M.delete t q') ++)
     <$> if M.member t pots then
-          return $ cConst (potForType t pots) e (q M.! t, qe M.! t) (q' M.! t)
+          return $ cConst (potForType t pots) e preds (q M.! t, qe M.! t) (q' M.! t)
         else errorFrom (SynExpr e) $ "Constructor '" ++ Text.unpack id ++ "' not supported, by selected potential function(s)."
   conclude R.Const cf (q, qe, preds) q' cs e []
 
 proveConstBase :: Prove PositionedExpr Derivation
-proveConstBase _ cf e (q, qe, preds) q' = do
+proveConstBase _ cf _ e (q, qe, preds) q' = do
   let cs = unifyAssertEq q q'
   conclude R.ConstBase cf (q, qe, preds) q' cs e []
 
 proveVar :: Prove PositionedExpr Derivation
-proveVar _ cf e@(Var id) (q, qe, preds) q' = do
+proveVar _ cf _ e@(Var id) (q, qe, preds) q' = do
   let cs = unifyAssertEq q q'
   conclude R.Var cf (q, qe, preds) q' cs e []
 
 proveIte :: Prove PositionedExpr Derivation
-proveIte tactic cf e@(Ite (Coin p) e1 e2) (q, qe, preds) q' = do
+proveIte tactic cf kind e@(Ite (Coin p) e1 e2) (q, qe, preds) q' = do
   let [t1, t2] = subTactics 2 tactic
   q1 <- enrichWithDefaults False "Q1" "" q
   q2 <- enrichWithDefaults False "Q2" "" q
@@ -88,10 +91,10 @@ proveIte tactic cf e@(Ite (Coin p) e1 e2) (q, qe, preds) q' = do
                      unifyAssertEq qe (add
                                        (scale qe1 (ConstTerm p))
                                        (scale qe2 (ConstTerm (1-p))))] 
-  deriv1 <- proveExpr t1 cf e1 (q1, qe1, preds) q'
-  deriv2 <- proveExpr t2 cf e2 (q2, qe2, preds) q'
+  deriv1 <- proveExpr t1 cf kind e1 (q1, qe1, preds) q'
+  deriv2 <- proveExpr t2 cf kind e2 (q2, qe2, preds) q'
   conclude R.Ite cf (q, qe, preds) q' cs e [deriv1, deriv2]
-proveIte tactic cf e@(Ite condExp e1 e2) (q, qe, preds) q' = do
+proveIte tactic cf kind e@(Ite condExp e1 e2) (q, qe, preds) q' = do
   let [t0, t1, t2] = subTactics 3 tactic
   q1 <- fromAnn "Q1" "ite cond" q
   q2 <- fromAnn "Q2" "ite body" q
@@ -102,9 +105,9 @@ proveIte tactic cf e@(Ite condExp e1 e2) (q, qe, preds) q' = do
   let preds2 = maybe preds (\p -> negate p `S.insert` preds) cond
 
   condResult <- emptyAnn M.empty "0" "ite cond"
-  derivCond <- proveExpr t0 cf condExp (q1, qe, preds) condResult
-  deriv1 <- proveExpr t1 cf e1 (q2, qe, preds1) q'
-  deriv2 <- proveExpr t2 cf e2 (q2, qe, preds2) q'
+  derivCond <- proveExpr t0 cf kind condExp (q1, qe, preds) condResult
+  deriv1 <- proveExpr t1 cf kind e1 (q2, qe, preds1) q'
+  deriv2 <- proveExpr t2 cf kind e2 (q2, qe, preds2) q'
   conclude R.Ite cf (q, qe, preds) q' cs e [derivCond, deriv1, deriv2]
 
 getVar :: Type -> (PositionedPatternVar, Int) -> Maybe Id
@@ -114,17 +117,17 @@ getVar t (v@(WildcardVar _), wcId) | matchesType (getType v) t =
                                      Just . Text.pack $ ("?w" ++ show wcId)
                                    | otherwise = Nothing
 
-proveMatchArm :: Id -> Prove PositionedMatchArm ([Constraint], Derivation)
-proveMatchArm matchVar tactic cf arm@(MatchArm pat@(ConstPat _ "(,)" patVars) e) (q, qe, preds) q' = do
+proveMatchArm :: Id -> Prove PositionedMatchArm ([Constraint], [Derivation])
+proveMatchArm matchVar tactic cf kind arm@(MatchArm pat@(ConstPat _ "(,)" patVars) e) (q, qe, preds) q' = do
   let tsMatch = filter (`M.member` q) $ splitProdType (getType pat)
   let tMatch = head tsMatch
   let vars = mapMaybe (getVar tMatch) $ zip patVars [0..]
   let p = M.adjust (Templ.substArg matchVar (head vars)) tMatch q
   let cs = unifyAssertEq q p
   let preds' = excludeByVars preds (S.singleton matchVar)
-  deriv <- proveExpr tactic cf e (p, qe, preds') q'
-  return (cs, deriv)
-proveMatchArm matchVar tactic cf 
+  deriv <- proveExpr tactic cf kind e (p, qe, preds') q'
+  return (cs, [deriv])
+proveMatchArm matchVar tactic cf kind
   (MatchArm pat@(ConstPat _ id patVars) e) (q, qe, preds) q' = do
   let tMatch = getType pat
   let nonMatchAnns = M.delete tMatch q
@@ -132,27 +135,44 @@ proveMatchArm matchVar tactic cf
   pot <- potForType tMatch <$> use potentials
   let vars = mapMaybe (getVar tMatch) $ zip patVars [0..]
   let args' = L.delete matchVar (Templ.args matchAnn) `L.union` vars
-  p_ <- emptyTempl tMatch "P" "match arm" args'
-  let (p, cs) = cMatch pot matchAnn p_ matchVar vars
+
+  let cases = constCases pot pat
+  (ps, cs)  <- case cases of
+    [] -> constrainCase pot tMatch matchAnn args' vars Nothing
+    cases -> foldr accum ([],[]) <$>
+      mapM (constrainCase pot tMatch matchAnn args' vars . Just) cases
   tellCs cs
   let preds' = excludeByVars preds (S.singleton matchVar)
-  deriv <- proveExpr tactic cf e (M.insert tMatch p nonMatchAnns, qe, preds') q'
-  return (cs, deriv)
+  derivs <- mapM (\p -> proveExpr tactic cf kind e (M.insert tMatch p nonMatchAnns, qe, preds') q') ps
+  return (cs, derivs)
+  where constrainCase :: Potential
+                         -> Type
+                         -> FreeTemplate
+                         -> [Id]
+                         -> [Id]
+                         -> Maybe Predicate
+                         -> ProveMonad ([FreeTemplate], [Constraint])
+        constrainCase pot t q args vars _case = do
+          p_ <- emptyTempl t "P" "match arm" args
+          let (p, cs) = cMatch pot q p_ _case matchVar vars
+          return ([p], cs)
+        accum :: ([FreeTemplate], [Constraint]) -> ([FreeTemplate], [Constraint]) -> ([FreeTemplate], [Constraint])
+        accum (p, cs) (ps, css) = (p ++ ps, cs ++ css)
 
-proveMatchArm matchVar tactic cf arm@(MatchArm pat@(Alias _ x) e) q q' = do
-    deriv <- proveExpr tactic cf e q q'
-    return ([], deriv)
-proveMatchArm _ _ _ arm _ _ = errorFrom (SynArm arm) "unsupported pattern match in rule (match)."
+proveMatchArm matchVar tactic cf kind arm@(MatchArm pat@(Alias _ x) e) q q' = do
+    deriv <- proveExpr tactic cf kind e q q'
+    return ([], [deriv])
+proveMatchArm _ _ _ _ arm _ _ = errorFrom (SynArm arm) "unsupported pattern match in rule (match)."
 
 proveMatch :: Prove PositionedExpr Derivation
-proveMatch tactic cf e@(Match (Var x) arms) q q' = do
+proveMatch tactic cf kind e@(Match (Var x) arms) q q' = do
   let tactics = subTactics (length arms) tactic
   results <- zipWithM proveArmWithTactic tactics arms
   let (cs, derivs) = foldr accum ([], []) results
   conclude R.Match cf q q' cs e derivs
   
-  where accum (cs, deriv) (css, derivs) = (cs ++ css, deriv:derivs)
-        proveArmWithTactic tactic arm = proveMatchArm x tactic cf arm q q'
+  where accum (cs, derivs) (css, derivss) = (cs ++ css, derivs ++ derivss)
+        proveArmWithTactic tactic arm = proveMatchArm x tactic cf kind arm q q'
 
 
 splitLetCtx :: PositionedExpr -> PositionedExpr -> FreeTemplate -> ([Id], [Id])
@@ -168,14 +188,15 @@ isLeaf Leaf = True
 isLeaf _ = False
 
 proveLet :: Prove PositionedExpr Derivation
-proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) (q, qe, preds) q' = do
+proveLet tactic@(Rule (R.Let letArgs) _) cf kind e@(Let x e1 e2) (q, qe, preds) q' = do
   pots <- use potentials
   let [t1, t2] = subTactics 2 tactic
   let argSplit = M.map (splitLetCtx e1 e2) q
   let (varsE1, varsE2) = M.foldr (\(xs, ys) (xss, yss) -> (xs ++ xss, ys ++ yss)) ([],[]) argSplit
   let preds1 = restrictByVars preds (S.fromList varsE1)
   let preds2 = restrictByVars preds (S.fromList varsE2)
-
+  let mixedPreds = (preds S.\\ preds1) S.\\ preds2
+  
   let tsBind = filter (`M.member` q) $ splitProdType $ getType e1
   tBind <- if null tsBind then
              return Nothing
@@ -232,7 +253,7 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) (q, qe, preds) q' = 
       let annPs' = map (\p -> M.fromList [(t, p)]) (Templ.elems ps')
       let cfPreds = replicate (length annPs) preds1
 
-      cfDerivs <- zipWithM (proveExpr t1 (Just $ fromMaybe 0 cf) e1) (zip3 annPs annPes cfPreds) annPs'
+      cfDerivs <- zipWithM (proveExpr t1 (Just $ fromMaybe 0 cf) kind e1) (zip3 annPs annPes cfPreds) annPs'
       
       return (bindingAnnP', bindingAnnP, bindingAnnR,
                pCs ++ peCs ++ cfCs ++ rCs ++ nonBindingCs,
@@ -244,13 +265,18 @@ proveLet tactic@(Rule (R.Let letArgs) _) cf e@(Let x e1 e2) (q, qe, preds) q' = 
                        nonBindingCs, [])
 
   
-  deriv1 <- proveExpr t1 cf e1 (annP, annPe, preds1) annP'
-  deriv2 <- proveExpr t2 cf e2 (annR, qe, preds1) q'
+  deriv1 <- proveExpr t1 cf kind e1 (annP, annPe, preds1) annP'
+  deriv2 <- proveExpr t2 cf kind e2 (annR, qe, preds2) q'
 
   conclude (R.Let letArgs) cf (q, qe, preds) q' cs e ([deriv1, deriv2] ++ cfDerivs)
 
+-- extendPredicates :: Set Pred -> [Id] -> Tactic -> PositionedExpr -> ProveMonad (Set Predicate, [Derivs], [Constraints])
+-- extendPredicates preds deltaVars tactic e = do
+--   where go (Predicate m op x y pre) = do
+--           deriv <- proveExpr tactic 
+
 proveApp :: Prove PositionedExpr Derivation
-proveApp tactic Nothing e@(App id args) (q, qe, pred) q' = do
+proveApp tactic Nothing _ e@(App id args) (q, qe, pred) q' = do
   fnSig <- use sig
   let cSig = withCost $ fnSig M.! id
   let cfSigs = withoutCost $ fnSig M.! id
@@ -263,7 +289,7 @@ proveApp tactic Nothing e@(App id args) (q, qe, pred) q' = do
            ++ unifyAssertEqBy qe (add pe (scale re (ConstTerm k))) (M.map Templ.args qe)
            ++ unifyAssertEq q' (add p' (scale r' (ConstTerm k)))
           | k <- [0,1,2]]
-proveApp tactic (Just cf) e@(App id args) (q, qe, pred) q' = do
+proveApp tactic (Just cf) _ e@(App id args) (q, qe, pred) q' = do
   fnSig <- use sig
   let cfSigs = withoutCost $ fnSig M.! id
   k <- freshVar
@@ -286,7 +312,7 @@ redundentVars qs e =
 
 
 proveWeakenVar :: Prove PositionedExpr Derivation
-proveWeakenVar tactic cf e (q, qe, preds) q' = do
+proveWeakenVar tactic cf kind e (q, qe, preds) q' = do
   let redundant = redundentVars q e
   (var, tVar) <- if null redundant then
                 errorFrom (SynExpr e) "Could not find a redundant variable to eleminate with the (w:var) rule."
@@ -302,28 +328,35 @@ proveWeakenVar tactic cf e (q, qe, preds) q' = do
   let annR = M.insert tVar r q
   let preds' = excludeByVars preds (S.singleton var)
   
-  deriv <- proveExpr t cf e (annR, qe, preds') q'
+  deriv <- proveExpr t cf kind e (annR, qe, preds') q'
   conclude R.WeakenVar cf (q, qe, preds) q' cs e [deriv]
   
 proveWeaken :: Prove PositionedExpr Derivation
-proveWeaken tactic@(Rule (R.Weaken wArgs) _) cf e (q, qe, preds) q' = do
+proveWeaken tactic@(Rule (R.Weaken wArgs) _) cf kind e (q, qe, preds) q' = do
   let [t] = subTactics 1 tactic
   let wArgs' = S.fromList wArgs
   let neg = R.Neg `S.member` wArgs'
   
   p <- enrichWithDefaults neg "P" "weaken" q
-  -- p <= q
-  pCs <-  annFarkas wArgs' preds p q
-  
   p' <- enrichWithDefaults neg "P'" "weaken" q'
-  -- q' <= p'
-  p'Cs <-  annFarkas wArgs' S.empty q' p'
+
+  (pCs, p'Cs) <- case kind of
+    Upper -> (,) <$>
+      -- p <= q
+      annFarkas wArgs' preds p q
+      -- q' <= p'
+      <*> annFarkas wArgs' S.empty q' p'
+    Lower -> (,) <$>
+      -- q <= p
+      annFarkas wArgs' preds q p
+      -- p' <= q'
+      <*> annFarkas wArgs' S.empty p' q'
   
-  deriv <- proveExpr t cf e (p, qe, preds) p'
+  deriv <- proveExpr t cf kind e (p, qe, preds) p'
   conclude (R.Weaken wArgs) cf (q, qe, preds) q' (pCs ++ p'Cs) e [deriv]
 
 proveShiftTerm :: Prove PositionedExpr Derivation
-proveShiftTerm tactic cf e (q, qe, preds) q' = do
+proveShiftTerm tactic cf kind e (q, qe, preds) q' = do
   let [subTactic] = subTactics 1 tactic
 
   pe <- fromAnn "PE" "shift:term" qe
@@ -335,19 +368,19 @@ proveShiftTerm tactic cf e (q, qe, preds) q' = do
         ++ unifyAssertEq p' (add q' r)
         ++ assertGeZero r
 
-  deriv <- proveExpr subTactic cf e (q, pe, preds) p'
+  deriv <- proveExpr subTactic cf kind e (q, pe, preds) p'
 
   conclude R.ShiftTerm cf (q, qe, preds) q' cs e [deriv]
 
 proveShiftConst :: Prove PositionedExpr Derivation
-proveShiftConst tactic cf e q q' = do
+proveShiftConst tactic cf kind e q q' = do
   sCf <- strongCf <$> use fnConfig 
   if isJust cf && sCf
-    then proveShiftConstMono tactic cf e q q'
-    else proveShiftConstSimple tactic cf e q q'
+    then proveShiftConstMono tactic cf kind e q q'
+    else proveShiftConstSimple tactic cf kind e q q'
 
 proveShiftConstSimple :: Prove PositionedExpr Derivation
-proveShiftConstSimple tactic cf e (q, qe, preds) q' = do
+proveShiftConstSimple tactic cf kind e (q, qe, preds) q' = do
   let [subTactic] = subTactics 1 tactic
 
   k <- freshVar
@@ -361,9 +394,9 @@ proveShiftConstSimple tactic cf e (q, qe, preds) q' = do
 
   let cs = pCs ++ p'Cs ++ geZero k
   
-  deriv <- proveExpr subTactic cf e (ps, qe, preds) ps'
+  deriv <- proveExpr subTactic cf kind e (ps, qe, preds) ps'
   conclude R.ShiftConst cf (q, qe, preds) q' cs e [deriv]
-proveShiftConstMono tactic cf e (qs, qe, preds) qs' = do
+proveShiftConstMono tactic cf kind e (qs, qe, preds) qs' = do
   let [subTactic] = subTactics 1 tactic
   let wArgs = S.fromList [R.Mono]
 
@@ -405,47 +438,47 @@ proveShiftConstMono tactic cf e (qs, qe, preds) qs' = do
           ys <- map coeffArgs $ filter justVars (Templ.mixes q')]
   let cs = or $ constShiftCs ++ concat monoShiftCs
   
-  deriv <- proveExpr subTactic cf e (ps, qe, preds) ps'
+  deriv <- proveExpr subTactic cf kind e (ps, qe, preds) ps'
   conclude R.ShiftConst cf (qs, qe, preds) qs' cs e [deriv]  
 
 proveTickDefer :: Prove PositionedExpr Derivation
-proveTickDefer tactic cf e@(Tick c e1) (q, qe, preds) q' = do
+proveTickDefer tactic cf kind e@(Tick c e1) (q, qe, preds) q' = do
   let [subTactic] = subTactics 1 tactic
   if isJust cf then do
-    deriv <- proveExpr subTactic cf e1 (q, qe, preds) q'
+    deriv <- proveExpr subTactic cf kind e1 (q, qe, preds) q'
     conclude R.TickDefer cf (q, qe, preds) q' [] e [deriv]
   else do
     p_ <- emptyAnn (M.map Templ.args q') "P" "" 
     (p, cs) <- defineByPlus p_ q' (ConstTerm (fromMaybe 1 c))
 
-    deriv <- proveExpr subTactic cf e1 (q, qe, preds) p
+    deriv <- proveExpr subTactic cf kind e1 (q, qe, preds) p
 
     conclude R.TickDefer cf (q, qe, preds) q' cs e [deriv]
 
 removeRedundantVars :: Prove PositionedExpr Derivation -> Prove PositionedExpr Derivation
-removeRedundantVars prove tactic cf e (q, qe, preds) q' = if (not . null) (redundentVars q e) then
-  proveWeakenVar (Rule R.WeakenVar [tactic]) cf e (q, qe, preds) q'
-  else prove tactic cf e (q, qe, preds) q'
+removeRedundantVars prove tactic cf kind e (q, qe, preds) q' = if (not . null) (redundentVars q e) then
+  proveWeakenVar (Rule R.WeakenVar [tactic]) cf kind e (q, qe, preds) q'
+  else prove tactic cf kind e (q, qe, preds) q'
 
 proveExpr :: Prove PositionedExpr Derivation
 -- manual tactic
-proveExpr tactic@(Rule R.Var []) cf e@(Var _) = removeRedundantVars proveVar tactic cf e
-proveExpr tactic@(Rule R.ConstBase []) cf e@(Const {}) | isBasicConst e = removeRedundantVars proveConstBase tactic cf e
-proveExpr tactic@(Rule R.Const []) cf e@(Const {}) = removeRedundantVars proveConst tactic cf e 
-proveExpr tactic@(Rule R.Match _) cf e@(Match {}) = proveMatch tactic cf e
-proveExpr tactic@(Rule R.Ite _) cf e@(Ite {}) = proveIte tactic cf e
-proveExpr tactic@(Rule (R.Let _) _) cf e@(Let {}) = proveLet tactic cf e
-proveExpr tactic@(Rule R.TickDefer _) cf e@(Tick {}) = removeRedundantVars proveTickDefer tactic cf e
-proveExpr tactic@(Rule R.WeakenVar _) cf e = proveWeakenVar tactic cf e
-proveExpr tactic@(Rule (R.Weaken _) _) cf e = proveWeaken tactic cf e
-proveExpr tactic@(Rule R.ShiftTerm _) cf e = proveShiftTerm tactic cf e
-proveExpr tactic@(Rule R.ShiftConst _) cf e = proveShiftConst tactic cf e
-proveExpr tactic@(Rule R.App _) cf e@(App id _) = removeRedundantVars proveApp tactic cf e
+proveExpr tactic@(Rule R.Var []) cf kind e@(Var _) = removeRedundantVars proveVar tactic cf kind e
+proveExpr tactic@(Rule R.ConstBase []) cf kind e@(Const {}) | isBasicConst e = removeRedundantVars proveConstBase tactic cf kind e
+proveExpr tactic@(Rule R.Const []) cf kind e@(Const {}) = removeRedundantVars proveConst tactic cf kind e 
+proveExpr tactic@(Rule R.Match _) cf kind e@(Match {}) = proveMatch tactic cf kind e 
+proveExpr tactic@(Rule R.Ite _) cf kind e@(Ite {}) = proveIte tactic cf kind e 
+proveExpr tactic@(Rule (R.Let _) _) cf kind e@(Let {}) = proveLet tactic cf kind e 
+proveExpr tactic@(Rule R.TickDefer _) cf kind e@(Tick {}) = removeRedundantVars proveTickDefer tactic cf kind e 
+proveExpr tactic@(Rule R.WeakenVar _) cf kind e = proveWeakenVar tactic cf kind e 
+proveExpr tactic@(Rule (R.Weaken _) _) cf kind e = proveWeaken tactic cf kind e
+proveExpr tactic@(Rule R.ShiftTerm _) cf kind e = proveShiftTerm tactic cf kind e
+proveExpr tactic@(Rule R.ShiftConst _) cf kind e = proveShiftConst tactic cf kind e
+proveExpr tactic@(Rule R.App _) cf kind e@(App id _) = removeRedundantVars proveApp tactic cf kind e
 -- auto tactic
-proveExpr Auto cf e = \q q' -> do
+proveExpr Auto cf kind e = \q q' -> do
   fnCfg <- use fnConfig
-  proveExpr (genTactic fnCfg cf e) cf e q q'
-proveExpr tactic _ e = \_ _ -> errorFrom (SynExpr e) $ "Could not apply tactic to given "
+  proveExpr (genTactic fnCfg cf e) cf kind e q q'
+proveExpr tactic _ _ e = \_ _ -> errorFrom (SynExpr e) $ "Could not apply tactic to given "
   ++ printExprHead e ++ " expression. Tactic: '" ++ printTacticHead tactic ++ "'"
 
 genTactic :: FnConfig -> Maybe Int -> PositionedExpr -> Tactic
@@ -496,11 +529,11 @@ wArgMap cf@True cfg | strongCf cfg =
                     | otherwise = []
 
 proveFunBody :: Prove PositionedFunDef Derivation
-proveFunBody _ cf (FunDef ann id args e) q q' = do
+proveFunBody _ cf kind (FunDef ann id args e) q q' = do
   let tFrom = fst . splitFnType . toType . tfType $ ann
   fnConfig .= tfFnConfig ann
   tactic <- fromMaybe Auto . M.lookup id <$> view tactics
-  proveExpr tactic cf e q q'
+  proveExpr tactic cf kind e q q'
 
 proveFun :: PositionedFunDef -> ProveMonad Derivation
 proveFun fun@(FunDef _ fnId _ _) = do
@@ -508,9 +541,9 @@ proveFun fun@(FunDef _ fnId _ _) = do
   
   -- prove both with and without costs for well-typedness
   let cfAnns = withoutCost ann
-  derivsCf <- mapM (\(n, ((p, pe), p')) -> proveFunBody Auto (Just n) fun (p, pe, S.empty) p') $ zip [0..] cfAnns
+  derivsCf <- mapM (\(n, ((p, pe), p')) -> proveFunBody Auto (Just n) Upper fun (p, pe, S.empty) p') $ zip [0..] cfAnns
   
   let ((q, qe), q') = withCost ann  
-  deriv <- proveFunBody Auto Nothing fun (q, qe, S.empty) q'
+  deriv <- proveFunBody Auto Nothing Upper fun (q, qe, S.empty) q'
   
   return $ T.Node (R.FunRuleApp fun) (deriv:derivsCf)

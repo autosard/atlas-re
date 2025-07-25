@@ -70,9 +70,11 @@ data Potential = Potential {
   -- Constraints
   
   -- | @ 'cConst' q q'@ returns constraints that guarantee \[\phi(\Gamma \mid Q) = \phi(\Delta \mid Q') \text{ where } |\Gamma| = |Q|, |\Delta| = |Q'|\]  
-  cConst :: PositionedExpr -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint],
+  cConst :: PositionedExpr -> Set Predicate -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint],
   -- | @ 'cMatch' q p_ x ys = (p, cs)@ defines @p@ with the empty annotation @p_@ from @q@ by constraints @cs@, guaranteeing \[\phi(\Gamma, x \mid Q) = \phi(\Gamma, \vec{y} \mid P)\] where @x@ is the variable that matched and @ys@ is the pattern variables.
-  cMatch :: FreeTemplate -> FreeTemplate -> Id -> [Id] -> (FreeTemplate, [Constraint]),
+  cMatch :: FreeTemplate -> FreeTemplate -> Maybe Predicate -> Id -> [Id] -> (FreeTemplate, [Constraint]),
+
+  constCases :: Pattern Positioned -> [Predicate],
 
   -- | @ 'letBodyMulti' q ps' x is r_ = (r, cs)@
   cLetBodyMulti :: FreeTemplate -> TemplateArray -> Id -> [CoeffIdx] -> FreeTemplate -> (FreeTemplate, [Constraint]),

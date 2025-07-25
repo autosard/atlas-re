@@ -15,6 +15,7 @@ pot args = Potential
   monoFnCoeff
   cConst
   cMatch
+  constCases
   cLetBodyMulti
   (letCfIdxs args)
   (cLetCf args)

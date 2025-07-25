@@ -13,9 +13,14 @@ import CostAnalysis.Coeff
 import Ast 
 import qualified Data.Text as T
 import Data.List.Extra (groupSort)
+import CostAnalysis.Predicate (Predicate)
+import Data.Set (Set)
 
 exp :: Id
 exp = "e1"
+
+constCases :: Pattern Positioned -> [Predicate]
+constCases _ = []
 
 shiftLogs :: Int -> Int -> Maybe (Int, Int)
 shiftLogs b c | c < 2 || b == 0 = Just (b, c + b)
@@ -37,25 +42,25 @@ addShiftDefL q_ x q' y = extend q_ $
                 Nothing -> (idx:left, right)
         (zeroIdxs, nonZeroIdxs) = foldr split ([],[]) (mixes q')
 
-cConst :: PositionedExpr -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
-cConst (Nil {}) (q, _) q' = eqSum (q!oneCoeff) [
+cConst :: PositionedExpr -> Set Predicate -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
+cConst (Nil {}) _ (q, _) q' = eqSum (q!oneCoeff) [
   q'![mix|exp^(1,0),2|],
   q'![mix|exp^(0,1),1|],
   q'![mix|exp^(1,1),1|],
   q'!oneCoeff]
   ++ eq (q![mix|1|]) (q'![mix|exp^(0,1)|])
-cConst (Ast.Const id _) _ _ = error $ "Constructor '" ++ T.unpack id ++ "' not supported."
+cConst (Ast.Const id _) _ _ _ = error $ "Constructor '" ++ T.unpack id ++ "' not supported."
 
-cMatch :: FreeTemplate -> FreeTemplate -> Id -> [Id] -> (FreeTemplate, [Constraint])
+cMatch :: FreeTemplate -> FreeTemplate -> Maybe Predicate -> Id -> [Id] -> (FreeTemplate, [Constraint])
 -- nil / leaf
-cMatch q r x [] = extend r $
+cMatch q r _ x [] = extend r $
   ((`eqSum` [q![mix|x^(1,0),2|],
             q![mix|x^(0,1),1|],
             q![mix|x^(1,1),1|],
             q!oneCoeff]) <$> def oneCoeff)
   : [(`eq` (q![mix|x^(0,1)|])) <$> def [mix|1|]]
 -- cons                   
-cMatch q p x [l] = addShiftDefL p l q x
+cMatch q p _ x [l] = addShiftDefL p l q x
 
 cLetBodyMulti :: FreeTemplate -> TemplateArray -> Id -> [CoeffIdx] -> FreeTemplate -> (FreeTemplate, [Constraint])
 cLetBodyMulti q _ _ _ r = extend r $

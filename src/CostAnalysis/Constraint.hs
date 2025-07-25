@@ -39,6 +39,7 @@ data Constraint
   | Not Constraint
   | Or [Constraint]
   | And [Constraint]
+  | Atom Term
   deriving (Eq, Ord, Show)
 
 -- pattern Prod2 :: Term -> Term -> Term 

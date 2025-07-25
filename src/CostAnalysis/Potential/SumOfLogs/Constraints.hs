@@ -16,13 +16,18 @@ import CostAnalysis.Potential.SumOfLogs.Base(Args(..))
 import Data.List.Extra (groupSort)
 import Ast
 import qualified Data.Text as T
+import CostAnalysis.Predicate (Predicate)
+import Data.Set (Set)
 
 
 exp :: Id
 exp = "e1"
 
-cConst :: Args -> PositionedExpr -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
-cConst _ (Leaf {}) (q, _) q'
+constCases :: Pattern Positioned -> [Predicate]
+constCases _ = []
+
+cConst :: Args -> PositionedExpr -> Set Predicate -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
+cConst _ (Leaf {}) _ (q, _) q'
   = concat [eqSum (q![mix|c|]) ([q'!?[mix|exp^a,b|]
                                 | a <- [0..c],
                                   let b = c - a,
@@ -36,7 +41,7 @@ cConst _ (Leaf {}) (q, _) q'
          idx <- mixes q',
          idxSum idx >= 2,
          idxSum idx `S.notMember` qConsts]
-cConst (Args {logL=cL, logR=cR, logLR=cLR}) e@(Node (Var x1) _ (Var x2)) (q, qe) q'
+cConst (Args {logL=cL, logR=cR, logLR=cLR}) e@(Node (Var x1) _ (Var x2)) _ (q, qe) q'
   = 
       eq (q!?x1) (q'!?exp) 
       ++ eq (q!?x2) (q'!?exp)
@@ -68,11 +73,11 @@ cConst (Args {logL=cL, logR=cR, logLR=cLR}) e@(Node (Var x1) _ (Var x2)) (q, qe)
                   let a = facForVar idx exp,
                   let c = constFactor idx,
                   [mix|x1^a,x2^a,c|] `S.notMember` (q^.ftCoeffs)]
-cConst _ (Ast.Const id _) (q, _) q' = error $ "Constructor '" ++ T.unpack id ++ "' not supported."
+cConst _ (Ast.Const id _) _ (q, _) q' = error $ "Constructor '" ++ T.unpack id ++ "' not supported."
       
-cMatch :: Args -> FreeTemplate -> FreeTemplate -> Id -> [Id] -> (FreeTemplate, [Constraint])
+cMatch :: Args -> FreeTemplate -> FreeTemplate -> Maybe Predicate -> Id -> [Id] -> (FreeTemplate, [Constraint])
 -- leaf  
-cMatch _ q p x [] = extend p $
+cMatch _ q p _ x [] = extend p $
   [(`eq` (q!y)) <$> def y | y <- L.delete x (args q)]
   ++ [(`eqSum` qs) <$> def [mix|_xs, c|]
      | ((xs, c), qs) <- sums]
@@ -87,7 +92,7 @@ cMatch _ q p x [] = extend p $
               let xs = varsExcept idx [x]]
               --not (null xs && c == 1)]
 -- node
-cMatch (Args {logL=cL, logR=cR, logLR=cLR}) q r x [u, v] = extend r $
+cMatch (Args {logL=cL, logR=cR, logLR=cLR}) q r _ x [u, v] = extend r $
   [(`eq` (q!x)) <$> def u,
    (`eq` (q!x)) <$> def v,
    (`eq` prod [ConstTerm cL, q!x]) <$> def [mix|u^1|],
@@ -103,7 +108,7 @@ cMatch (Args {logL=cL, logR=cR, logLR=cLR}) q r x [u, v] = extend r $
        not (null xs && b == 0)]
   ++ [(`eq` (q!y)) <$> def y | y <- L.delete x (args q)]
 -- tuple with one tree
-cMatch _ q r x [v] = extend r $
+cMatch _ q r _ x [v] = extend r $
   ((`eq` (q!x)) <$> def v)
   : [(`eq` (q!idx)) <$> def [mix|_xs,v^a,b|]
      | idx <- mixes q,
@@ -111,7 +116,7 @@ cMatch _ q r x [v] = extend r $
        let b = constFactor idx,
        let xs = varsExcept idx [x]]
   ++ [(`eq` (q!y)) <$> def y | y <- L.delete x (args q)]
-cMatch _ _ _ x ys = error $ "x: " ++ show x ++ ", ys: " ++ show ys
+cMatch _ _ _ _ x ys = error $ "x: " ++ show x ++ ", ys: " ++ show ys
 
 cLetBodyMulti :: FreeTemplate -> TemplateArray -> Id -> [CoeffIdx] -> FreeTemplate -> (FreeTemplate, [Constraint])
 cLetBodyMulti _ ps' x is r_ = extend r_ $
