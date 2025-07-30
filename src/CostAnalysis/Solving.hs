@@ -58,6 +58,8 @@ instance Encodeable Constraint where
   toZ3 (Or cs) = mkOr =<< mapM toZ3 cs
   toZ3 (And cs) = mkAnd =<< mapM toZ3 cs
   toZ3 (Not c) = mkNot =<< toZ3 c
+  toZ3 (Atom id) = mkBoolVar =<< mkStringSymbol ("b_" ++ show id)
+  toZ3 (Iff c1 c2) = bind2 mkIff (toZ3 c1) (toZ3 c2)
 
 evalCoeffs :: MonadOptimize z3 => Model -> [Coeff] -> z3 (Map Coeff Rational)
 evalCoeffs m qs = do
@@ -99,7 +101,6 @@ solve fns = do
                ts -> Just . sum $ ts
   extCs <- use sigCs
   cs <- use constraints
-  --let cs = cs' ++ maybe [] geZero opti
   let dump = True
   (result, smt) <- liftIO . evalZ3 $
     do

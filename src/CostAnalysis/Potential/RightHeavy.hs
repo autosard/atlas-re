@@ -7,10 +7,10 @@ import CostAnalysis.Potential.RightHeavy.Weakening
 import CostAnalysis.Potential(Potential(Potential))
 
 
-pot :: Potential
-pot = Potential
+pot :: Args -> Potential
+pot args = Potential
   template
-  ranges
+  (ranges args)
   oneCoeff
   zeroCoeff
   monoFnCoeff
@@ -24,5 +24,9 @@ pot = Potential
   cExternal
   cOptimize
   printBasePot
+  auxSigs
 
-defaultPot = pot 
+defaultARange = [0,1]
+defaultBRange = [0,1,2]
+
+defaultPot = pot $ Args defaultARange defaultBRange

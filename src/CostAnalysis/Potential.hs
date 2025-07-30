@@ -93,7 +93,9 @@ data Potential = Potential {
   -- | @ 'cOptimize' (q, qe) q' @ returns a cost function that minimizes \[\Phi(\Gamma\mid Q) - \Phi(\Gamma\mid Q')\] as a term.
   cOptimize :: (FreeTemplate, FreeTemplate) -> FreeTemplate -> Term,
   
-  printBasePot :: CoeffIdx -> String}
+  printBasePot :: CoeffIdx -> String,
+
+  auxSigs :: [(Measure, ProveKind)]}
 
 defaultNegTempl :: Potential -> Int -> Text -> Text -> [Id] -> FreeTemplate
 defaultNegTempl pot id label comment args = template pot id label comment args abRanges
@@ -118,28 +120,11 @@ defineByExceptConst pot q_ p = Templ.extend q_ [(`eq` (p!idx)) <$> Templ.def idx
                                                | idx <- S.toList (idxs p),
                                                  idx /= oneCoeff pot]
                                         
--- -- | @ 'eqPlus' q p t@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) + t\] where @t@ is a term.
--- eqPlus :: Potential -> FreeTemplate -> FreeTemplate -> Term -> (FreeTemplate, [Constraint])
--- eqPlus pot q_ p t = (q, cs ++ eqCs)
---   where constIdx = oneCoeff pot
---         (eqQ, eqCs) = eqExceptConst pot q_ p
---         (q, cs) = extendAnn eqQ [(`eq` sum [p!?constIdx, t]) <$> def constIdx]
-
--- -- | @ 'eqMinus' q p t@ returns constraints that guarantee \[\phi(*\mid Q) = \phi(*\mid P) - t\] where @t@ is a term.
--- eqMinus :: Potential -> FreeTemplate -> FreeTemplate -> Term -> (FreeTemplate, [Constraint])
--- eqMinus pot q_ p t = (q, cs ++ eqCs)
---   where constIdx = oneCoeff pot
---         (eqQ, eqCs) = eqExceptConst pot q_ p
---         constP = p!?constIdx
---         (q, cs) = case constP of
---           (ConstTerm 0) -> (eqQ, [])
---           _nonZero -> extendAnn eqQ [(`eq` sub [p!?constIdx, t]) <$> def constIdx]
-
 printRHS :: Potential -> FreeTemplate -> Map Coeff Rational -> String
 printRHS pot rhs solution = printPotential pot $ bindTemplate rhs solution
 
-printBound :: PotFnMap -> ((FreeAnn, FreeAnn), FreeAnn) -> Map Coeff Rational -> String
-printBound pots ((from, fromRef), to) solution =
+printBound :: PotFnMap -> FunSig FreeTemplate -> Map Coeff Rational -> String
+printBound pots (FunSig (from, fromRef) to) solution =
   let bound = L.intercalate " + " bounds in
     if null bound then "0" else bound
   where bounds = filter (/= "0") (map costForType (M.keys from))

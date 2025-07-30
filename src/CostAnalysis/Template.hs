@@ -181,6 +181,11 @@ assertGeZero = (`assertGe` zeroTemplate)
 assertZero :: Template a => a -> [Constraint]
 assertZero = (`assertEq` zeroTemplate)
 
+assertZeroExcept :: Template a => a -> Set CoeffIdx -> [Constraint]
+assertZeroExcept q except = concat [ if idx `S.member` except
+                                     then C.eq (q!idx) (ConstTerm 1)
+                                     else C.zero (q!idx)
+                                   | idx <- S.toList $ idxs q]
 
 unifyAssertEq :: (Template a, Template b) => a -> b -> [Constraint]
 unifyAssertEq q p = concat [C.eq (q!?idx) p'

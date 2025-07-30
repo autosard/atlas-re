@@ -117,5 +117,3 @@ evalEQ _ _ = error "EQ is only implemented for numbers."
 evalGT :: Val -> Val -> Val
 evalGT (NumVal x) (NumVal y) = toBool $ x > y
 evalGT _ _ = error "GT is only implemented for numbers."
-
-

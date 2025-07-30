@@ -26,7 +26,7 @@ import CostAnalysis.ProveMonad
 import CostAnalysis.Rules
     ( Rule, RuleApp(ExprRuleApp, FunRuleApp) )
 import CostAnalysis.Template(FreeTemplate(..))
-import CostAnalysis.Annotation(FreeAnn)
+import CostAnalysis.Annotation(FreeAnn, Measure(..), ProveKind(..))
 import qualified CostAnalysis.Predicate as P
 import CostAnalysis.Coeff
 
@@ -152,9 +152,10 @@ js = renderJavascript ([julius|
 window.addEventListener("load", () => {
   for (let ul of document.querySelectorAll(".collapse ul")) {
     let tog = document.createElement("span");
-    tog.appendChild(ul.parentElement.querySelector(".listHead"));
+    let head = ul.parentElement.querySelector(".listHead")
+    tog.appendChild(head);
     tog.className = "toggle";
-    tog.onclick = () => tog.classList.toggle("show");
+    head.firstChild.onclick = () => tog.classList.toggle("show");
     ul.parentElement.insertBefore(tog, ul.parentElement.firstChild);
   };
   for (let cs of document.querySelectorAll(".constraints")) {
@@ -208,7 +209,7 @@ hamDeriv' :: Maybe (Set Constraint) -> Derivation -> Html
 hamDeriv' unsat (T.Node appl []) = [shamlet|#{hamRuleApp unsat appl}|]  
 hamDeriv' unsat (T.Node appl children) = [shamlet|
 #{hamRuleApp unsat appl}
-<ul class="tree">
+<ul class="collapse tree">
     $forall child <- children
         <li .app>^{hamDeriv' unsat child}
 |]
@@ -216,13 +217,14 @@ hamDeriv' unsat (T.Node appl children) = [shamlet|
 
 hamRuleApp :: Maybe (Set Constraint) -> RuleApp -> Html
 hamRuleApp unsat (FunRuleApp (FunDef ann id args body)) = [shamlet|
-<span class="listHead">#{printFqn (tfFqn ann)}|]
-hamRuleApp unsat (ExprRuleApp rule cf (q, qe, preds) q' cs e) = [shamlet|
+<span class="listHead">
+  <span> #{printFqn (tfFqn ann)}|]
+hamRuleApp unsat (ExprRuleApp rule cf kind (q, qe, preds) q' cs e) = [shamlet|
 <span .listHead :((not . null) cs'):.unsat>
   <math display="inline">
     <mrow>
       <mo form="prefix" stretchy="false">(
-      <mtext>#{printRule cf rule}
+      <mtext>#{printRule cf kind rule}
       <mo form="postfix" stretchy="false">)
       <mspace width="1em">
       ^{hamAnn qe}
@@ -246,9 +248,13 @@ hamRuleApp unsat (ExprRuleApp rule cf (q, qe, preds) q' cs e) = [shamlet|
           Just core -> S.toList $ S.intersection (S.fromList cs) core
           Nothing -> []
 
-printRule :: Bool -> Rule -> String
-printRule cf rule = map toLower (show rule)
-  ++ if cf then ", cf" else ""
+printRule :: Bool -> ProveKind -> Rule -> String
+printRule cf kind rule = map toLower (show rule)
+  ++ (if cf then ", cf" else "")
+  ++ (case kind of
+       Lower -> ", ≤"
+       Upper -> ", ≥")
+
 
 hamCsList :: [Constraint] -> (Constraint -> Bool) -> Html
 hamCsList cs inCore = [shamlet|
@@ -274,17 +280,21 @@ hamPredicates preds = toHtml $ intersperse
   (map hamPredicate (S.toAscList preds))
   
 hamPredicate :: P.Predicate -> Html
-hamPredicate (P.Predicate m op x y _) =
+hamPredicate (P.Predicate m op x y _ _) =
   [shamlet|
 <apply>
   <apply>
-    #{m}
-    <ci>#{x}
+    ^{hamMeasure m x}    
   ^{hamPredOp op}
   <apply>
-    #{m}
-    <ci>#{y}|]
-  
+    ^{hamMeasure m y}|]
+
+hamMeasure :: Measure -> Id -> Html
+hamMeasure Weight x = [shamlet|
+<mi>|</mi>
+<mi>#{x}</mi>
+<mi>|</mi>|]                    
+    
 hamAnn :: FreeAnn -> Html
 hamAnn ctx = toHtml $ intersperse
   [shamlet|<mo separator="true">,|]
@@ -421,7 +431,16 @@ hamConstraint (Impl c1 c2) = [shamlet|
 <mo form="prefix" stretchy="false">(
 #{hamConstraint c2}
 <mo form="postfix" stretchy="false">)
-|]  
+|]
+hamConstraint (Iff c1 c2) = [shamlet|
+<mo form="prefix" stretchy="false">(
+#{hamConstraint c1}
+<mo form="postfix" stretchy="false">)
+<mo stretchy="false" lspace="0em" rspace="0em">↔
+<mo form="prefix" stretchy="false">(
+#{hamConstraint c2}
+<mo form="postfix" stretchy="false">)
+|]    
 hamConstraint (Not c) = [shamlet|
 <mo form="prefix" stretchy="false" lspace="0em" rspace="0em">¬
 <mo form="prefix" stretchy="false">(
@@ -430,6 +449,11 @@ hamConstraint (Not c) = [shamlet|
 |]
 hamConstraint (Or cs) = hamConstraintList "∨" cs
 hamConstraint (And cs) = hamConstraintList "∧" cs
+hamConstraint (Atom v) = [shamlet|
+<msub>
+  <mi>b
+  <mn>#{v}
+|]
 
 hamConstraintList op cs = [shamlet|
 <mtable rowalign="top" columnalign="center left">

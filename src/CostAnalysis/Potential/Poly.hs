@@ -5,6 +5,7 @@ import CostAnalysis.Potential.Poly.Constraints
 import CostAnalysis.Potential.Poly.Optimization
 import CostAnalysis.Potential.Poly.Weakening
 import CostAnalysis.Potential(Potential(Potential))
+import CostAnalysis.Potential.Common(auxSigs)
 
 pot :: Args -> Potential
 pot args = Potential
@@ -23,5 +24,6 @@ pot args = Potential
   cExternal
   cOptimize
   printBasePot
+  auxSigs
 
 defaultPot = pot (Args 2)

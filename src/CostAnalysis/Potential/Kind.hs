@@ -8,6 +8,8 @@ import CostAnalysis.Potential (Potential)
 import qualified CostAnalysis.Potential.SumOfLogs as SumOfLogs
 import qualified CostAnalysis.Potential.Poly as Poly
 import qualified CostAnalysis.Potential.NLog as NLog
+import qualified CostAnalysis.Potential.TreeSize as TreeSize
+import qualified CostAnalysis.Potential.RightHeavy as RightHeavy
 import CostAnalysis.AnnIdxQuoter
 import Ast (PotentialKind(..))
 import CostAnalysis.Coeff (CoeffIdx (Pure), Factor(..), idxToSet)
@@ -23,6 +25,8 @@ fromKind Polynomial = Poly.defaultPot
 fromKind LinLog = NLog.defaultPot
 fromKind LogGolden = SumOfLogs.goldenPot
 fromKind Rank = Rank.defaultPot
+fromKind Weight = TreeSize.defaultPot
+fromKind RightHeavy = RightHeavy.defaultPot
                       
 pays :: PotentialKind -> PotentialKind -> Maybe (CoeffIdx -> Maybe CoeffIdx)
 pays p1 p2 | p1 == p2 = Just Just

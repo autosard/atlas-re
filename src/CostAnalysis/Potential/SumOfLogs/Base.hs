@@ -17,6 +17,7 @@ import CostAnalysis.Template
 import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential (AnnRanges(..), MonoFn(..))
+import CostAnalysis.Potential.Logarithm
 import CostAnalysis.Constraint (Constraint, eq, Term(..))
 
 -- c log(x + y) >= a log(x) + b log(y) + d
@@ -41,26 +42,10 @@ potType = TreeType
 ranges :: Args -> AnnRanges
 ranges potArgs = AnnRanges (aRange potArgs) (bRange potArgs) (-1:bRange potArgs)
 
-combi :: ([Int], [Int]) -> [Id] -> [CoeffIdx]
-combi (rangeA, rangeB) xs = map (Mixed . S.fromList)$
-  combi' rangeA [[Const c | c > 0] | c <- rangeB] xs
-
-varCombi :: [Int] -> [Id] -> [CoeffIdx]
-varCombi rangeA xs = map (Mixed . S.fromList) $ combi' rangeA [[]] xs
-
-combi' :: [Int] -> [[Factor]] -> [Id] -> [[Factor]]
-combi' _ z [] = z
-combi' rangeA z (x:xs) = [if a > 0 then x^a:y else y
-                       | a <- rangeA, y <- combi' rangeA z xs]
-
 template :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> FreeTemplate
 template id label comment args ranges =
-  FreeTemplate id args label comment $ S.fromList (rankCoeffs ++ logCoeffs)
+  FreeTemplate id args label comment $ S.fromList (rankCoeffs ++ logCoeffs args ranges)
   where rankCoeffs = [Pure x | (x,i) <- zip args [1..]]
-        logCoeffs = [idx
-                    | idx <- combi ranges args,
-                      idxSum idx > 0,
-                      idx /= [mix|1|]]
                
 oneCoeff :: CoeffIdx
 oneCoeff = [mix|2|]
@@ -95,8 +80,6 @@ letCfIdxs q xs (rangeA, rangeB) x =
 
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = "rk(" ++ T.unpack x ++ ")"
-printBasePot (Mixed factors) = "log(" ++ intercalate " + " (map printFactor (S.toDescList factors)) ++ ")"
-  where printFactor (Const c) = show c
-        printFactor (Arg x [a]) = if a /= 1 then show a ++ "|" ++ T.unpack x ++ "|" else "|" ++ T.unpack x ++ "|"
+printBasePot idx = printLogTerm idx
 
 

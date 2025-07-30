@@ -1,6 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE StrictData #-}
-{-# LANGUAGE TupleSections #-}
 
 module CostAnalysis.Annotation where
 
@@ -11,7 +10,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Map.Merge.Strict as Merge(merge, zipWithMatched, mapMissing)
 import Control.Monad.State
-import Lens.Micro.Platform
+import Lens.Micro.Platform hiding (to)
 
 import Primitive(Id, Substitution)
 import CostAnalysis.Template (Template,
@@ -26,6 +25,7 @@ import qualified CostAnalysis.Constraint as C
 import Typing.Type
 import CostAnalysis.Coeff
 import Data.Maybe (fromMaybe)
+
 
 type Ann a = Map Type a
 
@@ -104,6 +104,12 @@ assertZero :: (Template a) => Ann a -> [Constraint]
 assertZero = M.foldr go []
   where go templ cs = cs ++ Templ.assertZero templ
 
+assertZeroExcept :: (Template a) => Ann a -> Type -> [CoeffIdx] -> [Constraint]
+assertZeroExcept qs tExcept idxs = foldr go [] (M.assocs qs)
+  where go (t, templ) cs = if t == tExcept
+                           then Templ.assertZeroExcept templ (S.fromList idxs)
+                           else Templ.assertZero templ
+
 unifyAssertEq :: (Template a, Template b) => Ann a -> Ann b -> [Constraint]
 unifyAssertEq qs ps = concat . M.elems $ zipWith
   (const (`Templ.unifyAssertEq` zeroTemplate))
@@ -140,11 +146,23 @@ defineByWith qs ps_ f = foldr go (M.empty, []) (M.keys ps_)
 defineBy :: FreeAnn -> FreeAnn -> (FreeAnn, [Constraint])
 defineBy qs ps = defineByWith qs ps (const . const eq)
 
-type FunSig a = ((Ann a, Ann a), Ann a)
+data ProveKind = Upper | Lower
+  deriving(Eq, Ord, Show)
+
+data FunSig a = FunSig {
+  from :: (Ann a, Ann a),
+  to :: Ann a}
+  deriving(Eq, Show)
+
+type FreeFunSig = FunSig FreeTemplate
+
+data Measure = Weight
+  deriving(Eq, Ord, Show)
 
 data (Template a) => FunAnn a = FunAnn {
   withCost :: FunSig a,
   withoutCost :: [FunSig a],
+  aux :: Map (Measure, ProveKind) (FunSig a),
   worstCase :: Bool}
   deriving(Eq, Show)
 
@@ -152,15 +170,18 @@ assertFunAnnEq :: (Template a, Template b) => FunAnn a -> FunAnn b -> [Constrain
 assertFunAnnEq q p = 
   assertSigEq (withCost q) (withCost p)
   ++ concat (P.zipWith assertSigEq (withoutCost q) (withoutCost p))
-  where assertSigEq :: (Template a, Template b) => ((Ann a, Ann a), Ann a) -> ((Ann b, Ann b), Ann b) -> [Constraint]
-        assertSigEq x y = 
-          assertEq (fst . fst $ x) (fst . fst $ y)
-          ++ assertEq (snd . fst $ x) (snd . fst $ y)
-          ++ assertEq (snd x) (snd y)
+  where assertSigEq x y = 
+          assertEq (fst . from $ x) (fst . from $ y)
+          ++ assertEq (snd . from $ x) (snd . from $ y)
+          ++ assertEq (to x) (to y)
 
 
 
 type FreeFunAnn = FunAnn FreeTemplate
+
+instance HasCoeffs (FunSig FreeTemplate) where
+  getCoeffs ann = getCoeffs (from ann)
+    ++ getCoeffs (to ann)
 
 instance HasCoeffs FreeFunAnn where
   getCoeffs ann = getCoeffs (withCost ann)
@@ -183,3 +204,5 @@ share qs ps_ zs s1 s2 = foldr go (M.empty, []) (M.keys ps_)
   where go :: Type -> (FreeAnn, [Constraint]) -> (FreeAnn, [Constraint])
         go t (ps, css) = let (p, cs) = Templ.share (qs M.! t) (ps_ M.! t) zs s1 s2 in
                            (M.insert t p ps, css ++ cs)
+
+

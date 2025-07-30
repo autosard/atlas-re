@@ -9,24 +9,35 @@ import Data.Set(Set)
 import qualified Data.Map as M
 import Data.Map(Map)
 
-import Primitive(Id, Substitution, applySubst)
-import Ast 
+import Primitive(Id, Substitution, applySubst, traceShow)
 import Control.Monad (guard)
 import qualified Data.Set as S
 import CostAnalysis.Constraint (Term, or, Constraint (Atom))
 import Data.Maybe (maybe, maybeToList)
+import Ast hiding (PotentialKind(..))
+import qualified Ast as A (PotentialKind(..))
+import Typing.Type
+
+import CostAnalysis.Annotation(Measure(..))
 
 data PredOp = Le | Lt | Eq | Neq
   deriving (Eq, Ord, Show)
 
-data Predicate = Predicate Id PredOp Id Id (Maybe Term)
+measureFromConst :: Id -> Maybe Measure
+measureFromConst "weight" = Just Weight
+measureFromConst _ = Nothing
+
+potForMeasure :: Measure -> A.PotentialKind
+potForMeasure Weight = A.Weight
+
+data Predicate = Predicate Measure PredOp Id Id [Constraint] Type
   deriving (Eq, Ord, Show)
 
 predApplySubst :: Substitution -> Predicate -> Predicate
-predApplySubst s (Predicate m op x y t) = Predicate m op (applySubst s x) (applySubst s y) t
+predApplySubst s (Predicate m op x y p t) = Predicate m op (applySubst s x) (applySubst s y) p t
 
 predVars :: Predicate -> Set Id
-predVars (Predicate _ _ x y _) = S.fromList [x,y]
+predVars (Predicate _ _ x y _ _) = S.fromList [x,y]
 
 hasVars :: Set Id -> Predicate -> Bool
 hasVars vars p = not . S.null $ predVars p `S.intersection` vars
@@ -40,8 +51,10 @@ excludeByVars ps vars = S.filter (not . hasVars vars) ps
 restrictByVars :: Set Predicate -> Set Id -> Set Predicate
 restrictByVars ps vars = S.filter (hasOnlyVars vars) ps
 
-measure ::  PositionedExpr -> Maybe (Id, Id)
-measure (Const m [Var x]) = Just (m,x)
+measure ::  PositionedExpr -> Maybe (Measure, Id)
+measure (Const c [Var x]) = do
+  m <- measureFromConst c
+  return (m,x)
 measure _ = Nothing
 
 predFromCondition :: PositionedExpr -> Maybe Predicate
@@ -65,27 +78,30 @@ constToPredicate _ _ = Nothing
 buildPredicate :: PredOp -> [PositionedExpr] -> Maybe Predicate
 buildPredicate op [arg1, arg2] = do
   (m1, x) <- measure arg1
+  let t1 = getType arg1
   (m2, y) <- measure arg2
+  let t2 = getType arg2
   guard (m1 == m2)
-  return (Predicate m1 op x y Nothing)
+  guard (t1 == t2)
+  return (Predicate m1 op x y [] t1)
 
 negate :: Predicate -> Predicate
-negate (Predicate m Eq x y t) = Predicate m Neq x y t
-negate (Predicate m Neq x y t) = Predicate m Eq x y t
-negate (Predicate m Le x y t) = Predicate m Lt y x t
-negate (Predicate m Lt x y t) = Predicate m Le y x t
+negate (Predicate m Eq x y p t) = Predicate m Neq x y p t
+negate (Predicate m Neq x y p t) = Predicate m Eq x y p t
+negate (Predicate m Le x y p t) = Predicate m Lt y x p t
+negate (Predicate m Lt x y p t) = Predicate m Le y x p t
 
 anyImplies :: Set Predicate -> Predicate -> (Bool, [Constraint])
-anyImplies ps p = let (b, cs) = foldr (go . (`implies` p)) (False, cs) ps in
+anyImplies ps p = let (b, cs) = foldr (go . (`implies` p)) (False, []) ps in
   (b, or cs)
-  where go (b, t) (acc, cs) = (b || acc, (maybeToList . fmap Atom $ t) ++ cs)
+  where go (b, t) (acc, cs) = (b || acc, t ++ cs)
 
-implies :: Predicate -> Predicate -> (Bool, Maybe Term)
-implies (Predicate m1 op1 x1 y1 t) (Predicate m2 op2 x2 y2 _)
-  | m1 == m2 && op1 == op2 && x1 == x2 && y1 == y2 = (True, t)
-implies (Predicate m1 Eq x1 y1 t) (Predicate m2 Le x2 y2 _)
-  | m1 == m2 && x1 == x2 && y1 == y2 = (True, t)
-implies (Predicate m1 Lt x1 y1 t) (Predicate m2 Le x2 y2 _) 
-  | m1 == m2 && x1 == x2 && y1 == y2 = (True, t)
-implies _ _ = (False, Nothing)
+implies :: Predicate -> Predicate -> (Bool, [Constraint])
+implies (Predicate m1 op1 x1 y1 p _) (Predicate m2 op2 x2 y2 _ _)
+  | m1 == m2 && op1 == op2 && x1 == x2 && y1 == y2 = (True, p)
+implies (Predicate m1 Eq x1 y1 p _) (Predicate m2 Le x2 y2 _ _)
+  | m1 == m2 && x1 == x2 && y1 == y2 = (True, p)
+implies (Predicate m1 Lt x1 y1 p _) (Predicate m2 Le x2 y2 _ _) 
+  | m1 == m2 && x1 == x2 && y1 == y2 = (True, p)
+implies _ _ = (False, [])
 

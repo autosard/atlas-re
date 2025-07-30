@@ -38,7 +38,7 @@ import Primitive(Id)
 import qualified CostAnalysis.Coeff as Coeff
 import CostAnalysis.Annotation (FunAnn(..),
                                 BoundAnn,
-                                split)
+                                split, FunSig(..))
 import CostAnalysis.Template (BoundTemplate(..))
 import CostAnalysis.Coeff (coeffArgs)
 
@@ -100,6 +100,7 @@ pPotentialMode =
   <|> symbol "logl" $> LogL
   <|> symbol "log_golden" $> LogGolden
   <|> symbol "rank" $> Rank
+  <|> symbol "right_heavy" $> RightHeavy
    
 
 data Signature = Signature
@@ -146,7 +147,7 @@ pCoeffAnn = do
   symbol "|" 
   withCost <- pFunResourceAnn
   costFree <- optional $ pCurlyParens $ sepBy pFunResourceAnn (symbol ",")
-  return $ Coeffs (FunAnn withCost (fromMaybe [] costFree) False)
+  return $ Coeffs (FunAnn withCost (fromMaybe [] costFree) M.empty False)
 
 pCostAnn :: Parser CostAnnotation
 pCostAnn = do
@@ -198,13 +199,13 @@ pTypeConst
   <|> TAp Prod <$> pParens (sepBy1 pType pCross)
 
 
-pFunResourceAnn :: Parser ((BoundAnn, BoundAnn), BoundAnn)
+pFunResourceAnn :: Parser (FunSig BoundTemplate)
 pFunResourceAnn = do
   from <- pTypedResourceAnn
   pArrow
   to <- pTypedResourceAnn
   let (from', fromRef) = split from to
-  return ((from', fromRef), to)
+  return (FunSig (from', fromRef) to)
 
 pTypedResourceAnn :: Parser BoundAnn
 pTypedResourceAnn = M.fromList <$> sepBy pResourceAnn (symbol ",")

@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE TupleSections #-}
 
 module CostAnalysis.Analysis where
 
@@ -24,11 +25,13 @@ import CostAnalysis.Deriv
 import CostAnalysis.Coeff
 import Typing.Type
 import CostAnalysis.Annotation
-import CostAnalysis.Potential(PotFnMap, Potential (cExternal))
+import CostAnalysis.Potential(PotFnMap, Potential (cExternal), auxSigs)
 import CostAnalysis.Potential.Kind (fromKind)
 import Control.Monad.Extra (concatMapM, ifM)
 import CostAnalysis.Template (TermTemplate, FreeTemplate)
 import CostAnalysis.Weakening (annFarkas)
+import CostAnalysis.Predicate(potForMeasure)
+import CostAnalysis.Annotation (assertGeZero)
 
 defaultPotentialMap = M.fromList
   [
@@ -56,7 +59,7 @@ analyzeModule :: ProofEnv -> PositionedModule
   -> IO (Either SourceError AnalysisResult)
 analyzeModule env mod = do
   
-  let state = ProofState M.empty [] [] 0 0 [] [] M.empty M.empty
+  let state = ProofState M.empty [] [] 0 0 [] [] M.empty M.empty M.empty False
               (FnConfig (Just 1) False)
   (result, state', solution) <- runProof env state (analyzeModule' mod)
   let deriv = T.Node (ProgRuleApp mod) (state'^.fnDerivs)
@@ -104,13 +107,13 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
   mode <- view analysisMode
 
   assertNonNegativeSig fnId
-  assertNonNegativeCost fnId
+  assertNonNegativeCost' fnId
   
   case mode of
     CheckCoefficients -> case tfCostAnn funAnn of
       Just (Coeffs target) -> coeffsMatchAnnotation fnId target
-      Just (Cost True cost) -> coeffsMatchAnnotation fnId $
-        FunAnn ((cost, M.empty), M.empty) [] False
+      Just (Cost True cost) -> coeffsMatchAnnotation fnId 
+        (FunAnn (FunSig (cost, M.empty) M.empty) [] M.empty False)
       _noCoeff -> errorFrom (SynExpr body) "Missing resource coefficient annotation for check-coeffs mode."
     CheckCost -> case tfCostAnn funAnn of
       Just (Cost _ cost) -> cmpCostWithAnn assertEq fnId cost
@@ -122,7 +125,7 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
       noCost_ -> errorFrom (SynExpr body) "Missing cost annotation for improve-cost mode."
     Infer -> do
       s <- use sig
-      let ((q, qe), q') = withCost $ s M.! fnId
+      let (FunSig (q, qe) q') = withCost $ s M.! fnId
       tellSigCs =<< externalCsForCtx q q'
       addFullCostOptimization fnId
       optiTargets %= (sum qe:)
@@ -133,13 +136,14 @@ externalCsForCtx ctxQ ctxQ' = concatMapM csForType (M.assocs ctxQ)
   where csForType :: (Type, FreeTemplate) -> ProveMonad [Constraint]
         csForType (t, q) = do
           pots <- use potentials
-          if M.member t ctxQ' then
-            return $ cExternal (potForType t pots ) q (ctxQ' M.! t)
+          if M.member t ctxQ' then do
+            pot <- potForType t 
+            return $ cExternal pot q (ctxQ' M.! t)
           else
             return []
 
-assertNonNegativeFnAnn :: ((FreeAnn, FreeAnn), FreeAnn) -> ProveMonad ()
-assertNonNegativeFnAnn ((q, qe), q') = tellSigCs $
+assertNonNegativeFnAnn :: FreeFunSig -> ProveMonad ()
+assertNonNegativeFnAnn (FunSig (q, qe) q') = tellSigCs $
   assertGeZero qe
   ++ assertGeZero q'
 
@@ -152,17 +156,26 @@ assertNonNegativeSig fn = do
 assertNonNegativeCost :: Id -> ProveMonad ()
 assertNonNegativeCost fn = do
   ann <- (M.! fn) <$> use sig
-  let cost = symbolicCost (withCost ann)
+  let (FunSig (q,qe) q') = withCost ann
+  let cost = symbolicCost ((q,qe), q')
   let zero = zeroAnnFrom cost
   cs <- annFarkas (S.fromList [Mono]) S.empty zero cost
   tellSigCs cs
+
+assertNonNegativeCost' :: Id -> ProveMonad ()
+assertNonNegativeCost' fn = do
+  ann <- (M.! fn) <$> use sig
+  let (FunSig (q,qe) q') = withCost ann
+  let cost = symbolicCost ((q,qe), q')
+  tellSigCs (assertGeZero cost)
 
 type CostComparision = Map Type TermTemplate -> BoundAnn -> [Constraint]
 
 cmpCostWithAnn :: CostComparision -> Id -> BoundAnn -> ProveMonad ()
 cmpCostWithAnn cmp fn costAnn = do
   ann <- (M.! fn) <$> use sig
-  let cost = symbolicCost (withCost ann)
+  let (FunSig (q,qe) q') = withCost ann
+  let cost = symbolicCost ((q,qe), q')
   tellSigCs $ assertGeZero cost
   tellSigCs $ cmp cost costAnn
 
@@ -174,7 +187,8 @@ coeffsMatchAnnotation fn target = do
 addSimpleCostOptimization :: Id -> ProveMonad ()
 addSimpleCostOptimization fn = do
   ann <- (M.! fn) <$> use sig
-  let cost = symbolicCost (withCost ann)
+  let (FunSig (q,qe) q') = withCost ann
+  let cost = symbolicCost ((q,qe), q')
   let costTerm = sum cost
   optiTargets %= (costTerm:)
 
@@ -182,7 +196,7 @@ addSimpleCostOptimization fn = do
 addFullCostOptimization :: Id -> ProveMonad ()
 addFullCostOptimization fn = do
   ann <- (M.! fn) <$> use sig
-  let ((q, qe), q') = withCost ann
+  let (FunSig (q, qe) q') = withCost ann
   costTerm <- annCOptimize (q, qe) q'
   optiTargets %= (costTerm:)
 
@@ -211,13 +225,28 @@ genFunAnn fn@(FunDef funAnn _ _ _) = do
     (emptyAnn argsTo "QE" "fn")
   fromCfs <- mapM (const $ genCf argsFrom argsTo) [1..numCfSigs]
   toCfs <- mapM (const $ defaultAnn argsTo "P'" "fn cf") [1..numCfSigs]
-  return $ FunAnn ((from, fromRef), to) (zip fromCfs toCfs) (hasPotential fn)
+  auxs <- M.fromList . concat <$> mapM (genAuxs argsFrom argsTo) (M.assocs pots)
+  return $ FunAnn
+    (FunSig (from, fromRef) to)
+    (Prelude.zipWith FunSig fromCfs toCfs)
+    auxs
+    (hasPotential fn)
   where genCf argsFrom argsTo= do
           q <- defaultAnn argsFrom "P" "fn cf" 
           qe <- ifM (view rhsTerms)
             (defaultAnn argsTo "PE" "fn cf")
             (emptyAnn argsTo "PE" "fn cf")
           return (q, qe)
+        genAux argsFrom argsTo t m = do
+          let pot = (fromKind . potForMeasure) m
+          auxPotentials . at t ?= pot
+          q <- singleAnn pot t argsFrom "A" "fn aux"
+          qe <- emptyAnn argsTo "AE" "fn aux"
+          q' <- singleAnn pot t argsTo "A'" "fn aux"
+          return (FunSig (q, qe) q')
+        genAuxs argsFrom argsTo (t, (pot, _)) = do
+          mapM (\(m, k) -> ((m,k), ) <$> genAux argsFrom argsTo t m) (auxSigs pot)
+          
 
 
 addSigCs :: [Id] -> Solution -> ProveMonad ()

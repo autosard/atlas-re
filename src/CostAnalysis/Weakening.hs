@@ -42,7 +42,7 @@ annFarkas wArgs preds ps qs = do
   farkas =<< genInterPotKnowledge ks
   where go :: (Template a) => (Type, a) -> ProveMonad (Type, ExpertKnowledge)
         go (t, p) = do
-          pot <- potForType t <$> use potentials
+          pot <- potForType t 
           let q = qs M.! t
           let m = genExpertKnowledge pot wArgs preds (args p) (idxs p)
               ps = V.fromList [(idx, p!?idx) | idx <- S.toList (idxs p)]
@@ -68,39 +68,44 @@ genInterPotKnowledge ks = do
                           let ps = V.map fst . rows $ ks M.! rowT,
                               (i, _) <- V.toList . V.indexed . fst . matrix $ ks M.! rowT]
 
-  let asInter = interCoeffsEqual ks ts pots (Just . oneCoeff)
+  asInter <- interCoeffsEqual ks ts (Just . oneCoeff)
   let bs = concatMap (snd . matrix) $ M.elems ks 
   return $ ExpertKnowledge (V.concat [as, asInter], bs ++ replicate (length asInter) 0) rows' cols'
 
-interCoeffsEqual :: Map Type ExpertKnowledge -> [Type] -> PotFnMap -> (Potential -> Maybe CoeffIdx) -> V.Vector (V.Vector Rational)
-interCoeffsEqual ks ts pots coeff = V.fromList [
-  V.concat $ map (buildSegment tQ tP) ts
-  | tP <- ts,
-    isJust $ coeff (potForType tP pots),
-    let coeffP = fromJust $ coeff (potForType tP pots),
-    isJust $ V.elemIndex coeffP (V.map fst $ cols $ ks M.! tP),
-    tQ <- ts,
-    isJust $ coeff (potForType tQ pots),
-    let coeffQ = fromJust $ coeff (potForType tQ pots),
-    isJust $ V.elemIndex coeffQ (V.map fst $ cols $ ks M.! tQ),    
-    tP /= tQ]
-  where buildSegment tP tQ t | t == tP
-          = let coeffP = fromJust $ coeff (potForType tP pots) in
-              singletonSegment coeffP (cols $ ks M.! tP) 1
-                         | t == tQ
-          = let coeffQ = fromJust $ coeff (potForType tQ pots) in
-              singletonSegment coeffQ (cols $ ks M.! tQ) (-1)
-                         | otherwise = V.replicate (length (cols $ ks M.! t)) 0
-        singletonSegment idx cols x = case V.elemIndex idx (V.map fst cols) of
-          Just j -> V.generate (V.length cols) (\i -> if i == j then x else 0)
+interCoeffsEqual :: Map Type ExpertKnowledge -> [Type] -> (Potential -> Maybe CoeffIdx) -> ProveMonad (V.Vector (V.Vector Rational))
+interCoeffsEqual ks ts coeff = do
+  pots <- M.fromList <$> mapM (\t -> do p <- potForType t
+                                        return (t, p)) ts
+  return $ V.fromList [
+    V.concat $ map (buildSegment pots tQ tP) ts
+    | tP <- ts,
+      let potP = pots M.! tP,
+      isJust $ coeff potP,
+      let coeffP = fromJust $ coeff potP,
+      isJust $ V.elemIndex coeffP (V.map fst $ cols $ ks M.! tP),
+      tQ <- ts,
+      let potQ = pots M.! tQ,
+      isJust $ coeff potQ,
+      let coeffQ = fromJust $ coeff potQ,
+      isJust $ V.elemIndex coeffQ (V.map fst $ cols $ ks M.! tQ),    
+      tP /= tQ]
+    where buildSegment pots tP tQ t | t == tP
+              = let coeffP = fromJust $ coeff (pots M.! tP) in
+                singletonSegment coeffP (cols $ ks M.! tP) 1
+                | t == tQ
+              = let coeffQ = fromJust $ coeff (pots M.! tQ) in
+                singletonSegment coeffQ (cols $ ks M.! tQ) (-1)
+                | otherwise = V.replicate (length (cols $ ks M.! t)) 0
+          singletonSegment idx cols x = case V.elemIndex idx (V.map fst cols) of
+              Just j -> V.generate (V.length cols) (\i -> if i == j then x else 0)
 
-genInterRow :: Map Type (Potential, FreeTemplate) -> CoeffIdx -> Type -> Type -> V.Vector CoeffIdx -> V.Vector Int
-genInterRow pots p rowT colT cols
-  | p == oneCoeff (potForType rowT pots) =
-      let colConst = oneCoeff (potForType colT pots) in
-        case V.elemIndex colConst cols of
-          Just j -> V.generate (length cols) (\i -> if i == j then 1 else 0)
-  | otherwise = V.replicate (length cols) 0
+-- genInterRow :: Map Type (Potential, FreeTemplate) -> CoeffIdx -> Type -> Type -> V.Vector CoeffIdx -> V.Vector Int
+-- genInterRow pots p rowT colT cols
+--   | p == oneCoeff (potForType rowT pots) =
+--       let colConst = oneCoeff (potForType colT pots) in
+--         case V.elemIndex colConst cols of
+--           Just j -> V.generate (length cols) (\i -> if i == j then 1 else 0)
+--   | otherwise = V.replicate (length cols) 0
           
 coeffForLine :: V.Vector Int -> V.Vector CoeffIdx -> CoeffIdx
 coeffForLine line coeffs = case V.findIndex (== 1) line of

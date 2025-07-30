@@ -5,6 +5,7 @@ import CostAnalysis.Potential.SumOfLogs.Constraints
 import CostAnalysis.Potential.SumOfLogs.Optimization
 import CostAnalysis.Potential.SumOfLogs.Weakening
 import CostAnalysis.Potential(Potential(Potential))
+import CostAnalysis.Potential.Common(auxSigs)
 
 import Data.Ratio((%))
 
@@ -25,6 +26,7 @@ pot args = Potential
   cExternal
   (cOptimize args)
   printBasePot
+  auxSigs
 
 
 defaultARange = [0,1]

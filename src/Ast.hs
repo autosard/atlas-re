@@ -59,7 +59,10 @@ data PotentialKind
   | LinLog
   | LogGolden
   | Rank
+  | Weight
+  | RightHeavy
   deriving (Eq, Ord, Show)
+
 
 fns :: Module a -> [FunDef a]
 fns = M.elems . defs

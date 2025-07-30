@@ -36,10 +36,11 @@ data Constraint
   | Le Term Term
   | Ge Term Term
   | Impl Constraint Constraint
+  | Iff Constraint Constraint
   | Not Constraint
   | Or [Constraint]
   | And [Constraint]
-  | Atom Term
+  | Atom Var
   deriving (Eq, Ord, Show)
 
 -- pattern Prod2 :: Term -> Term -> Term 
@@ -123,6 +124,10 @@ impl [c1] [] = []
 impl [c1] [c2] = [Impl c1 c2]
 impl _ _ = error "cannot construct implication. "
 
+iff :: [Constraint] -> [Constraint] -> [Constraint]
+iff [] [] = []
+iff [c1] [c2] = [Iff c1 c2]
+
 or :: [Constraint] -> [Constraint]
 or [] = []
 or cs = [Or cs]
@@ -172,3 +177,5 @@ instance HasCoeffs Constraint where
   getCoeffs (Not c) = getCoeffs c
   getCoeffs (Or cs) = getCoeffs cs
   getCoeffs (And cs) = getCoeffs cs
+  getCoeffs (Iff c1 c2) = getCoeffs c1 ++ getCoeffs c2
+  getCoeffs (Atom _) = []
