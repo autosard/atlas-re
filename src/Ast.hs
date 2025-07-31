@@ -19,7 +19,7 @@ import Text.Megaparsec(SourcePos, unPos, sourceLine, sourceColumn)
 import Data.List(intercalate)
 import Prelude hiding (break)
 
-import Primitive(Id, printRat, Substitution)
+import Primitive(Id, printRat)
 import Typing.Type (Type, splitProdType, splitFnType)
 import Typing.Subst(Types(apply, tv))
 import Typing.Scheme (Scheme, toType)
@@ -61,6 +61,7 @@ data PotentialKind
   | Rank
   | Weight
   | RightHeavy
+  | LogLRXWB
   deriving (Eq, Ord, Show)
 
 

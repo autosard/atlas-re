@@ -8,7 +8,7 @@ import qualified Data.Set as S
 import Data.Text(Text)
 import qualified Data.Text as T
 
-import Primitive(Id, traceShow)
+import Primitive(Id)
 import CostAnalysis.Coeff
 
 import CostAnalysis.Template
@@ -17,7 +17,7 @@ import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential (AnnRanges(..), MonoFn(..))
 import CostAnalysis.Constraint (Constraint)
-import CostAnalysis.Potential.Logarithm
+import CostAnalysis.Potential.Logarithm.Base
 
 
 data Args = Args {

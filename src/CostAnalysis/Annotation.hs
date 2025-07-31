@@ -24,7 +24,6 @@ import CostAnalysis.Constraint
 import qualified CostAnalysis.Constraint as C
 import Typing.Type
 import CostAnalysis.Coeff
-import Data.Maybe (fromMaybe)
 
 
 type Ann a = Map Type a

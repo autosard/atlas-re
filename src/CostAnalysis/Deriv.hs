@@ -14,7 +14,7 @@ import Prelude hiding (or, and, negate, sum)
 
 import Ast hiding (Coefficient, CostAnnotation(..))
 import Constants (isBasicConst)
-import Primitive(Id, applySubst, traceShow)
+import Primitive(Id)
 import Control.Monad.RWS
 
 import Lens.Micro.Platform
@@ -26,25 +26,24 @@ import CostAnalysis.Potential hiding (Factor(..), emptyAnn, defaultAnn, defaultT
 --import CostAnalysis.RsrcAnn hiding (fromAnn)
 import CostAnalysis.Annotation hiding (sub)
 import CostAnalysis.Predicate
-import qualified CostAnalysis.Predicate as P (PredOp(..))
-import CostAnalysis.Template(FreeTemplate (FreeTemplate))
+import CostAnalysis.Template(FreeTemplate)
 import qualified CostAnalysis.Template as Templ
 import CostAnalysis.Constraint ( and,
                                  or,
                                  le,
                                  eq,
                                  sub,
-                                 Constraint,
+                                 Constraint (Bot),
                                  Term(ConstTerm), geZero, iff )
 import CostAnalysis.Weakening
 import CostAnalysis.ProveMonad
 import StaticAnalysis(freeVars)
-import Data.Maybe (fromMaybe, mapMaybe, isJust, catMaybes)
+import Data.Maybe (fromMaybe, mapMaybe, catMaybes)
 
 
 import CostAnalysis.Coeff (coeffArgs, justVars, CoeffIdx (Pure))
-import Data.List (singleton)
 import CostAnalysis.Potential.Kind (fromKind)
+import Control.Monad (when, unless)
 
   
 type ProofResult = (Derivation, [Constraint], FreeSignature)
@@ -300,9 +299,18 @@ extendPredicates preds gammaVars bindVar tactic e = do
                 ++ assertZeroExcept q' t [Pure "e1"])
           deriv <- proveExpr tactic (Aux m) kind e (q, qe, S.empty) q'
           return (pred', deriv, cs)
-        accum (preds, derivs, css) pred = do
-          (pred, deriv, cs) <- go pred
-          return (pred:preds, deriv:derivs, cs ++ css)
+        accum a@(preds, derivs, css) pred = 
+          if noAuxSigs pred then
+            return a
+          else do
+            (pred, deriv, cs) <- go pred
+            return (pred:preds, deriv:derivs, cs ++ css)
+
+noAuxSigs :: Predicate -> Bool
+noAuxSigs (Predicate m _ _ _ _ _) = 
+  let pot = fromKind . potForMeasure $ m in
+    null (auxSigs pot)
+  
 
 proveApp :: Prove PositionedExpr Derivation
 proveApp tactic Standard kind e@(App id args) (q, qe, pred) q' = do

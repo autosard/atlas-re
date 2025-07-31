@@ -10,11 +10,10 @@ import Lens.Micro.Platform
 import Data.Maybe(catMaybes, isJust, fromJust)
 
 import Primitive(Id)
-import CostAnalysis.Annotation(FreeAnn, Ann)
+import CostAnalysis.Annotation(Ann)
 import CostAnalysis.Template(FreeTemplate,
                              Template,
-                            (!?), (!), idxs, args,
-                            ftCoeffs)
+                            (!?), (!), idxs, args)
                             
 import CostAnalysis.Constraint
 import CostAnalysis.Potential

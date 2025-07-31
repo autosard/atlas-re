@@ -11,7 +11,6 @@ import CostAnalysis.Template hiding (sub, sum)
 import CostAnalysis.Constraint
 import qualified CostAnalysis.Coeff as Coeff (constFactor, facForVar, (^))
 import CostAnalysis.Coeff hiding ((^))
-import CostAnalysis.ProveMonad (fromAnn)
 
 weightedAbs :: FreeTemplate -> Term
 weightedAbs q = sum [prod [q!idx, ConstTerm $ indexWeight a b]

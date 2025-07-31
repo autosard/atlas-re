@@ -60,6 +60,7 @@ instance Encodeable Constraint where
   toZ3 (Not c) = mkNot =<< toZ3 c
   toZ3 (Atom id) = mkBoolVar =<< mkStringSymbol ("b_" ++ show id)
   toZ3 (Iff c1 c2) = bind2 mkIff (toZ3 c1) (toZ3 c2)
+  toZ3 Bot = mkFalse 
 
 evalCoeffs :: MonadOptimize z3 => Model -> [Coeff] -> z3 (Map Coeff Rational)
 evalCoeffs m qs = do

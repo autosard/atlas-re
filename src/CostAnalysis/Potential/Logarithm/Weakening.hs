@@ -1,45 +1,21 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-module CostAnalysis.Potential.Logarithm where
+module CostAnalysis.Potential.Logarithm.Weakening where
 
-import Prelude hiding ((^))
-import Data.List(intercalate)
-import qualified Data.Set as S
-import qualified Data.Text as T
 import Data.Map(Map)
 import qualified Data.Map as M
+import qualified Data.Vector as V
 import Data.Maybe(fromMaybe)
+import Data.Set(Set)
+import qualified Data.Set as S
 
 import Primitive(Id, infinity)
+import CostAnalysis.Coeff
+import CostAnalysis.Potential(LeMatrix)
 import CostAnalysis.AnnIdxQuoter(mix)
-import CostAnalysis.Coeff 
-
-combi :: ([Int], [Int]) -> [Id] -> [CoeffIdx]
-combi (rangeA, rangeB) xs = map (Mixed . S.fromList)$
-  combi' rangeA [[Const c | c > 0] | c <- rangeB] xs
-
-varCombi :: [Int] -> [Id] -> [CoeffIdx]
-varCombi rangeA xs = map (Mixed . S.fromList) $ combi' rangeA [[]] xs
-
-combi' :: [Int] -> [[Factor]] -> [Id] -> [[Factor]]
-combi' _ z [] = z
-combi' rangeA z (x:xs) = [if a > 0 then x^a:y else y
-                       | a <- rangeA, y <- combi' rangeA z xs]
-
-logCoeffs :: [Id] -> ([Int], [Int]) -> [CoeffIdx]
-logCoeffs args ranges = [idx
-                       | idx <- combi ranges args,
-                         idxSum idx > 0,
-                         idx /= [mix|1|]]
-
-
-printLogTerm :: CoeffIdx -> String
-printLogTerm (Mixed factors) = "log(" ++ intercalate " + " (map printFactor (S.toDescList factors)) ++ ")"
-  where printFactor (Const c) = show c
-        printFactor (Arg x [a]) = if a /= 1 then show a ++ "|" ++ T.unpack x ++ "|" else "|" ++ T.unpack x ++ "|"
-
+import CostAnalysis.Weakening
 
 -- \sum a_i * |x_i| + a_{n+1} <= \sum b_i * |y_i| b_{n+1}.
 -- We know that arguments are trees, so we assume |x_i|,|y_i| >= 1. 
@@ -65,3 +41,20 @@ predOffset vars i j = let initM = M.fromList $ map (,0) vars  in
                                 b = facForVar j y
                                 s = min a b in
           (M.adjust (+ s) x mx, M.adjust (+ s) y my)
+
+-- t >= u => log(t + u) >= log(u) + 1
+logLemma2 :: [(Id, Id)] -> [Id] -> Set CoeffIdx -> LeMatrix
+logLemma2 lePreds args idxs = merge $ [(V.singleton (row x xy), [0])
+                                     | (x,xy) <- idxPairs]
+  where iConst = S.findIndex [mix|2|] idxs
+        row idxX idxXY = let iX = S.findIndex idxX idxs
+                             iXY = S.findIndex idxXY idxs in
+                    V.fromList [if k == iConst || k == iX then 1 else
+                                   if k == iXY then -1 else 0
+                               | k <- [0..length idxs -1]]
+        idxPairs = [(idxX, idxXY)
+                   | (x,y) <- lePreds,
+                     let idxX = [mix|x^1|],
+                     S.member idxX idxs,
+                     let idxXY = [mix|x^1,y^1|],
+                     S.member idxXY idxs]

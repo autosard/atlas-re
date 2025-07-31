@@ -4,7 +4,6 @@
 module CostAnalysis.Potential.SumOfLogs.Base where
 
 import Prelude hiding ((^))
-import Data.List(intercalate)
 import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.Text(Text)
@@ -17,8 +16,10 @@ import CostAnalysis.Template
 import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential (AnnRanges(..), MonoFn(..))
-import CostAnalysis.Potential.Logarithm
+import CostAnalysis.Potential.Logarithm.Base
 import CostAnalysis.Constraint (Constraint, eq, Term(..))
+import CostAnalysis.Predicate (PredOp)
+import CostAnalysis.Annotation(Measure)
 
 -- c log(x + y) >= a log(x) + b log(y) + d
 data LogLemmaCoeffs = LogLemmaCoeffs {
@@ -34,8 +35,10 @@ data Args = Args {
   logL :: !Rational,
   logR :: !Rational,
   logLR :: !Rational,
-  logLemmaInstance :: !LogLemmaCoeffs}
-  
+  logLemmaInstance :: !LogLemmaCoeffs,
+  invariant :: !(Maybe TreeInvariant)}
+
+data TreeInvariant = TreeInvariant Measure PredOp Bool
 
 potType = TreeType
 

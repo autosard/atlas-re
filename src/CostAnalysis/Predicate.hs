@@ -9,11 +9,10 @@ import Data.Set(Set)
 import qualified Data.Map as M
 import Data.Map(Map)
 
-import Primitive(Id, Substitution, applySubst, traceShow)
+import Primitive(Id, Substitution, applySubst)
 import Control.Monad (guard)
 import qualified Data.Set as S
-import CostAnalysis.Constraint (Term, or, Constraint (Atom))
-import Data.Maybe (maybe, maybeToList)
+import CostAnalysis.Constraint (or, Constraint)
 import Ast hiding (PotentialKind(..))
 import qualified Ast as A (PotentialKind(..))
 import Typing.Type

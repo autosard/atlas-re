@@ -8,10 +8,8 @@ import Prelude hiding (subtract)
 import qualified Data.Vector as V
 import Data.Set(Set)
 import qualified Data.Set as S
-import Data.Map(Map)
-import qualified Data.Map as M
 
-import Primitive(Id, infinity)
+import Primitive(Id)
 import CostAnalysis.Rules(WeakenArg(..))
 import CostAnalysis.Potential(LeMatrix)
 import CostAnalysis.Coeff
@@ -19,9 +17,8 @@ import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Weakening
 import CostAnalysis.Annotation(Measure(..))
 import CostAnalysis.Potential.SumOfLogs.Base(Args(..), LogLemmaCoeffs(..))
-import CostAnalysis.Potential.Logarithm(monoLe)
+import CostAnalysis.Potential.Logarithm.Weakening(monoLe, logLemma2)
 import qualified CostAnalysis.Predicate as P
-import Data.Maybe (fromMaybe)
 
 
 supportedArgs = S.fromList [Mono, L2xy]
@@ -35,7 +32,9 @@ genExpertKnowledge (Args {logLemmaInstance = llCoeffs}) wArgs preds args idxs = 
             m == Weight,
             op == P.Le || op == P.Lt || op == P.Eq]
         select Mono = monoLattice (monoLe preds') args idxs
-        select L2xy = logLemma llCoeffs args idxs
+        select L2xy = merge [
+          logLemma llCoeffs args idxs,
+          logLemma2 preds' args idxs]
 
 
   

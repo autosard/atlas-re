@@ -24,14 +24,13 @@ import Control.Monad.Except (MonadError (throwError))
 import CostAnalysis.Deriv
 import CostAnalysis.Coeff
 import Typing.Type
-import CostAnalysis.Annotation
 import CostAnalysis.Potential(PotFnMap, Potential (cExternal), auxSigs)
 import CostAnalysis.Potential.Kind (fromKind)
 import Control.Monad.Extra (concatMapM, ifM)
 import CostAnalysis.Template (TermTemplate, FreeTemplate)
 import CostAnalysis.Weakening (annFarkas)
 import CostAnalysis.Predicate(potForMeasure)
-import CostAnalysis.Annotation (assertGeZero)
+import CostAnalysis.Annotation 
 
 defaultPotentialMap = M.fromList
   [
@@ -107,7 +106,7 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
   mode <- view analysisMode
 
   assertNonNegativeSig fnId
-  assertNonNegativeCost' fnId
+  assertNonNegativeCost fnId
   
   case mode of
     CheckCoefficients -> case tfCostAnn funAnn of

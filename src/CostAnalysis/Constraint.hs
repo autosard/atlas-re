@@ -41,6 +41,7 @@ data Constraint
   | Or [Constraint]
   | And [Constraint]
   | Atom Var
+  | Bot
   deriving (Eq, Ord, Show)
 
 -- pattern Prod2 :: Term -> Term -> Term 
@@ -179,3 +180,4 @@ instance HasCoeffs Constraint where
   getCoeffs (And cs) = getCoeffs cs
   getCoeffs (Iff c1 c2) = getCoeffs c1 ++ getCoeffs c2
   getCoeffs (Atom _) = []
+  getCoeffs Bot = []

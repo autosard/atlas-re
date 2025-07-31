@@ -24,7 +24,6 @@ import System.Directory
 import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
-import CostAnalysis.Template
 import CostAnalysis.Annotation
 import CostAnalysis.Potential
 import Ast(Module(..),

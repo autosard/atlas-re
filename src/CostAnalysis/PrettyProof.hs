@@ -291,9 +291,7 @@ hamPredicate (P.Predicate m op x y _ _) =
 
 hamMeasure :: Measure -> Id -> Html
 hamMeasure Weight x = [shamlet|
-<mi>|</mi>
-<mi>#{x}</mi>
-<mi>|</mi>|]                    
+|<mi>#{x}</mi>||]                    
     
 hamAnn :: FreeAnn -> Html
 hamAnn ctx = toHtml $ intersperse
@@ -454,6 +452,7 @@ hamConstraint (Atom v) = [shamlet|
   <mi>b
   <mn>#{v}
 |]
+hamConstraint Bot = [shamlet|⊥|]
 
 hamConstraintList op cs = [shamlet|
 <mtable rowalign="top" columnalign="center left">

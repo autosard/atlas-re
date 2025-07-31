@@ -36,7 +36,6 @@ import Typing.Type
 import Ast
 import CostAnalysis.Coeff
 import Data.List(intercalate)
-import Data.Maybe (isJust)
 
 type Derivation = Tree RuleApp
 

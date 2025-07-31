@@ -12,7 +12,7 @@ import CostAnalysis.Coeff
 import CostAnalysis.Potential.TreeSize.Base(oneCoeff)
 import qualified Data.Text as T
 import Data.Set (Set)
-import CostAnalysis.Predicate (Predicate (Predicate), PredOp (..), anyImplies)
+import CostAnalysis.Predicate (Predicate)
 import Ast 
 
 

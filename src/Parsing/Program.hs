@@ -92,7 +92,8 @@ pPotentialMapping = M.fromList <$> pParens (sepBy (do
 
 pPotentialMode :: Parser PotentialKind
 pPotentialMode =
-  try (symbol "loglrx") $> LogLRX
+  try (symbol "loglrx_weight_biased") $> LogLRXWB
+  <|> try (symbol "loglrx") $> LogLRX
   <|> symbol "loglr" $> LogLR
   <|> symbol "polynomial" $> Polynomial
   <|> symbol "linlog" $> LinLog
@@ -101,6 +102,7 @@ pPotentialMode =
   <|> symbol "log_golden" $> LogGolden
   <|> symbol "rank" $> Rank
   <|> symbol "right_heavy" $> RightHeavy
+  
    
 
 data Signature = Signature

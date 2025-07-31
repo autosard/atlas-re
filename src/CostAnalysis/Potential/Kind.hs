@@ -27,6 +27,7 @@ fromKind LogGolden = SumOfLogs.goldenPot
 fromKind Rank = Rank.defaultPot
 fromKind Weight = TreeSize.defaultPot
 fromKind RightHeavy = RightHeavy.defaultPot
+fromKind LogLRXWB = SumOfLogs.loglrxWBPot
                       
 pays :: PotentialKind -> PotentialKind -> Maybe (CoeffIdx -> Maybe CoeffIdx)
 pays p1 p2 | p1 == p2 = Just Just
