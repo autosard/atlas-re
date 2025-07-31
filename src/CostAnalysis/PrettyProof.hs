@@ -291,7 +291,9 @@ hamPredicate (P.Predicate m op x y _ _) =
 
 hamMeasure :: Measure -> Id -> Html
 hamMeasure Weight x = [shamlet|
-|<mi>#{x}</mi>||]                    
+|<mi>#{x}</mi>||]
+hamMeasure Rank x = [shamlet|
+†<mi>#{x}</mi>|]                      
     
 hamAnn :: FreeAnn -> Html
 hamAnn ctx = toHtml $ intersperse

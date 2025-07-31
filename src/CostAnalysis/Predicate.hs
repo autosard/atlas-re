@@ -24,10 +24,12 @@ data PredOp = Le | Lt | Eq | Neq
 
 measureFromConst :: Id -> Maybe Measure
 measureFromConst "weight" = Just Weight
+measureFromConst "rank" = Just Rank
 measureFromConst _ = Nothing
 
 potForMeasure :: Measure -> A.PotentialKind
 potForMeasure Weight = A.Weight
+potForMeasure Rank = A.Rank
 
 data Predicate = Predicate Measure PredOp Id Id [Constraint] Type
   deriving (Eq, Ord, Show)

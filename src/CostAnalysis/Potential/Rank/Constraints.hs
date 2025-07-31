@@ -7,12 +7,13 @@ import Prelude hiding (exp, (!!), sum, or)
 
 import Primitive(Id)
 import CostAnalysis.Template hiding (sum, sub)
-import CostAnalysis.Constraint
+import CostAnalysis.Constraint hiding (Le)
 import CostAnalysis.Coeff
 import CostAnalysis.Potential.Rank.Base(oneCoeff)
-import Ast
+import Ast hiding (PotentialKind(..))
 import qualified Data.Text as T
-import CostAnalysis.Predicate (Predicate)
+import CostAnalysis.Predicate (Predicate(..), PredOp(..))
+import CostAnalysis.Annotation(Measure(..))
 import Data.Set (Set)
 
 
@@ -20,7 +21,10 @@ exp :: Id
 exp = "e1"
 
 constCases :: Pattern Positioned -> [Predicate]
-constCases _ = []
+constCases (ConstPat _ "leaf" _) = []
+constCases p@(ConstPat _ "node" [Id _ t, _, Id _ u])
+  = [Predicate Rank Le u t [] (getType p)]
+    
 
 cConst :: PositionedExpr -> Set Predicate -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
 cConst (Leaf {}) _ (q, qe) q' = eq (q!oneCoeff) (q'!?oneCoeff)

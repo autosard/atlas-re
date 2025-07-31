@@ -155,7 +155,7 @@ data FunSig a = FunSig {
 
 type FreeFunSig = FunSig FreeTemplate
 
-data Measure = Weight
+data Measure = Weight | Rank
   deriving(Eq, Ord, Show)
 
 data (Template a) => FunAnn a = FunAnn {
