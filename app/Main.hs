@@ -107,6 +107,7 @@ run Options{..} AnalyzeOptions{..} = do
           logError "solver returned unsat. See unsat-core for details."
           liftIO $ writeHtmlProof "./out" (renderProof (Just core') deriv sigCs) 
       (AnalysisResult deriv sigCs sig (Right (solution, pots))) -> do
+        liftIO $ putStr "Done. "
         liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv sigCs)
         liftIO $ printSolution switchDumpCoeffs sig pots solution
 
@@ -114,23 +115,26 @@ printAnalysisInfo :: PositionedModule -> IO ()
 printAnalysisInfo (Module {..}) = putStrLn $
   "Analyzing module " ++ T.unpack name ++ "("
   ++ T.unpack (T.intercalate ", " (concat mutRecGroups))
-  ++ ")."
+  ++ ") ..."
 
 printSolution :: Bool -> FreeSignature -> PotFnMap -> Solution -> IO ()
 printSolution dumpCoeffs sig potFns solution = do
   when dumpCoeffs (do
                       mapM_ (\(q, v) -> putStrLn $ show q ++ " = " ++ show v) (M.assocs solution)
                       putStrLn "")
-  putStrLn "Potential functions:"
+  putStrLn ""
+  putStrLn "potential functions:"
   mapM_ printPotFn (M.assocs potFns)
   putStrLn ""
   mapM_ printFnBound (M.keys sig)
+  putStrLn ""
+  putStrLn "where (e1,...,en) := f x1 ... xm"
   where printFnBound fn = do
           let fnSig = sig M.! fn
           putStrLn $ T.unpack fn ++ ":"
           putStrLn $ "\t" ++ printBound potFns (withCost fnSig) solution
         printPotFn (kind, (pot, rhs)) = do
-          putStrLn $ "\t" ++ printRHS pot rhs solution ++ " (" ++ show kind ++ ")"
+          putStrLn $ "\t" ++ show kind ++ ": " ++ printRHS pot rhs solution 
           
 
 writeHtmlProof :: FilePath -> LT.Text -> IO ()

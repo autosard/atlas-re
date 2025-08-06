@@ -30,7 +30,8 @@ instance Show Type where
   show (TVar (Tyvar var)) = T.unpack var
   show (TAp Arrow [l, r]) = show l ++ " " ++ "->" ++ " " ++ show r
   show (TAp Prod ts) = "(" ++ intercalate ", " (map show ts) ++ ")"
-  show (TAp const ts) = show const ++ " " ++ unwords (map show ts) 
+  show (TAp const []) = show const
+  show (TAp const ts) = show const ++ " " ++ unwords (map show ts)
   show (TGen i) = "a" ++ show i
 
 fn :: [Type] -> Type -> Type

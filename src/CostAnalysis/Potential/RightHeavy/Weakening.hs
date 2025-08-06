@@ -30,10 +30,21 @@ genExpertKnowledge wArgs preds args idxs = merge $ map select wArgs'
           | (P.Predicate m op x y [] _) <- S.toList preds,
             m == Weight,
             op == P.Le || op == P.Lt || op == P.Eq]
-        select Mono = monoLattice (monoLe preds') args idxs
+        select Mono = merge [
+          monoLattice (monoLe preds') args idxs,
+          iversonLeOne args idxs]
         select L2xy = merge [
           logLemma2 preds' args idxs,
           logLemmaIverson args idxs]
+
+iversonLeOne :: [Id] -> Set CoeffIdx -> LeMatrix
+iversonLeOne args idxs = merge [(V.singleton (row i), [0])
+                               | i <- restrictFacs2 $ S.toList idxs]
+  where iConst = S.findIndex [mix|2|] idxs
+        row i = V.fromList $
+                [if k == S.findIndex i idxs then 1 else
+                    if k == iConst then -1 else 0
+                | k <- [0..length idxs -1]]
         
 logLemmaIverson :: [Id] -> Set CoeffIdx -> LeMatrix
 logLemmaIverson args idxs = merge $ [(V.fromList (row i l r lr), [0,0])

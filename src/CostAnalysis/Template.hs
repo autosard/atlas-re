@@ -16,7 +16,7 @@ import Data.Text(Text)
 import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
 
-import Primitive(Id, Substitution)
+import Primitive(Id, Substitution, traceShow, traceShowV)
 import CostAnalysis.Coeff
 import Control.Monad.State
 import  CostAnalysis.Constraint(Term, Constraint, Term(..))
@@ -257,7 +257,7 @@ apply q p = case args p of
               [y] -> M.fromList [(i, substitute (args q)
                                    (replicate (length (args q)) y) i)
                                 | i <- S.toList (idxs q),
-                                  isPure i]
+                                  isPure i || justConst i]
               _ys_greater_xs -> error $ "cannot apply potential function " ++ show p ++ " to arguments " ++ show (args q)
 
 symbolicCost :: (Template a, Template b) => a -> b -> TermTemplate
