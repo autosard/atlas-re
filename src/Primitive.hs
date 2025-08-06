@@ -53,3 +53,5 @@ printRat r = let n = numerator r
                  _ -> show n ++ "/" ++ show d
 
 traceShow x = trace (show x) x
+
+traceShowV msg x = trace (msg ++ ": " ++ show x) x

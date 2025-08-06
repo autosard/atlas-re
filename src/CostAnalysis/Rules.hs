@@ -42,6 +42,7 @@ data RuleApp
     PositionedExpr
   | FunRuleApp PositionedFunDef
   | ProgRuleApp PositionedModule
+  deriving Show
 
 {-# DEPRECATED #-}          
 printRuleApp _ _ (FunRuleApp (Fn name _ _)) = "Fun: " ++ unpack name

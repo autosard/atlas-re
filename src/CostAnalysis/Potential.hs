@@ -32,7 +32,14 @@ import Ast hiding (FunRsrcAnn)
 import Data.Maybe (fromMaybe)
 import CostAnalysis.Predicate (Predicate)
 
+data JudgementType =
+  Standard
+  | Cf Int
+  | Aux Measure
+  deriving Show
+
 type LeMatrix = (V.Vector (V.Vector Rational), [Rational])
+
 
 data ExpertKnowledge = ExpertKnowledge {
   matrix :: LeMatrix,
@@ -80,7 +87,7 @@ data Potential = Potential {
   cLetBodyMulti :: FreeTemplate -> TemplateArray -> Id -> [CoeffIdx] -> FreeTemplate -> (FreeTemplate, [Constraint]),
 
   -- | @ 'letCfIdxs' q xs (rangeA, rangeB) x@ generates an index for every cf derivation in the rule from the indices in @q@ and the given ranges.
-  letCfIdxs :: FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx],
+  letCfIdxs :: FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [(JudgementType, CoeffIdx)],
 
   -- | @ 'cLetCf' q ps_ ps'_ x is = (ps, ps', cs)@
   cLetCf :: FreeTemplate -> TemplateArray -> TemplateArray -> Id -> ([Id], [Id]) -> [CoeffIdx] -> (TemplateArray, TemplateArray, [Constraint]),

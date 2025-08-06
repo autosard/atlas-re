@@ -15,7 +15,7 @@ import CostAnalysis.Coeff
 import CostAnalysis.Template
 import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
-import CostAnalysis.Potential (AnnRanges(..), MonoFn(..))
+import CostAnalysis.Potential (AnnRanges(..), MonoFn(..), JudgementType(..))
 import CostAnalysis.Potential.Logarithm.Base
 import CostAnalysis.Constraint (Constraint, eq, Term(..))
 import CostAnalysis.Predicate (PredOp)
@@ -71,9 +71,9 @@ cExternal q q' =
   where u = apply q q'
     
 
-letCfIdxs :: FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
+letCfIdxs :: FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [(JudgementType, CoeffIdx)] 
 letCfIdxs q xs (rangeA, rangeB) x =
-  [[mix|_bs,x^d,e|]
+  [(Cf 0, [mix|_bs,x^d,e|])
   | idx <- mixesForVars q xs,
     let bs = idxToSet idx,
     (not . null) bs,

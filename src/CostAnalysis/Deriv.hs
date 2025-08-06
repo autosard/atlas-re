@@ -1,4 +1,3 @@
-
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -14,7 +13,7 @@ import Prelude hiding (or, and, negate, sum)
 
 import Ast hiding (Coefficient, CostAnnotation(..))
 import Constants (isBasicConst)
-import Primitive(Id)
+import Primitive(Id, traceShow, traceShowV)
 import Control.Monad.RWS
 
 import Lens.Micro.Platform
@@ -247,10 +246,10 @@ proveLet tactic@(Rule (R.Let letArgs) _) judgeType kind e@(Let x e1 e2) (q, qe, 
 
       let (p, pCs) = Templ.defineByWith (annP_ M.! t) bindingQ (\idx p q -> geZero p ++ p `le` q)
       let (ps, ps', cfCs) | M.null ps_ = (ps_, ps'_, [])
-                          | otherwise = cLetCf potE1 bindingQ ps_ ps'_ x (gamma, delta) is
+                          | otherwise = cLetCf potE1 bindingQ ps_ ps'_ x (gamma, delta) (map snd is)
       let (r, rCs) = Templ.chainDef [
             Templ.cLetBodyUni bindingQ p bindingP' x,
-            cLetBodyMulti potE1 bindingQ ps' x is] r_ 
+            cLetBodyMulti potE1 bindingQ ps' x (map snd is)] r_ 
       let bindingAnnP' = M.insert t bindingP' M.empty
       let bindingAnnP = M.insert t p nonBindingAnnP
       let bindingAnnR = M.insert t r nonBindingAnnR
@@ -259,7 +258,12 @@ proveLet tactic@(Rule (R.Let letArgs) _) judgeType kind e@(Let x e1 e2) (q, qe, 
       let annPs' = map (\p -> M.fromList [(t, p)]) (Templ.elems ps')
       let cfPreds = replicate (length annPs) preds1
 
-      cfDerivs <- zipWithM (proveExpr t1 (Cf $ fromMaybe 0 (cfSigIdx judgeType)) kind e1) (zip3 annPs annPes cfPreds) annPs'
+--      cfDerivs <- zipWithM (proveExpr t1 (Cf $ fromMaybe 0 (cfSigIdx judgeType)) kind e1) (zip3 annPs annPes cfPreds) annPs'
+      cfDerivs <- mapM
+        (\(p, p', j@(judgeT, _)) -> case judgeT of
+            (Cf _) -> proveExpr t1 (Cf $ fromMaybe 0 (cfSigIdx judgeType)) kind e1 p p'
+            Aux m -> proveExpr t1 (Aux m) kind e1 p p')
+        $ zip3 (zip3 annPs annPes cfPreds) annPs' is
       
       return (bindingAnnP', bindingAnnP, bindingAnnR,
                pCs ++ peCs ++ cfCs ++ rCs ++ nonBindingCs,

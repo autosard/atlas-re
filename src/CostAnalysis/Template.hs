@@ -37,11 +37,16 @@ class (Show a) => Template a where
 mixes :: (Template a) => a -> [CoeffIdx]
 mixes = S.toList . S.filter (not . isPure) . idxs
 
+
+
+restrictFacs1 :: [CoeffIdx] -> [CoeffIdx]
+restrictFacs1 = filter (onlyFacsOfLen 1)
+
+restrictFacs2 :: [CoeffIdx] -> [CoeffIdx]
+restrictFacs2 = filter (onlyFacsOfLen 2)
+
 pures :: (Template a) => a -> [CoeffIdx]
 pures = S.toList . S.filter isPure . idxs
-
-mixesForVars :: (Template a) => a -> [Id] -> [CoeffIdx] 
-mixesForVars ann xs = S.toList $ S.map (mixed . (`varsRestrict` xs)) . S.filter (not . isPure) $ idxs ann
 
 
 data FreeTemplate = FreeTemplate {
@@ -80,6 +85,23 @@ coeffForIdx templ idx =
 
 coeffForTemplate :: FreeTemplate -> CoeffIdx -> Coeff
 coeffForTemplate templ = Coeff (templ^.ftId) (templ^.ftLabel) (templ^.ftComment)
+
+mixes1 :: (Template a) => a -> [CoeffIdx]
+mixes1 q = filter (onlyFacsOfLen 1) $ mixes q
+
+mixes2 :: (Template a) => a -> [CoeffIdx] 
+mixes2 q = filter (\idx -> onlyFacsOfLen 2 idx && (not . justConst) idx) $ mixes q
+
+mixesForVars :: (Template a) => a -> [Id] -> [CoeffIdx] 
+mixesForVars ann xs = S.toList $ S.map (mixed . (`varsRestrict` xs)) . S.filter (not . isPure) $ idxs ann
+
+mixesForVars1 :: (Template a) => a -> [Id] -> [CoeffIdx] 
+mixesForVars1 ann xs = S.toList $ S.map (mixed . (`varsRestrict` xs)) $ S.fromList (mixes1 ann)
+
+mixesForVars2 :: (Template a) => a -> [Id] -> [CoeffIdx] 
+mixesForVars2 ann xs = S.toList $ S.map (mixed . (`varsRestrict` xs)) $ S.fromList (mixes2 ann)
+
+
 
 instance HasCoeffs FreeTemplate where
   getCoeffs templ = map (coeffForTemplate templ) $ S.toList (templ^.ftCoeffs)

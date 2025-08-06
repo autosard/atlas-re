@@ -1,4 +1,5 @@
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TupleSections #-}
 
 module CostAnalysis.Potential.Poly.Base where
 
@@ -49,8 +50,9 @@ monoFnCoeff _ args c = Nothing
 cExternal :: FreeTemplate -> FreeTemplate -> [Constraint]
 cExternal q q' = []
 
-letCfIdxs :: FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
-letCfIdxs q xs (rangeA, rangeB) x = filter (not . null . idxToSet ) $ mixesForVars q xs
+letCfIdxs :: FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [(P.JudgementType, CoeffIdx)] 
+letCfIdxs q xs (rangeA, rangeB) x = map (P.Cf 0,) $
+  filter (not . null . idxToSet ) $ mixesForVars q xs
 
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = error "pure coefficients are not supported with polynomial potential."

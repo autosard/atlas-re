@@ -33,7 +33,7 @@ cLetCf q ps ps' x (gamma, delta) bdes = (psDefined, ps'Defined, psCs ++ ps'Cs ++
                        let e = constFactor bde,
                        let ce = constFactor idx + max 0 (-e),
                        let pIdx = [mix|_as,ce|]]
-          | idx <- mixes q,
+          | idx <- mixes1 q,
             let c = constFactor idx,
             (not . null) (varsRestrict idx delta),
             (not . null) (varsRestrict idx gamma) || c /= 0]
@@ -42,14 +42,14 @@ cLetCf q ps ps' x (gamma, delta) bdes = (psDefined, ps'Defined, psCs ++ ps'Cs ++
           [(`le` sum [p!ac
                      | let p = psDefined!!bde,
                        ac <- S.toList $ idxs p]) <$> defEntry bde de
-          | bde <- bdes,
+          | bde <- restrictFacs1 bdes,
             let d = facForVar bde x,
             let e = max 0 $ constFactor bde,
             let de = [mix|exp^d,e|]]
         cs = concat
              [impl (notZero (psDefined!!bde!idx)) (le (ps'Defined!!bde!de) (psDefined!!bde!idx))
              | bde <- bdes,
-               idx <- mixes (psDefined!!bde),
+               idx <- mixes1 (psDefined!!bde),
                (not . null) (varsRestrict idx gamma) || constFactor idx /= 0,
                let d = facForVar bde x,
                let e = max 0 $ constFactor bde,

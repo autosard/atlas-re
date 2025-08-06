@@ -4,7 +4,7 @@ import CostAnalysis.Potential.RightHeavy.Base
 import CostAnalysis.Potential.RightHeavy.Constraints
 import CostAnalysis.Potential.RightHeavy.Optimization
 import CostAnalysis.Potential.RightHeavy.Weakening
-import CostAnalysis.Potential.Logarithm.Constraints
+import qualified CostAnalysis.Potential.Logarithm.Constraints as Log
 import CostAnalysis.Potential(Potential(Potential))
 
 

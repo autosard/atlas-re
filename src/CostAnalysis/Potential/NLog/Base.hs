@@ -62,7 +62,7 @@ cExternal :: FreeTemplate -> FreeTemplate -> [Constraint]
 cExternal q q' = []
 
 -- univariate potential
-letCfIdxs :: Args -> FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
+letCfIdxs :: Args -> FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [(P.JudgementType, CoeffIdx)] 
 letCfIdxs potArgs q xs (rangeA, rangeB) x = []
 
 printBasePot :: CoeffIdx -> String

@@ -1,3 +1,6 @@
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module CostAnalysis.Potential.RightHeavy.Weakening where
 
 import Prelude hiding (subtract)
@@ -13,6 +16,7 @@ import CostAnalysis.Potential.Logarithm.Weakening(monoLe, logLemma2)
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Weakening
 import CostAnalysis.Annotation(Measure(..))
+import CostAnalysis.Template(restrictFacs2)
 import qualified CostAnalysis.Predicate as P
 
 
@@ -27,4 +31,36 @@ genExpertKnowledge wArgs preds args idxs = merge $ map select wArgs'
             m == Weight,
             op == P.Le || op == P.Lt || op == P.Eq]
         select Mono = monoLattice (monoLe preds') args idxs
-        select L2xy = logLemma2 preds' args idxs
+        select L2xy = merge [
+          logLemma2 preds' args idxs,
+          logLemmaIverson args idxs]
+        
+logLemmaIverson :: [Id] -> Set CoeffIdx -> LeMatrix
+logLemmaIverson args idxs = merge $ [(V.fromList (row i l r lr), [0,0])
+                                    | (i,l,r,lr) <- lemmaCoeffs]
+  where iConst = S.findIndex [mix|2|] idxs
+        row idxILR idxL idxR idxLR
+          = let iILR = S.findIndex idxILR idxs
+                iL = S.findIndex idxL idxs
+                iR = S.findIndex idxR idxs
+                iLR = S.findIndex idxLR idxs
+                lem = V.fromList $
+                      [if k == iR || k == iConst then 1 else
+                          if k == iLR || k == iILR then -1 else 0
+                      | k <- [0..length idxs -1]]
+                lemInv = V.fromList
+                         [if k == iL || k == iILR then 1 else
+                             if k == iLR then -1 else 0
+                         | k <- [0..length idxs -1]] in
+                                 [lem, lemInv]
+        lemmaCoeffs = [(idxI, idxL, idxR, idxLR)
+                      | idxI <- restrictFacs2 $ S.toList idxs,
+                        let xs = varsForFac idxI [1,1],
+                        let ys = varsForFac idxI [2,1],
+                        let idxL = mixed $ S.fromList $ map (\x -> Arg x [1]) xs,
+                        S.member idxL idxs,
+                        let idxR = mixed $ S.fromList $ map (\x -> Arg x [1]) ys,
+                        S.member idxR idxs,
+                        let idxLR = addIdxs idxL idxR,
+                        S.member idxLR idxs]
+

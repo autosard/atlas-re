@@ -100,27 +100,44 @@ coeffArgs idx = foldr go [] . S.toList . idxToSet $ idx
   where go (Const _) xs = xs
         go (Arg x _) xs = x:xs
 
-facForVar' :: CoeffIdx -> Id -> [Int]
-facForVar' (Mixed idx) x = getArg $ L.find (matchesVar x) (S.toList idx)
-  where getArg (Just (Arg _ a)) = a
-        getArg Nothing = []
+getArg (Arg _ a) = Just a
+getArg (Const _) = Nothing
+
+getArgs (Mixed facs) = mapMaybe getArg $ S.toList facs
+getArgs _ = error "cannot extract factor for pure index."
+
+facForVar' :: CoeffIdx -> Id -> Maybe [Int]
+facForVar' (Mixed idx) x = getArg =<< L.find (matchesVar x) (S.toList idx)
 facForVar' _ _ = error "cannot extract factor for pure index."
 
 facForVar :: CoeffIdx -> Id -> Int
 facForVar idx x = case facForVar' idx x of
-  [a] -> a
-  [] -> 0
+  Just [a] -> a
+  Nothing -> 0
 
 facForVar2 :: CoeffIdx -> Id -> (Int, Int)
 facForVar2 idx x = case facForVar' idx x of
-  [x1, x2] -> (x1, x2)
-  [] -> (0, 0)
+  Just [x1, x2] -> (x1, x2)
+  Nothing -> (0, 0)
 
 facForVar3 :: CoeffIdx -> Id -> (Int, Int, Int)
 facForVar3 idx x =
   case facForVar' idx x of
-    [] -> (0, 0, 0)
-    [x1, x2, x3] -> (x1, x2, x3)
+    Just [x1, x2, x3] -> (x1, x2, x3)
+    Nothing -> (0, 0, 0)
+
+varsForFac :: CoeffIdx -> [Int] -> [Id]
+varsForFac (Mixed facs) fac = foldr go [] facs
+  where go (Arg x f) a | f == fac = x:a
+        go (Arg x f) a = a
+        go (Const _) a = a
+
+onlyFacsOfLen :: Int -> CoeffIdx -> Bool
+onlyFacsOfLen n idx@(Mixed _) = all (\xs -> length xs == n) . getArgs $ idx
+onlyFacsOfLen _ _ = False
+
+onlyFac :: [Int] -> CoeffIdx -> Bool
+onlyFac f = all (== f) . getArgs 
 
 -- without const
 except :: CoeffIdx -> [Id] -> Set Factor

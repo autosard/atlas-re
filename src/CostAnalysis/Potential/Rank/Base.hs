@@ -14,7 +14,7 @@ import CostAnalysis.Coeff
 import CostAnalysis.Template
 import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
-import CostAnalysis.Potential (AnnRanges(..), MonoFn(..))
+import CostAnalysis.Potential (AnnRanges(..), MonoFn(..), JudgementType(..))
 import CostAnalysis.Constraint (Constraint)
 
 
@@ -41,7 +41,7 @@ monoFnCoeff _ _ _ = Nothing
 cExternal :: FreeTemplate -> FreeTemplate -> [Constraint]
 cExternal q q' = []
 
-letCfIdxs :: FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [CoeffIdx] 
+letCfIdxs :: FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [(JudgementType, CoeffIdx)] 
 letCfIdxs q xs (rangeA, rangeB) x = []
 
 printBasePot :: CoeffIdx -> String

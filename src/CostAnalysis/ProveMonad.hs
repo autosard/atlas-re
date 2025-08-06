@@ -73,10 +73,6 @@ data ProofErr
 
 makeLenses ''ProofEnv
 
-data JudgementType =
-  Standard
-  | Cf Int
-  | Aux Measure
 
 isCostFree :: JudgementType -> Bool
 isCostFree Standard = False
@@ -229,10 +225,10 @@ defaultTemplFor = withId P.defaultTempl
 defaultNegTempl :: Type -> Text -> Text -> [Id] -> ProveMonad FreeTemplate
 defaultNegTempl t = withPotAndId t P.defaultNegTempl
 
-emptyArrayFromIdxs :: Type -> [CoeffIdx] -> Text -> [Id] -> ProveMonad TemplateArray
+emptyArrayFromIdxs :: Type -> [(JudgementType, CoeffIdx)] -> Text -> [Id] -> ProveMonad TemplateArray
 emptyArrayFromIdxs t idxs label args = templArrayFromIdxs t idxs label args emptyTempl
 
-defaultArrayFromIdxs :: Type -> [CoeffIdx] -> Text -> [Id] -> ProveMonad TemplateArray
+defaultArrayFromIdxs :: Type -> [(JudgementType, CoeffIdx)] -> Text -> [Id] -> ProveMonad TemplateArray
 defaultArrayFromIdxs t idxs label args = templArrayFromIdxs t idxs label args defaultTempl
 
 defineByShift :: FreeAnn -> FreeAnn -> (Term -> Term) -> ProveMonad (FreeAnn, [Constraint])
@@ -260,12 +256,18 @@ defineByPlus :: FreeAnn -> FreeAnn -> Term -> ProveMonad (FreeAnn, [Constraint])
 defineByPlus qs_ ps t = defineByShift qs_ ps (\s -> sum [s,t])
 
 
-templArrayFromIdxs :: Type -> [CoeffIdx] -> Text -> [Id] ->
+templArrayFromIdxs :: Type -> [(JudgementType, CoeffIdx)] -> Text -> [Id] ->
   (Type -> Text -> Text -> [Id] -> ProveMonad FreeTemplate) -> ProveMonad TemplateArray
 templArrayFromIdxs t idxs label args templGen = do
   anns <- mapM annFromIdx idxs
   return $ M.fromList anns
-  where annFromIdx idx = (idx,) <$> templGen t (label' idx) "" args
+  where annFromIdx (judgeT, idx) = (idx,) <$> do
+          auxMode .= case judgeT of
+            (Aux _) -> True
+            _ -> False
+          t <- templGen t (label' idx) "" args
+          auxMode .= False
+          return t
         printIdx idx = "(" ++ intercalate "," (map show (S.toAscList idx)) ++ ")"
         label' idx = Te.concat [label, "_", Te.pack $ show idx]  
 
