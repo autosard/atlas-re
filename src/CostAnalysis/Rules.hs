@@ -18,6 +18,7 @@ data LetArg = NegE
 data Rule 
   = Const
   | ConstBase
+  | ConstUnfold
   | Var
   | Ite 
   | Match 

@@ -106,7 +106,7 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
   mode <- view analysisMode
 
   assertNonNegativeSig fnId
-  assertNonNegativeCost' fnId
+  assertNonNegativeCost fnId
   
   case mode of
     CheckCoefficients -> case tfCostAnn funAnn of
@@ -240,7 +240,9 @@ genFunAnn fn@(FunDef funAnn _ _ _) = do
           let pot = (fromKind . potForMeasure) m
           auxPotentials . at t ?= pot
           q <- singleAnn pot t argsFrom "A" "fn aux"
-          qe <- emptyAnn argsTo "AE" "fn aux"
+          qe <- ifM (view rhsTerms)
+            (defaultAnn argsTo "AE" "fn aux")
+            (emptyAnn argsTo "AE" "fn aux")
           q' <- singleAnn pot t argsTo "A'" "fn aux"
           return (FunSig (q, qe) q')
         genAuxs argsFrom argsTo (t, (pot, _)) = do

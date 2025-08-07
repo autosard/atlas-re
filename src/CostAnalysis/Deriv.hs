@@ -43,7 +43,6 @@ import Data.Maybe (fromMaybe, mapMaybe, catMaybes)
 import CostAnalysis.Coeff (coeffArgs, justVars, CoeffIdx (Pure))
 import CostAnalysis.Potential.Kind (fromKind)
 import Control.Monad (when, unless)
-
   
 type ProofResult = (Derivation, [Constraint], FreeSignature)
 
@@ -69,6 +68,17 @@ proveConst _ judgeType kind e@(Const id _) (q, qe, preds) q' = do
         else errorFrom (SynExpr e) $ "Constructor '" ++ Text.unpack id ++ "' not supported, by selected potential function(s)."
   conclude R.Const judgeType kind (q, qe, preds) q' cs e []
 
+proveConstUnfold :: Prove PositionedExpr Derivation
+proveConstUnfold tactic judgeType kind e@(Const _ _) (q, qe, preds) q' = do
+  let [t1] = subTactics 1 tactic
+  p <- fromAnn "P" "unfold" q
+  r <- fromAnn "R" "unfold" q
+  void <- emptyAnn M.empty "PE" "unfold"
+  let cs = assertEq r (add p q)
+  derivUnfold <- proveConst (Rule R.Const []) judgeType kind e (p, void , preds) qe
+  derivMain <- proveExpr t1 judgeType kind e (r, void , preds) q'
+  conclude R.ConstUnfold judgeType kind (q, qe, preds) q' cs e [derivUnfold, derivMain]
+  
 proveConstBase :: Prove PositionedExpr Derivation
 proveConstBase _ judgeType kind e (q, qe, preds) q' = do
   let cs = unifyAssertEq q q'
@@ -512,7 +522,8 @@ proveExpr :: Prove PositionedExpr Derivation
 -- manual tactic
 proveExpr tactic@(Rule R.Var []) judgeType kind e@(Var _) = removeRedundantVars proveVar tactic judgeType kind e
 proveExpr tactic@(Rule R.ConstBase []) judgeType kind e@(Const {}) | isBasicConst e = removeRedundantVars proveConstBase tactic judgeType kind e
-proveExpr tactic@(Rule R.Const []) judgeType kind e@(Const {}) = removeRedundantVars proveConst tactic judgeType kind e 
+proveExpr tactic@(Rule R.Const []) judgeType kind e@(Const {}) = removeRedundantVars proveConst tactic judgeType kind e
+proveExpr tactic@(Rule R.ConstUnfold _) judgeType kind e@(Const {}) = proveConstUnfold tactic judgeType kind e
 proveExpr tactic@(Rule R.Match _) judgeType kind e@(Match {}) = proveMatch tactic judgeType kind e 
 proveExpr tactic@(Rule R.Ite _) judgeType kind e@(Ite {}) = proveIte tactic judgeType kind e 
 proveExpr tactic@(Rule (R.Let _) _) judgeType kind e@(Let {}) = proveLet tactic judgeType kind e 
@@ -525,33 +536,44 @@ proveExpr tactic@(Rule R.App _) judgeType kind e@(App id _) = removeRedundantVar
 -- auto tactic
 proveExpr Auto judgeType kind e = \q q' -> do
   fnCfg <- use fnConfig
-  proveExpr (genTactic fnCfg judgeType e) judgeType kind e q q'
+  rhs <- view rhsTerms
+  proveExpr (genTactic fnCfg rhs judgeType e) judgeType kind e q q'
 proveExpr tactic _ _ e = \_ _ -> errorFrom (SynExpr e) $ "Could not apply tactic to given "
   ++ printExprHead e ++ " expression. Tactic: '" ++ printTacticHead tactic ++ "'"
 
-genTactic :: FnConfig -> JudgementType -> PositionedExpr -> Tactic
-genTactic cfg judgeType e@(Var {}) = autoWeaken cfg judgeType e (Rule R.Var [])
-genTactic _ _ e@(Const {}) | isBasicConst e = Rule R.ConstBase []
-genTactic cfg judgeType e@(Const {}) = autoWeaken cfg judgeType e (Rule R.Const [])
-genTactic cfg judgeType (Match _ arms) = Rule R.Match $ map (genTactic cfg judgeType . armExpr) arms
-genTactic cfg judgeType e@(Ite (Coin _) e2 e3) = let t1 = genTactic cfg judgeType e2 
-                                                     t2 = genTactic cfg judgeType e3
-                                                     tactic = Rule R.Ite [t1, t2] in
+genTactic :: FnConfig -> Bool -> JudgementType -> PositionedExpr -> Tactic
+genTactic cfg rhsTerms judgeType e@(Var {}) = autoWeaken cfg judgeType e (Rule R.Var [])
+genTactic _ rhsTerms _ e@(Const {}) | isBasicConst e = Rule R.ConstBase []
+genTactic cfg rhsTerms judgeType e@(Const {}) = if rhsTerms
+  then Rule R.ConstUnfold [Rule (R.Weaken [R.L2xy]) [Rule R.Const []]]
+  --then Rule R.ConstUnfold [autoWeaken cfg judgeType e (Rule R.Const [])]
+  -- then autoWeaken cfg judgeType e (Rule R.Const [])
+  else autoWeaken cfg judgeType e (Rule R.Const [])
+genTactic cfg rhsTerms judgeType (Match _ arms) = Rule R.Match $
+  map (genTactic cfg rhsTerms judgeType . armExpr) arms
+genTactic cfg rhsTerms judgeType e@(Ite (Coin _) e2 e3) =
+  let t1 = genTactic cfg rhsTerms judgeType e2 
+      t2 = genTactic cfg rhsTerms judgeType e3
+      tactic = Rule R.Ite [t1, t2] in
   autoWeaken cfg judgeType e tactic
-genTactic cfg judgeType e@(Ite e1 e2 e3) = let t1 = genTactic cfg judgeType e1 
-                                               t2 = genTactic cfg judgeType e2 
-                                               t3 = genTactic cfg judgeType e3
-                                               tactic = Rule R.Ite [t1, t2, t3] in
+genTactic cfg rhsTerms judgeType e@(Ite e1 e2 e3) =
+  let t1 = genTactic cfg rhsTerms judgeType e1 
+      t2 = genTactic cfg rhsTerms judgeType e2 
+      t3 = genTactic cfg rhsTerms judgeType e3
+      tactic = Rule R.Ite [t1, t2, t3] in
   autoWeaken cfg judgeType e tactic
-genTactic cfg judgeType e@(App {}) = autoWeaken cfg judgeType e $ Rule R.ShiftConst [Rule R.App []]
-genTactic cfg judgeType e@(Let _ binding body) = let tBinding = genTactic cfg judgeType binding
-                                                     t1 = Rule R.ShiftTerm [tBinding]
-                                                     t2 = genTactic cfg judgeType body
-                                                     ctx = peCtx $ getAnn e 
-                                                     neg = S.member BindsAppOrTickRec ctx in
+genTactic cfg rhsTerms judgeType e@(App {}) = autoWeaken cfg judgeType e $
+  Rule R.ShiftConst [Rule R.App []]
+genTactic cfg rhsTerms judgeType e@(Let _ binding body) =
+  let tBinding = genTactic cfg rhsTerms judgeType binding
+      t1 = Rule R.ShiftTerm [tBinding]
+      t2 = genTactic cfg rhsTerms judgeType body
+      ctx = peCtx $ getAnn e 
+      neg = S.member BindsAppOrTickRec ctx in
   autoWeaken cfg judgeType e $ Rule (R.Let [R.NegE | neg]) [t1, t2]
-genTactic cfg judgeType (Tick _ e) = Rule R.TickDefer [genTactic cfg judgeType e]
-genTactic _ _ e = error $ "genTactic: " ++ printExprHead e
+genTactic cfg rhsTerms judgeType (Tick _ e) =
+  Rule R.TickDefer [genTactic cfg rhsTerms judgeType e]
+genTactic _ _ _ e = error $ "genTactic: " ++ printExprHead e 
 
 autoWeaken :: FnConfig -> JudgementType -> PositionedExpr -> Tactic -> Tactic
 autoWeaken cfg judgeType e tactic = case wArgsForExpr cfg e judgeType of

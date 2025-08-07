@@ -53,9 +53,9 @@ cConst (Args {logL=cL, logR=cR, logLR=cLR}) e@(Node (Var x1) _ (Var x2)) _ (q, q
       ++ eq (q!?x2) (q'!?exp)
       ++ eq (q!?[mix|x1^1|]) (prod [ConstTerm cL, q'!?exp])
       ++ eq (q!?[mix|x2^1|]) (prod [ConstTerm cR, q'!?exp])
-      ++ eq (sum [qe!?[mix|exp^1|], q!?[mix|x1^1,x2^1|]]) (sum [
-                                                             prod [ConstTerm cLR, q'!?exp],
-                                                             q'!?[mix|exp^1|]])
+      ++ eq (q!?[mix|x1^1,x2^1|]) (sum [
+                                      prod [ConstTerm cLR, q'!?exp],
+                                      q'!?[mix|exp^1|]])
       ++ concat [eq (q!idx) (q'!?[mix|exp^a,c|])
                 | idx <- mixes q,
                   let a = facForVar idx x1,

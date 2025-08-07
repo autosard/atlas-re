@@ -40,8 +40,11 @@ cConst (Leaf {}) _ (q, qe) q'
          idxSum idx >= 2,
          idxSum idx `S.notMember` qConsts]
 cConst e@(Node (Var t) _ (Var u)) preds (q, qe) q'
-  = caseIndependentCs 
-    ++ eq (q!?[mix|t^(1,1),u^(2,1)|]) (q'!?exp)
+  = let tLtU = [mix|t^(1,1),u^(2,1)|] in
+  caseIndependentCs 
+    ++ eq (q!?tLtU) (q'!?exp)
+    ++ concat [zero (q!idx) | idx <- mixes2 q,
+                              idx /= tLtU]
   where caseIndependentCs =
           eq (q!?t) (q'!?exp)
           ++ eq (q!?u) (q'!?exp)
@@ -50,17 +53,15 @@ cConst e@(Node (Var t) _ (Var u)) preds (q, qe) q'
                   let a = facForVar idx t,
                   a == facForVar idx u,
                   let c = constFactor idx]
-          ++ concat [geZero (q![mix|t^a,c|])
+          ++ concat [zero (q![mix|t^a,c|])
                 | idx <- mixes1 q,
                   onlyVarsOrConst idx [t],
                   let c = constFactor idx,
-                  c /= 0,
                   let a = facForVar idx t]
-          ++ concat [geZero (q![mix|u^a,c|])
+          ++ concat [zero (q![mix|u^a,c|])
                 | idx <- mixes1 q,
                   onlyVarsOrConst idx [u],
                   let c = constFactor idx,
-                  c /= 0,
                   let a = facForVar idx u]            
           ++ concat [zero (q'![mix|exp^a,c|]) 
                 | idx <- mixes1 q',
@@ -113,43 +114,52 @@ cLetBodyMulti q ps' x is r_ = extend r_ $
   | i <- restrictFacs1 is,
     let d = facForVar i x,
     let e = max 0 $ constFactor i]
-  ++ [(`eq` (ps'!!i!exp)) <$> def i
-     | i <- restrictFacs2 is]
+  -- ++ [(`eq` (ps'!!i!exp)) <$> def i
+  --    | i <- restrictFacs2 is]
   ++ [(`eq` (q!i)) <$> def i
      | i <- mixes2 q,
        onlyVars i (args r_)]
 
-
+--cLetCf = Log.cLetCf
 cLetCf q _ps _ps' x (gamma, delta) bdes
   = let (ps, ps', _cs) = Log.cLetCf q _ps _ps' x (gamma, delta) bdes 
-        (psDefined, psCs) = extends ps $
-                            [(\p ->
-                                (or . concat) [p `eq` (q!idx)
-                                              | idx <- mixes2 q,
-                                                ys == varsForFac idx [2,1],
-                                                let xs = varsForFac idx [1,1],
-                                                z `elem` xs])
-                            <$> defEntry [mix|_bs,x^(1,1)|] (Pure z)
-                            | let byLHS = groupSort $
-                                   [((ys,bs), xs)
-                                   | idx <- mixes2 q,
-                                     let xs = varsForFac idx [1,1],
-                                     all (`elem` gamma) xs,
-                                     let ys = varsForFac idx [2,1],
-                                     all (`elem` delta) ys,
-                                     let bs = varsRestrict idx ys],
-                              ((ys,bs), xss) <- byLHS,
-                              z <- L.nub $ concat xss] 
-        (ps'Defined, ps'Cs) = extends ps' $
-                              [(`le` ConstTerm 1) <$> defEntry bde (Pure exp)
-                              | bde <- restrictFacs2 bdes]
         cs = concat [ geZero (q!idx)
                     | idx <- mixes2 q,
                       let xs = varsForFac idx [1,1],
                       all (`elem` delta) xs,
                       let ys = varsForFac idx [2,1],
                       all (`elem` gamma) ys] in
-  (psDefined, ps'Defined, _cs ++ psCs ++ ps'Cs ++ cs)
+  (ps, ps', _cs ++ cs)
+
+  -- = let (ps, ps', _cs) = Log.cLetCf q _ps _ps' x (gamma, delta) bdes 
+  --       (psDefined, psCs) = extends ps $
+  --                           [(\p ->
+  --                               (or . concat) [p `eq` (q!idx)
+  --                                             | idx <- mixes2 q,
+  --                                               ys == varsForFac idx [2,1],
+  --                                               let xs = varsForFac idx [1,1],
+  --                                               z `elem` xs])
+  --                           <$> defEntry [mix|_bs,x^(1,1)|] (Pure z)
+  --                           | let byLHS = groupSort $
+  --                                  [((ys,bs), xs)
+  --                                  | idx <- mixes2 q,
+  --                                    let xs = varsForFac idx [1,1],
+  --                                    all (`elem` gamma) xs,
+  --                                    let ys = varsForFac idx [2,1],
+  --                                    all (`elem` delta) ys,
+  --                                    let bs = varsRestrict idx ys],
+  --                             ((ys,bs), xss) <- byLHS,
+  --                             z <- L.nub $ concat xss] 
+  --       (ps'Defined, ps'Cs) = extends ps' $
+  --                             [(`le` ConstTerm 1) <$> defEntry bde (Pure exp)
+  --                             | bde <- restrictFacs2 bdes]
+  --       cs = concat [ geZero (q!idx)
+  --                   | idx <- mixes2 q,
+  --                     let xs = varsForFac idx [1,1],
+  --                     all (`elem` delta) xs,
+  --                     let ys = varsForFac idx [2,1],
+  --                     all (`elem` gamma) ys] in
+  -- (psDefined, ps'Defined, _cs ++ psCs ++ ps'Cs ++ cs)
         
 
 constCases :: Pattern Positioned -> [Predicate]

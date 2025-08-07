@@ -17,7 +17,7 @@ import CostAnalysis.Annotation(Measure(..), ProveKind(..))
 import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential (AnnRanges(..), MonoFn(..), JudgementType(..))
-import CostAnalysis.Constraint (Constraint)
+import CostAnalysis.Constraint (Constraint, zero)
 import CostAnalysis.Potential.Logarithm.Base
 
 
@@ -59,7 +59,7 @@ monoFnCoeff :: MonoFn -> [Id] -> Int -> Maybe CoeffIdx
 monoFnCoeff _ _ _ = Nothing
 
 cExternal :: FreeTemplate -> FreeTemplate -> [Constraint]
-cExternal q q' = []
+cExternal q q' = concatMap (\i -> zero (q!i)) $ mixes2 q
 
 letCfIdxs :: FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [(JudgementType, CoeffIdx)] 
 letCfIdxs q xs (rangeA, rangeB) x = [(Cf 0, [mix|_bs,x^d,e|])
@@ -69,15 +69,16 @@ letCfIdxs q xs (rangeA, rangeB) x = [(Cf 0, [mix|_bs,x^d,e|])
     d <- rangeA,
     e <- rangeB,
     d + max e 0 > 0]
-  ++ [(Aux Weight, [mix|_bs,x^(1,1)|])
-     | idx <- mixesForVars2 q xs,
-       onlyFac [2,1] idx,
-       let bs = idxToSet idx,
-       (not . null) bs]                                   
+  -- ++ [(Aux Weight, [mix|_bs,x^(1,1)|])
+  --    | idx <- mixesForVars2 q xs,
+  --      onlyFac [2,1] idx,
+  --      let bs = idxToSet idx,
+  --      (not . null) bs]                                   
 
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = "rh(" ++ T.unpack x ++ ")"
 printBasePot idx = printLogTerm idx
 
 auxSigs :: [(Measure, ProveKind)]
-auxSigs = [(Weight, Upper)]
+--auxSigs = [(Weight, Upper)]
+auxSigs = []
