@@ -39,7 +39,8 @@ genExpertKnowledge wArgs preds args idxs = merge $ map select wArgs'
 
 iversonLeOne :: [Id] -> Set CoeffIdx -> LeMatrix
 iversonLeOne args idxs = merge [(V.singleton (row i), [0])
-                               | i <- restrictFacs2 $ S.toList idxs]
+                               | i <- restrictFacs2 $ S.toList idxs,
+                                 (not . justConst) i]
   where iConst = S.findIndex [mix|2|] idxs
         row i = V.fromList $
                 [if k == S.findIndex i idxs then 1 else

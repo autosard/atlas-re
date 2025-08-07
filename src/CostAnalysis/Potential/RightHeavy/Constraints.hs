@@ -123,19 +123,23 @@ cLetBodyMulti q ps' x is r_ = extend r_ $
 cLetCf q _ps _ps' x (gamma, delta) bdes
   = let (ps, ps', _cs) = Log.cLetCf q _ps _ps' x (gamma, delta) bdes 
         (psDefined, psCs) = extends ps $
-                            [(`eq` sum [q!idx
-                                       | idx <- mixes2 q,
-                                         ys == varsForFac idx [2,1],
-                                         let xs = varsForFac idx [1,1],
-                                         z `elem` xs])
-                             <$> defEntry [mix|_bs,x^(1,1)|] (Pure z)
-                            | idx <- mixes2 q,
-                              let xs = varsForFac idx [1,1] ,
-                              all (`elem` gamma) xs,
-                              let ys = varsForFac idx [2,1],
-                              let bs = varsRestrict idx ys,
-                              all (`elem` delta) ys,
-                              z <- xs] 
+                            [(\p ->
+                                (or . concat) [p `eq` (q!idx)
+                                              | idx <- mixes2 q,
+                                                ys == varsForFac idx [2,1],
+                                                let xs = varsForFac idx [1,1],
+                                                z `elem` xs])
+                            <$> defEntry [mix|_bs,x^(1,1)|] (Pure z)
+                            | let byLHS = groupSort $
+                                   [((ys,bs), xs)
+                                   | idx <- mixes2 q,
+                                     let xs = varsForFac idx [1,1],
+                                     all (`elem` gamma) xs,
+                                     let ys = varsForFac idx [2,1],
+                                     all (`elem` delta) ys,
+                                     let bs = varsRestrict idx ys],
+                              ((ys,bs), xss) <- byLHS,
+                              z <- L.nub $ concat xss] 
         (ps'Defined, ps'Cs) = extends ps' $
                               [(`le` ConstTerm 1) <$> defEntry bde (Pure exp)
                               | bde <- restrictFacs2 bdes]

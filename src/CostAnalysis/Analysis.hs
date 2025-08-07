@@ -106,7 +106,7 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
   mode <- view analysisMode
 
   assertNonNegativeSig fnId
-  assertNonNegativeCost fnId
+  assertNonNegativeCost' fnId
   
   case mode of
     CheckCoefficients -> case tfCostAnn funAnn of
