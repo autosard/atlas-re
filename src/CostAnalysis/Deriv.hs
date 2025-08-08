@@ -233,7 +233,7 @@ proveLet tactic@(Rule (R.Let letArgs) _) judgeType kind e@(Let x e1 e2) (q, qe, 
   let (nonBindingAnnP, nonBindingCsP) = defineByWith annP_ nonBindingQ (\t idx p q -> geZero p ++ p `le` q)
   let (nonBindingAnnR, nonBindingCsR) = defineByWith annR_ nonBindingQ
         (\t idx r q -> r `eq` sub [q, (nonBindingAnnP M.! t) Templ.! idx])
-  let nonBindingCs = nonBindingCsP ++ nonBindingCsR
+  let nonBindingCs = nonBindingCsP ++ nonBindingCsR ++ (nonBindingMultiGeZero nonBindingQ argSplit)
   
   -- potential bind
   (annP', annP, annR, cs, cfDerivs) <- case tBind of
@@ -545,9 +545,7 @@ genTactic :: FnConfig -> Bool -> JudgementType -> PositionedExpr -> Tactic
 genTactic cfg rhsTerms judgeType e@(Var {}) = autoWeaken cfg judgeType e (Rule R.Var [])
 genTactic _ rhsTerms _ e@(Const {}) | isBasicConst e = Rule R.ConstBase []
 genTactic cfg rhsTerms judgeType e@(Const {}) = if rhsTerms
-  then Rule R.ConstUnfold [Rule (R.Weaken [R.L2xy]) [Rule R.Const []]]
-  --then Rule R.ConstUnfold [autoWeaken cfg judgeType e (Rule R.Const [])]
-  -- then autoWeaken cfg judgeType e (Rule R.Const [])
+  then Rule R.ConstUnfold [autoWeaken cfg judgeType e (Rule R.Const [])]
   else autoWeaken cfg judgeType e (Rule R.Const [])
 genTactic cfg rhsTerms judgeType (Match _ arms) = Rule R.Match $
   map (genTactic cfg rhsTerms judgeType . armExpr) arms

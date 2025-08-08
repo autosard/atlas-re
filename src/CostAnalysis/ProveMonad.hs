@@ -134,7 +134,7 @@ genVarId = do
   g <- use varIdGen
   varIdGen .= g+1
   return g
-
+ 
 freshVar :: ProveMonad Term
 freshVar = VarTerm <$> genVarId
 

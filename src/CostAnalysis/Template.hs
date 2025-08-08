@@ -257,7 +257,7 @@ apply q p = case args p of
               [y] -> M.fromList [(i, substitute (args q)
                                    (replicate (length (args q)) y) i)
                                 | i <- S.toList (idxs q),
-                                  isPure i || justConst i]
+                                  isPure i || justConst i || singleVar i]
               _ys_greater_xs -> error $ "cannot apply potential function " ++ show p ++ " to arguments " ++ show (args q)
 
 symbolicCost :: (Template a, Template b) => a -> b -> TermTemplate
@@ -378,6 +378,13 @@ cLetBodyUni q p p' x r_ = extend r_ $
        let rIdx = [mix|x^d,e|],
        (not . justConst) rIdx]
   where ys = L.delete x (args r_)
+
+nonBindingMultiGeZero :: FreeTemplate -> [Id] -> [Id] -> [Constraint]
+nonBindingMultiGeZero q gamma delta = concat $
+  [C.geZero (q!idx) 
+  | idx <- mixes q,
+    containsArgs gamma idx && containsArgs delta idx,
+    not . justConst $ idx]
 
 share :: FreeTemplate -> FreeTemplate -> [Id] -> Substitution -> Substitution -> (FreeTemplate, [Constraint]) 
 share q p_ zs s1 s2 =

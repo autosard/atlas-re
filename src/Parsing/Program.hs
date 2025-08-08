@@ -120,7 +120,8 @@ pFunc :: Parser ParsedFunDef
 pFunc = do
   pos <- getSourcePos
   numCfs <- optional $ try (pPragma "NUMCF" pNumCf)
-  strongCf <- optional $ pPragma "STRONGCF" (return True)
+  strongCf <- optional $ try (pPragma "STRONGCF" (return True))
+  negSig <- optional $ pPragma "NEG_SIG" (return True)
   sig <- optional pSignature
   funName <- pIdentifier
   (_type, cost) <- case sig of
@@ -132,7 +133,9 @@ pFunc = do
   let funFqn = (modName, funName)
   args <- manyTill pIdentifier (symbol "=")
   varIdentifiers %= (\s -> foldr S.insert s args)
-  let cfg = FnConfig numCfs (fromMaybe False strongCf)
+  let cfg = FnConfig numCfs
+            (fromMaybe False strongCf)
+            (fromMaybe False negSig)
   FunDef (ParsedFunAnn pos funFqn _type cost cfg) funName args <$> pExpr
 
 pSignature :: Parser Signature

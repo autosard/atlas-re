@@ -29,8 +29,8 @@ constCases p@(ConstPat _ "node" [Id _ t, _, Id _ u])
 cConst :: PositionedExpr -> Set Predicate -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
 cConst (Leaf {}) _ (q, qe) q' = eq (q!oneCoeff) (q'!?oneCoeff)
 cConst e@(Node (Var x1) _ (Var x2)) _ (q, qe) q'
-  = eq (q!?x2) (sub [q'!?exp, qe!?exp])
-    ++ eqSum (q!?oneCoeff) [sub [q'!?exp, qe!?exp], q'!oneCoeff]
+  = eq (q!?x2) (q'!?exp)
+    ++ eqSum (q!?oneCoeff) [q'!?exp, q'!oneCoeff]
     ++ zero (q!?x1)
 cConst (Ast.Const id _) _ (q, _) q' = error $ "Constructor '" ++ T.unpack id ++ "' not supported."
       

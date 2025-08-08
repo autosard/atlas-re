@@ -59,7 +59,7 @@ analyzeModule :: ProofEnv -> PositionedModule
 analyzeModule env mod = do
   
   let state = ProofState M.empty [] [] 0 0 [] [] M.empty M.empty M.empty False
-              (FnConfig (Just 1) False)
+              (FnConfig (Just 1) False False)
   (result, state', solution) <- runProof env state (analyzeModule' mod)
   let deriv = T.Node (ProgRuleApp mod) (state'^.fnDerivs)
   case result of
@@ -106,7 +106,9 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
   mode <- view analysisMode
 
   assertNonNegativeSig fnId
-  assertNonNegativeCost fnId
+  if negSig . tfFnConfig $ funAnn
+  then assertNonNegativeCost' fnId
+  else assertNonNegativeCost fnId
   
   case mode of
     CheckCoefficients -> case tfCostAnn funAnn of
@@ -152,8 +154,8 @@ assertNonNegativeSig fn = do
   assertNonNegativeFnAnn (withCost ann)
   mapM_ assertNonNegativeFnAnn (withoutCost ann)
 
-assertNonNegativeCost :: Id -> ProveMonad ()
-assertNonNegativeCost fn = do
+assertNonNegativeCost' :: Id -> ProveMonad ()
+assertNonNegativeCost' fn = do
   ann <- (M.! fn) <$> use sig
   let (FunSig (q,qe) q') = withCost ann
   let cost = symbolicCost ((q,qe), q')
@@ -161,8 +163,8 @@ assertNonNegativeCost fn = do
   cs <- annFarkas (S.fromList [Mono]) S.empty zero cost
   tellSigCs cs
 
-assertNonNegativeCost' :: Id -> ProveMonad ()
-assertNonNegativeCost' fn = do
+assertNonNegativeCost :: Id -> ProveMonad ()
+assertNonNegativeCost fn = do
   ann <- (M.! fn) <$> use sig
   let (FunSig (q,qe) q') = withCost ann
   let cost = symbolicCost ((q,qe), q')

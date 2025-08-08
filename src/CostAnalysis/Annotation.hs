@@ -123,6 +123,12 @@ unifyAssertEqBy qs ps' args = concat . M.elems $ zipWith
   where unifyForType :: (Template a, Template b) => Type -> a -> b -> [Constraint]
         unifyForType t q p = Templ.unifyAssertEqBy q p (args M.! t)
 
+nonBindingMultiGeZero :: FreeAnn -> Map Type ([Id], [Id]) -> [Constraint]
+nonBindingMultiGeZero ann gammaDelta
+  = concatMap go (M.assocs ann)
+  where go (t,q) = let (gamma, delta) = gammaDelta M.! t in
+          Templ.nonBindingMultiGeZero q gamma delta
+
 extend :: FreeAnn -> CoeffDef FreeAnn [a] -> (FreeAnn, [a])
 extend ann def = (ann', cs)
   where (cs, ann') = runState def ann

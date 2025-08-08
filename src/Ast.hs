@@ -47,7 +47,8 @@ data Module a = Module {
 
 data FnConfig = FnConfig {
   numCf :: Maybe Int,
-  strongCf :: Bool}
+  strongCf :: Bool,
+  negSig :: Bool}
   deriving (Eq, Show)
 
 data PotentialKind

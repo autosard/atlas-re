@@ -50,6 +50,7 @@ library
                       CostAnalysis.Potential.Logarithm.Constraints,
                       CostAnalysis.Potential.Logarithm.Base,
                       CostAnalysis.Potential.Logarithm.Weakening,
+                      CostAnalysis.Potential.Logarithm.Optimization,
                       CostAnalysis.Potential.SumOfLogs,
                       CostAnalysis.Potential.SumOfLogs.Base,
                       CostAnalysis.Potential.SumOfLogs.Constraints,
