@@ -386,6 +386,13 @@ nonBindingMultiGeZero q gamma delta = concat $
     containsArgs gamma idx && containsArgs delta idx,
     not . justConst $ idx]
 
+nonBindingMultiZero :: FreeTemplate -> [Id] -> [Id] -> [Constraint]
+nonBindingMultiZero q gamma delta = concat $
+  [C.zero (q!idx) 
+  | idx <- mixes q,
+    containsArgs gamma idx && containsArgs delta idx,
+    not . justConst $ idx]  
+
 share :: FreeTemplate -> FreeTemplate -> [Id] -> Substitution -> Substitution -> (FreeTemplate, [Constraint]) 
 share q p_ zs s1 s2 =
   let (pCommon_, csCommon) =

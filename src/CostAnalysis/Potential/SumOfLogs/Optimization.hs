@@ -27,15 +27,16 @@ weightedNonRankDifference potArgs q q' = sum $ map weightedDiff pairs
                   let ys = S.fromList $ map (Coeff.^a) $ args q']
 
   
-cOptimize :: Args -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> Term
-cOptimize potArgs (q, qe) q' = let weights = [179969, 179969, 16127, 16127, 997, 97, 2] in
-  sum $ zipWith (\w metric -> prod [ConstTerm w, metric]) weights [
-  absRank q,
-  absRank qe,
-  weightedNonRankDifference potArgs q q',
-  indexWeightedSum qe,
-  constantDifference q q']
-
 -- cOptimize :: Args -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> Term
--- cOptimize _ (q, _) q' = sum $ M.elems $ M.mapWithKey weighted (terms (symbolicCost q q'))
---   where weighted c v = prod [ConstTerm $ indexWeight' c, v]
+-- cOptimize potArgs (q, qe) q' = let weights = [179969, 179969, 16127, 16127, 997, 97, 2] in
+--   sum $ zipWith (\w metric -> prod [ConstTerm w, metric]) weights [
+--   absRank q,
+--   absRank qe,
+--   weightedNonRankDifference potArgs q q',
+--   indexWeightedSum qe,
+--   constantDifference q q']
+
+cOptimize :: Args -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Term]
+cOptimize _ (q, qe) q' = M.elems $ M.mapWithKey weighted (terms (symbolicCost q q'))
+  where weighted c v = prod [ConstTerm $ indexWeight' c, v]
+

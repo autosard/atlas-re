@@ -26,7 +26,7 @@ indexWeight 1 0 = 1
 indexWeight a b = fromIntegral (1 + a + (2 * (b + 1)) ) ^ 2
 
 indexWeight' :: CoeffIdx -> Rational
-indexWeight' i@(Mixed _) | justConst i = 0
+indexWeight' i@(Mixed _) | justConst i = 1
 indexWeight' i@(Pure _) = 100 -- often these terms are linear so we dont want them to show up.
 indexWeight' i@(Mixed _) | singleVar i && idxSum i == 1 = 1
 indexWeight' i@(Mixed _) = fromIntegral $

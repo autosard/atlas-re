@@ -81,7 +81,7 @@ pModule = sc *> do
   (config,) <$> manyTill pFunc eof
 
 pPragma :: Text -> Parser a -> Parser a
-pPragma word p = between (try (symbol "{-#")) (symbol "#-}") $ symbol word *> p
+pPragma word p = try $ between (symbol "{-#") (symbol "#-}") $ symbol word *> p
 
 pPotentialMapping :: Parser (Map Type PotentialKind)
 pPotentialMapping = M.fromList <$> pParens (sepBy (do
@@ -121,7 +121,6 @@ pFunc = do
   pos <- getSourcePos
   numCfs <- optional $ try (pPragma "NUMCF" pNumCf)
   strongCf <- optional $ try (pPragma "STRONGCF" (return True))
-  negSig <- optional $ pPragma "NEG_SIG" (return True)
   sig <- optional pSignature
   funName <- pIdentifier
   (_type, cost) <- case sig of
@@ -135,7 +134,6 @@ pFunc = do
   varIdentifiers %= (\s -> foldr S.insert s args)
   let cfg = FnConfig numCfs
             (fromMaybe False strongCf)
-            (fromMaybe False negSig)
   FunDef (ParsedFunAnn pos funFqn _type cost cfg) funName args <$> pExpr
 
 pSignature :: Parser Signature
@@ -151,7 +149,7 @@ pCoeffAnn :: Parser CostAnnotation
 pCoeffAnn = do
   symbol "|" 
   withCost <- pFunResourceAnn
-  costFree <- optional $ pCurlyParens $ sepBy pFunResourceAnn (symbol ",")
+  costFree <- optional $ pCurlyParens $ sepBy pFunResourceAnn (symbol ";")
   return $ Coeffs (FunAnn withCost (fromMaybe [] costFree) M.empty False)
 
 pCostAnn :: Parser CostAnnotation
@@ -392,7 +390,10 @@ pIdentifier = do
     else return ident
 
 pInt :: Parser Int
-pInt = lexeme L.decimal
+pInt = do
+  sign <- maybe 1 (const (-1)) <$> optional (symbol "-")
+  num <- lexeme L.decimal
+  return $ sign * num
 
 pListInt :: Parser [Int]
 pListInt = pParens $ sepBy pInt (symbol ",")
@@ -400,15 +401,17 @@ pListInt = pParens $ sepBy pInt (symbol ",")
 pNumber = NumVal <$> lexeme L.decimal
 
 pInteger :: Parser Integer
-pInteger = lexeme L.decimal
+pInteger = do
+  sign <- maybe 1 (const (-1)) <$> optional (symbol "-")
+  num <- lexeme L.decimal
+  return $ sign * num
 
 pRational :: Parser Rational
 pRational = do
-  sign <- maybe 1 (const (-1)) <$> optional (symbol "-")
   num <- pInteger
   symbol "/"
   den <- pInteger
-  return $ (sign * num) % den
+  return $ num % den
 
 pParens = between (symbol "(") (symbol ")")
 pSqParens = between (symbol "[") (symbol "]")

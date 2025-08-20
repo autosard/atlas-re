@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 
 
 module CostAnalysis.Solving where
@@ -23,7 +24,7 @@ import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
 import Control.Monad.Extra (whenJust)
-import Data.Maybe (isNothing)
+import Data.Maybe (isNothing, isJust)
 
 
 class Encodeable a where
@@ -88,12 +89,6 @@ assertConstraints track = foldrM (go track) M.empty
           optimizeAssertAndTrack c' p
           return $ M.insert pS c tracker
 
-assertCoeffsPos :: (MonadOptimize z3) => [Coeff] -> z3 ()
-assertCoeffsPos coeffs = do
-  annCoeffs' <- mapM (toZ3 . CoeffTerm) coeffs
-  positiveCs <- mapM (\coeff -> mkGe coeff =<< mkReal 0 1) annCoeffs'
-  mapM_ optimizeAssert positiveCs
-
 solve :: [Id] -> ProveMonad Solution
 solve fns = do
   targets <- use optiTargets
@@ -102,15 +97,14 @@ solve fns = do
                ts -> Just . sum $ ts
   extCs <- use sigCs
   cs <- use constraints
-  let dump = True
   (result, smt) <- liftIO . evalZ3 $
     do
       let coeffs = S.toList . S.unions $ map (S.fromList . getCoeffs) (cs ++ extCs)
       tracker <- createSolverZ3 coeffs cs extCs opti
-      smt <- if dump then Just <$> optimizeToString else return Nothing
-      result <- solveZ3 tracker coeffs 
+      smt <- optimizeToString
+      result <- solveZ3 tracker coeffs (isJust opti)
       return (result, smt)
-  liftIO $ whenJust smt (writeFile "out/instance.smt")
+  liftIO $ writeFile "out/instance.smt" smt
   solution <- case result of 
     Left unsatCore -> throwError $ UnsatErr unsatCore
     Right solution -> return solution
@@ -119,7 +113,6 @@ solve fns = do
 
 createSolverZ3 :: MonadOptimize z3 => [Coeff] -> [Constraint] -> [Constraint] -> Maybe Term -> z3 (Map String Constraint)
 createSolverZ3 coeffs typingCs extCs optiTarget = do
---  assertCoeffsPos coeffs
   tracker <- assertConstraints (isNothing optiTarget) $ typingCs ++ extCs
   case optiTarget of
     Just target -> do
@@ -128,13 +121,16 @@ createSolverZ3 coeffs typingCs extCs optiTarget = do
       return tracker
     Nothing -> return tracker
 
-solveZ3 :: MonadOptimize z3 => Map String Constraint -> [Coeff] -> z3 (Either [Constraint] Solution)
-solveZ3 tracker coeffs = do
+solveZ3 :: MonadOptimize z3 => Map String Constraint -> [Coeff] -> Bool -> z3 (Either [Constraint] Solution)
+solveZ3 tracker coeffs opti = do
   result <- optimizeCheck []
   case result of
     Sat -> do
       model <- optimizeGetModel
-      Right <$> evalCoeffs model coeffs
+      bound <- if opti
+        then astToString =<< optimizeGetLower 0
+        else return "n.a."
+      Right . (,bound) <$> evalCoeffs model coeffs
     Unsat -> do
       unsatCore <- optimizeGetUnsatCore
       astStrings <- mapM astToString unsatCore

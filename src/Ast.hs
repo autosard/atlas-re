@@ -47,8 +47,7 @@ data Module a = Module {
 
 data FnConfig = FnConfig {
   numCf :: Maybe Int,
-  strongCf :: Bool,
-  negSig :: Bool}
+  strongCf :: Bool}
   deriving (Eq, Show)
 
 data PotentialKind
@@ -451,6 +450,7 @@ deriving instance Show PositionedFunDef
 deriving instance Show PositionedModule
 
 data ExprCtx = PseudoLeaf
+  | RecCall 
   | BindsAppOrTick
   | BindsAppOrTickRec
   | FirstAfterApp

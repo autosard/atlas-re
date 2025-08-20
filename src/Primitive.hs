@@ -55,3 +55,13 @@ printRat r = let n = numerator r
 traceShow x = trace (show x) x
 
 traceShowV msg x = trace (msg ++ ": " ++ show x) x
+
+printTerms :: (Ord a, Num a) => (a -> String -> String) -> [(String, a)] -> String
+printTerms combinator [] = "" 
+printTerms combinator ((t,c):xs) | c == 0 = printTerms' xs
+                                 | c > 0 =  combinator c t ++ printTerms' xs
+                                 | c < 0 = " - " ++ combinator (abs c) t ++ printTerms' xs
+  where printTerms' [] = ""
+        printTerms' ((t,c):xs) | c == 0 = printTerms' xs
+                               | c < 0 = " - " ++ combinator (abs c) t ++ printTerms' xs
+                               | c > 0 = " + " ++ combinator c t ++ printTerms' xs

@@ -32,6 +32,11 @@ import CostAnalysis.Coeff
 
 css = renderCss ([lucius|
 
+body {
+  background: #2E3440;
+  color: #D8DEE9;
+}
+
 p.tree,
 ul.tree,
 ul.tree ul {
@@ -52,7 +57,7 @@ ul.tree li {
   margin-top: 0;
   margin-bottom: 0;
   
-  border-left: thin solid #000;
+  border-left: thin solid #D8DEE9;
 }
 
 ul.tree li:before {
@@ -64,7 +69,7 @@ ul.tree li:before {
     height: 0.7em;
     margin-right: 0.1em;
     vertical-align: top;
-    border-bottom: thin solid #000;
+    border-bottom: thin solid #D8DEE9;
     content: "";
     display: inline-block;
 }
@@ -74,7 +79,7 @@ ul.tree li:last-child {
 }
 
 ul.tree li:last-child:before {
-    border-left: thin solid #000;
+    border-left: thin solid #D8DEE9;
 }
 
 
@@ -103,15 +108,15 @@ ul.tree li:last-child:before {
 }
 
 .fn:has(.unsat) > .toggle {
-  color: #{colorRed}
+  color: #BF616A;
 }
 
 .app:has(.unsat) > .toggle {
-  color: #{colorRed}
+  color: #BF616A;
 }
 
 .unsat {
-  color: #{colorRed};
+  color: #BF616A;
 }
 
 .constraints.hideSat .sat {
@@ -135,7 +140,7 @@ ul.tree li:last-child:before {
 }
 
 .constraints:has(.unsat)::before {
-  color: #{colorRed}
+  color: #BF616A;
 }
 
 .constraints.show::before {

@@ -63,30 +63,30 @@ logrPot = pot $ Args {
 loglPot = pot $ Args {
   aRange=defaultARange,
   bRange=defaultBRange,
-  logL=0,
-  logR=(-1)%2,
-  logLR=1,
+  logL=1%2,
+  logR=0,
+  logLR=0,
   logLemmaInstance=LogLemmaCoeffs (1%2) (1%2) 1 1,
   invariant=Nothing}
 
 argsLrx p = Args {
   aRange=defaultARange,
-  bRange=defaultBRange,
+  bRange=[-1,0,1,2],
   logL=(-1)%2,
   logR=0,
   logLR=1%2,
   logLemmaInstance=LogLemmaCoeffs (1%2) (1%2) 1 1,
-  invariant=p}
+  invariant=p}  
 
-loglrxPot = pot $ argsLrx Nothing
+loglrxPot = pot $ argsLrx Nothing  
 
 loglrxWBPot = pot $ argsLrx
   (Just (TreeInvariant Weight Le True))
 
 goldenPot = pot $ Args {
   aRange=defaultARange,
-  bRange=defaultBRange,
-  logL=(-a),
+  bRange=[-1,0,1,2],
+  logL= -a,
   logR=0,
   logLR=a,
   logLemmaInstance=LogLemmaCoeffs b a (a+b) 1,

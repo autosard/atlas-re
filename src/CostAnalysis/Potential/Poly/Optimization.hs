@@ -8,8 +8,8 @@ import CostAnalysis.Template hiding (sum)
 import CostAnalysis.Constraint
 import CostAnalysis.Coeff hiding ((^))
 
-cOptimize :: (FreeTemplate, FreeTemplate) -> FreeTemplate -> Term
-cOptimize (q, _) q' = sum $ M.elems $ M.mapWithKey weighted (terms (symbolicCost q q'))
+cOptimize :: (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Term]
+cOptimize (q, _) q' = M.elems $ M.mapWithKey weighted (terms (symbolicCost q q'))
   where weighted c v = prod [ConstTerm $ coeffWeight c, v]
 
 coeffWeight :: CoeffIdx -> Rational

@@ -14,7 +14,7 @@ import Data.Set(Set)
 import qualified Data.Set as S
 
 
-import Primitive(Id, printRat)
+import Primitive(Id, printRat, printTerms)
 import CostAnalysis.Rules ( WeakenArg )
 import CostAnalysis.Coeff
 import CostAnalysis.Constraint
@@ -28,6 +28,7 @@ import CostAnalysis.Template (Template(..),
 import qualified CostAnalysis.Template as Templ
 import Typing.Type (Type)
 import Ast hiding (FunRsrcAnn)
+import Data.Bifunctor(first)
 
 import Data.Maybe (fromMaybe)
 import CostAnalysis.Predicate (Predicate)
@@ -35,6 +36,7 @@ import CostAnalysis.Predicate (Predicate)
 data JudgementType =
   Standard
   | Cf Int
+  | CfAny
   | Aux Measure
   deriving Show
 
@@ -98,7 +100,7 @@ data Potential = Potential {
   cExternal :: FreeTemplate -> FreeTemplate -> [Constraint],
   
   -- | @ 'cOptimize' (q, qe) q' @ returns a cost function that minimizes \[\Phi(\Gamma\mid Q) - \Phi(\Gamma\mid Q')\] as a term.
-  cOptimize :: (FreeTemplate, FreeTemplate) -> FreeTemplate -> Term,
+  cOptimize :: (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Term],
   
   printBasePot :: CoeffIdx -> String,
 
@@ -144,14 +146,18 @@ printBound pots (FunSig (from, fromRef) to) solution =
                           printPotential pot bound
 
 printPotential :: Potential -> BoundTemplate -> String
-printPotential pot (BoundTemplate _ coeffs) = if M.null coeffs' then "0" else
-  L.intercalate " + " $
-    map (uncurry (printPotTerm pot)) (M.assocs coeffs')
+printPotential pot (BoundTemplate _ coeffs) = 
+  printTerms printProd $ map (first (printPotTerm pot)) (M.assocs coeffs')
   where coeffs' = M.filter (/= 0) coeffs
         
   
-printPotTerm :: Potential -> CoeffIdx -> Rational -> String
-printPotTerm pot c 1 = if c == oneCoeff pot then "1" else printBasePot pot c
-printPotTerm pot c v | c == oneCoeff pot = printRat v
-                     | otherwise = printRat v ++ " * " ++ printBasePot pot c
+printPotTerm :: Potential -> CoeffIdx -> String
+printPotTerm pot c | c == oneCoeff pot = ""
+printPotTerm pot c = printBasePot pot c
 
+                      
+printProd :: Rational -> String -> String
+printProd 1 "" = "1"
+printProd 1 t = t
+printProd c "" = printRat c
+printProd c t = printRat c ++ " * " ++ t

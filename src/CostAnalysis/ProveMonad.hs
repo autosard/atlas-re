@@ -82,7 +82,7 @@ cfSigIdx :: JudgementType -> Maybe Int
 cfSigIdx (Cf n) = Just n
 cfSigIdx _ = Nothing
 
-type Solution = Map Coeff Rational
+type Solution = (Map Coeff Rational, String)
 
 type ProveMonad a = ExceptT ProofErr (RWST ProofEnv Solution ProofState IO) a
 
@@ -271,9 +271,9 @@ templArrayFromIdxs t idxs label args templGen = do
         printIdx idx = "(" ++ intercalate "," (map show (S.toAscList idx)) ++ ")"
         label' idx = Te.concat [label, "_", Te.pack $ show idx]  
 
-annCOptimize :: (FreeAnn, FreeAnn) -> FreeAnn -> ProveMonad Term
-annCOptimize (qs, qes) qs' = sum <$> mapM go (zip3 (M.assocs qs) (M.assocs qes) (M.assocs qs'))
-  where go :: ((Type, FreeTemplate), (Type, FreeTemplate), (Type, FreeTemplate)) -> ProveMonad Term
+annCOptimize :: (FreeAnn, FreeAnn) -> FreeAnn -> ProveMonad [Term]
+annCOptimize (qs, qes) qs' = concat <$> mapM go (zip3 (M.assocs qs) (M.assocs qes) (M.assocs qs'))
+  where go :: ((Type, FreeTemplate), (Type, FreeTemplate), (Type, FreeTemplate)) -> ProveMonad [Term]
         go ((t, q), (_, qe), (_, q')) = do
           pot <- potForType t
           return $ cOptimize pot (q, qe) q'          

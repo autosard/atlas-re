@@ -48,7 +48,9 @@ contextualizeExpr' fn ctx (LetAnn ann id e1 e2) = LetAnn (extendWithCtx letCtx a
         bodyCtx = if appOrTick e1 then S.insert FirstAfterApp childCtx else childCtx
         e1' = contextualizeExpr' fn (S.delete PseudoLeaf childCtx) e1
         e2' = contextualizeExpr' fn bodyCtx e2
-contextualizeExpr' fn ctx (AppAnn ann id args) = AppAnn (extendWithCtx ctx ann) id args'  where args' = map (contextualizeExpr' fn ctx) args
+contextualizeExpr' fn ctx (AppAnn ann id args) =
+  let ctx' = if id == fn then S.insert RecCall ctx else ctx in
+        AppAnn (extendWithCtx ctx' ann) id args'  where args' = map (contextualizeExpr' fn ctx) args
 contextualizeExpr' fn ctx (TickAnn ann c e) = TickAnn (extendWithCtx S.empty ann) c e'
   where e' = contextualizeExpr' fn ctx e
 contextualizeExpr' fn ctx (CoinAnn ann p) = CoinAnn (extendWithCtx S.empty ann) p 

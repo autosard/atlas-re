@@ -129,6 +129,12 @@ nonBindingMultiGeZero ann gammaDelta
   where go (t,q) = let (gamma, delta) = gammaDelta M.! t in
           Templ.nonBindingMultiGeZero q gamma delta
 
+nonBindingMultiZero :: FreeAnn -> Map Type ([Id], [Id]) -> [Constraint]
+nonBindingMultiZero ann gammaDelta
+  = concatMap go (M.assocs ann)
+  where go (t,q) = let (gamma, delta) = gammaDelta M.! t in
+          Templ.nonBindingMultiZero q gamma delta          
+
 extend :: FreeAnn -> CoeffDef FreeAnn [a] -> (FreeAnn, [a])
 extend ann def = (ann', cs)
   where (cs, ann') = runState def ann

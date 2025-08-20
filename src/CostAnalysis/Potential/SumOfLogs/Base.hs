@@ -18,8 +18,9 @@ import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Potential (AnnRanges(..), MonoFn(..), JudgementType(..))
 import CostAnalysis.Potential.Logarithm.Base
 import CostAnalysis.Constraint (Constraint, eq, Term(..))
-import CostAnalysis.Predicate (PredOp)
+import CostAnalysis.Predicate (PredOp, Predicate(..))
 import CostAnalysis.Annotation(Measure)
+import Ast (getType)
 
 -- c log(x + y) >= a log(x) + b log(y) + d
 data LogLemmaCoeffs = LogLemmaCoeffs {
@@ -39,6 +40,13 @@ data Args = Args {
   invariant :: !(Maybe TreeInvariant)}
 
 data TreeInvariant = TreeInvariant Measure PredOp Bool
+
+predFromInvariant :: Args -> Id -> Id -> Type -> Maybe Predicate
+predFromInvariant args x y t = case invariant args of
+      Just (TreeInvariant m op flip) -> if flip
+        then Just $ Predicate m op y x [] t
+        else Just $ Predicate m op x y [] t
+      Nothing -> Nothing
 
 potType = TreeType
 

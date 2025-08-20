@@ -12,12 +12,17 @@ import CostAnalysis.Template hiding (sum)
 import CostAnalysis.Constraint
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Coeff
-import CostAnalysis.Potential.SumOfLogs.Base(Args(..), TreeInvariant(..))
+import CostAnalysis.Potential.SumOfLogs.Base(Args(..),
+                                             TreeInvariant(..),
+                                             predFromInvariant)
 import Data.List.Extra (groupSort)
 import Ast
 import qualified Data.Text as T
-import CostAnalysis.Predicate (Predicate(..), predApplySubst)
+import CostAnalysis.Predicate (Predicate(..),
+                               predApplySubst,
+                               anyImplies)
 import Data.Set (Set)
+import Data.Maybe (maybeToList)
 
 
 exp :: Id
@@ -26,15 +31,11 @@ exp = "e1"
 constCases :: Args -> Pattern Positioned -> [Predicate]
 constCases _ (ConstPat _ "leaf" _) = []
 constCases args p@(ConstPat _ "node" [Id _ t, _, Id _ u])
-  = case invariant args of
-      Just (TreeInvariant m op flip) -> if flip
-        then [Predicate m op u t [] (getType p)]
-        else [Predicate m op t u [] (getType p)]
-      Nothing -> []
+  = maybeToList (predFromInvariant args t u (getType p))
 
 cConst :: Args -> PositionedExpr -> Set Predicate -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
-cConst _ (Leaf {}) _ (q, _) q'
-  = concat [eqSum (q![mix|c|]) ([q'!?[mix|exp^a,b|]
+cConst args (Leaf {}) _ (q, _) q' =
+    concat [eqSum (q![mix|c|]) ([q'!?[mix|exp^a,b|]
                                 | a <- [0..c],
                                   let b = c - a,
                                   a + b == c] ++ addRank)
@@ -47,8 +48,12 @@ cConst _ (Leaf {}) _ (q, _) q'
          idx <- mixes q',
          idxSum idx >= 2,
          idxSum idx `S.notMember` qConsts]
-cConst (Args {logL=cL, logR=cR, logLR=cLR}) e@(Node (Var x1) _ (Var x2)) _ (q, qe) q'
-  = 
+cConst args@(Args {logL=cL, logR=cR, logLR=cLR}) e@(Node (Var x1) _ (Var x2)) preds (q, qe) q'
+    = let invariantCs = case predFromInvariant args x1 x2 (getType e) of
+            Just p -> case anyImplies preds p of
+              (True, cs) -> cs
+              (False, _) -> [Bot]
+            Nothing -> [] in
       eq (q!?x1) (q'!?exp) 
       ++ eq (q!?x2) (q'!?exp)
       ++ eq (q!?[mix|x1^1|]) (prod [ConstTerm cL, q'!?exp])
@@ -93,7 +98,7 @@ cMatch _ q p _ x [] = extend p $
             | idx <- mixes q,
               let a = facForVar idx x,
               let b = constFactor idx,
-              a >= 0, b >= 0,
+              a >= 0,
               let c = a + b,
               let xs = varsExcept idx [x]]
               --not (null xs && c == 1)]

@@ -39,6 +39,9 @@ cConst (Leaf {}) _ (q, qe) q'
          idx <- mixes1 q',
          idxSum idx >= 2,
          idxSum idx `S.notMember` qConsts]
+    ++ concat [zero (q!idx)
+              | idx <- mixes2 q]
+--    ++ zero (q'!exp)
 cConst e@(Node (Var t) _ (Var u)) preds (q, qe) q'
   = let tLtU = [mix|t^(1,1),u^(2,1)|] in
   caseIndependentCs 

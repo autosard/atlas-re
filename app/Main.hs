@@ -33,6 +33,7 @@ import Ast(Module(..),
            Fqn, defs,
            printProg,
            PositionedModule)
+import CostAnalysis.Coeff
 import CostAnalysis.PrettyProof(renderProof, css, js)
 
 
@@ -106,10 +107,12 @@ run Options{..} AnalyzeOptions{..} = do
         let core' = S.fromList unsatCore in do
           logError "solver returned unsat. See unsat-core for details."
           liftIO $ writeHtmlProof "./out" (renderProof (Just core') deriv sigCs) 
-      (AnalysisResult deriv sigCs sig (Right (solution, pots))) -> do
+      (AnalysisResult deriv sigCs sig (Right ((solution, objective), pots))) -> do
         liftIO $ putStr "Done. "
         liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv sigCs)
         liftIO $ printSolution switchDumpCoeffs sig pots solution
+        liftIO $ putStrLn ""
+        liftIO $ putStrLn $ "objective: " ++ objective
 
 printAnalysisInfo :: PositionedModule -> IO ()
 printAnalysisInfo (Module {..}) = putStrLn $
@@ -117,7 +120,7 @@ printAnalysisInfo (Module {..}) = putStrLn $
   ++ T.unpack (T.intercalate ", " (concat mutRecGroups))
   ++ ") ..."
 
-printSolution :: Bool -> FreeSignature -> PotFnMap -> Solution -> IO ()
+printSolution :: Bool -> FreeSignature -> PotFnMap -> Map Coeff Rational -> IO ()
 printSolution dumpCoeffs sig potFns solution = do
   when dumpCoeffs (do
                       mapM_ (\(q, v) -> putStrLn $ show q ++ " = " ++ show v) (M.assocs solution)

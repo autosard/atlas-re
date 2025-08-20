@@ -16,8 +16,8 @@ import Lens.Micro.Platform
 import Primitive(Id)
 import Ast hiding (CostAnnotation)
 import CostAnalysis.Solving (solve)
-import CostAnalysis.ProveMonad
 import CostAnalysis.Constraint hiding (and, sum)
+import qualified CostAnalysis.Constraint as C
 import SourceError
 import CostAnalysis.Rules
 import Control.Monad.Except (MonadError (throwError))
@@ -31,6 +31,7 @@ import CostAnalysis.Template (TermTemplate, FreeTemplate)
 import CostAnalysis.Weakening (annFarkas)
 import CostAnalysis.Predicate(potForMeasure)
 import CostAnalysis.Annotation 
+import CostAnalysis.ProveMonad 
 
 defaultPotentialMap = M.fromList
   [
@@ -57,9 +58,8 @@ data AnalysisResult = AnalysisResult
 analyzeModule :: ProofEnv -> PositionedModule
   -> IO (Either SourceError AnalysisResult)
 analyzeModule env mod = do
-  
   let state = ProofState M.empty [] [] 0 0 [] [] M.empty M.empty M.empty False
-              (FnConfig (Just 1) False False)
+              (FnConfig (Just 1) False)
   (result, state', solution) <- runProof env state (analyzeModule' mod)
   let deriv = T.Node (ProgRuleApp mod) (state'^.fnDerivs)
   case result of
@@ -105,10 +105,7 @@ analyzeFn' :: PositionedFunDef -> ProveMonad Derivation
 analyzeFn' def@(FunDef funAnn fnId _ body) = do
   mode <- view analysisMode
 
-  assertNonNegativeSig fnId
-  if negSig . tfFnConfig $ funAnn
-  then assertNonNegativeCost' fnId
-  else assertNonNegativeCost fnId
+  assertNonNegativePotFn fnId
   
   case mode of
     CheckCoefficients -> case tfCostAnn funAnn of
@@ -129,7 +126,6 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
       let (FunSig (q, qe) q') = withCost $ s M.! fnId
       tellSigCs =<< externalCsForCtx q q'
       addFullCostOptimization fnId
-      optiTargets %= (sum qe:)
   proveFun def
 
 externalCsForCtx :: FreeAnn -> FreeAnn -> ProveMonad [Constraint]
@@ -143,16 +139,12 @@ externalCsForCtx ctxQ ctxQ' = concatMapM csForType (M.assocs ctxQ)
           else
             return []
 
-assertNonNegativeFnAnn :: FreeFunSig -> ProveMonad ()
-assertNonNegativeFnAnn (FunSig (q, qe) q') = tellSigCs $
-  assertGeZero qe
-  ++ assertGeZero q'
-
-assertNonNegativeSig :: Id -> ProveMonad ()
-assertNonNegativeSig fn = do
+assertNonNegativePotFn :: Id -> ProveMonad ()
+assertNonNegativePotFn fn = do
   ann <- (M.! fn) <$> use sig
-  assertNonNegativeFnAnn (withCost ann)
-  mapM_ assertNonNegativeFnAnn (withoutCost ann)
+  let (FunSig (q, qe) q') = withCost ann
+  tellSigCs $ assertGeZero q' 
+
 
 assertNonNegativeCost' :: Id -> ProveMonad ()
 assertNonNegativeCost' fn = do
@@ -198,8 +190,19 @@ addFullCostOptimization :: Id -> ProveMonad ()
 addFullCostOptimization fn = do
   ann <- (M.! fn) <$> use sig
   let (FunSig (q, qe) q') = withCost ann
-  costTerm <- annCOptimize (q, qe) q'
+  costTerms <- annCOptimize (q, qe) q'
+  --absTerms <- mapM abs costTerms
+  let absTerms = []
+  let costTerm = C.sum $ costTerms ++ absTerms
   optiTargets %= (costTerm:)
+  where abs :: Term -> ProveMonad Term
+        abs t = do
+          absT <- freshVar 
+          tellCs $ 
+            ge absT t
+            ++ ge absT (minus t)
+          return absT
+            
 
 argsWithPot :: (Map Type [Id], Map Type [Id]) -> ProveMonad (Map Type [Id], Map Type [Id])
 argsWithPot (from, to) = do
@@ -214,10 +217,12 @@ genFunAnn fn@(FunDef funAnn _ _ _) = do
   pots <- use potentials
   to <- if hasPotential fn then
           return $ M.mapWithKey (\t _ -> annForType t pots) argsTo
-        else if null argsTo then
-               emptyAnn (M.map (const []) argsFrom) "Q'" "fn" 
-             else
-               emptyAnn argsTo "Q'" "fn" 
+        else do
+          annTo <- if null argsTo
+            then defaultAnn (M.map (const []) argsFrom) "Q'" "fn" 
+            else defaultAnn argsTo "Q'" "fn"
+          tellSigCs $ assertZero annTo
+          return annTo
 
   let numCfSigs = fromMaybe 1 $ (numCf . tfFnConfig) funAnn
   from <- defaultAnn argsFrom "Q" "fn"
@@ -253,7 +258,7 @@ genFunAnn fn@(FunDef funAnn _ _ _) = do
 
 
 addSigCs :: [Id] -> Solution -> ProveMonad ()
-addSigCs fns solution = do
+addSigCs fns (solution, _) = do
   sig' <- (`M.restrictKeys` S.fromList fns) <$> use sig
   let cs = concatMap go (getCoeffs sig')
   sigCs %= (++cs)
