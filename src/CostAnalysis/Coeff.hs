@@ -137,7 +137,21 @@ onlyFacsOfLen n idx@(Mixed _) = all (\xs -> length xs == n) . getArgs $ idx
 onlyFacsOfLen _ _ = False
 
 onlyFac :: [Int] -> CoeffIdx -> Bool
-onlyFac f = all (== f) . getArgs 
+onlyFac f = all (== f) . getArgs
+
+restrictFacs :: CoeffIdx -> [Int] -> Set Factor
+restrictFacs (Mixed facs) a = S.filter go facs
+  where go fac = case getArg fac of
+          Just b -> a == b
+          Nothing -> True
+restrictFacs  _ _ = error "pure index"
+
+restrictFacsNoConst :: CoeffIdx -> [Int] -> Set Factor
+restrictFacsNoConst (Mixed facs) a = S.filter go facs
+  where go fac = case getArg fac of
+          Just b -> a == b
+          Nothing -> False
+restrictFacsNoConst  _ _ = error "pure index"
 
 -- without const
 except :: CoeffIdx -> [Id] -> Set Factor
@@ -254,7 +268,7 @@ substitute from to idx@(Mixed factors) = Mixed (S.map subFactor factors)
   where subFactor (Const c) = Const c
         subFactor (Arg x a) = case L.elemIndex x from of
           Just i -> Arg (to !! i) a
-          Nothing -> error $ "invalid index" ++ show idx ++ " " ++ show to
+          Nothing -> error $ "invalid index" ++ show idx ++ "[" ++ show from ++ " -> " ++ show to ++ "]"
 
 
 substitute' :: Substitution -> CoeffIdx -> CoeffIdx

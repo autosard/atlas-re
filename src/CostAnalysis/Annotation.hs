@@ -33,11 +33,14 @@ type BoundAnn = Ann BoundTemplate
 
 zeroAnnFrom :: (Template a) => Ann a -> BoundAnn
 zeroAnnFrom = M.map go
-  where go t = Templ.BoundTemplate (Templ.args t) $
+  where go t = Templ.BoundTemplate (Templ.args t) (Templ.ghosts t) $
           M.fromList [(q, 0) | q <- S.toList $ Templ.idxs t]
 
 annArgs :: (Template a) => Ann a -> [Id]
 annArgs qs = concatMap Templ.args (M.elems qs)
+
+instGhostVars :: FreeAnn -> FreeAnn
+instGhostVars = M.map Templ.instGhostVars
 
 instance HasCoeffs FreeAnn where
   getCoeffs = M.foldr (\q coeffs -> coeffs ++ getCoeffs q) []

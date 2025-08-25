@@ -11,7 +11,6 @@ import CostAnalysis.Potential.Common(auxSigs)
 pot :: Potential
 pot = Potential
   template
-  ranges
   oneCoeff
   zeroCoeff
   monoFnCoeff

@@ -399,9 +399,6 @@ varsByType es = M.fromList . groupSort $ map (swap . varWithType) es
 
 instance HasType TypedExprAnn where
   type_ = teType
-  
--- getType :: Annotated a Typed => a Typed -> Type
--- getType = teType . getAnn
 
 extendWithType :: Type -> XExprAnn Parsed -> XExprAnn Typed
 extendWithType t pos = TypedExprAnn (Loc pos) t

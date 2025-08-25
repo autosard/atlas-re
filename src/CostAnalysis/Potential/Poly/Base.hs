@@ -22,9 +22,7 @@ types = [ListType]
 
 nestedError = error "Polynomial potential only supports simple (non-nested) inductive data types."
 
-ranges :: Args -> P.AnnRanges
-ranges potArgs = P.AnnRanges [0..degree potArgs] [] []
-
+degrees potArgs = [0..degree potArgs]
 
 genIdxs :: Int -> Int -> [[Int]]
 genIdxs _ 0 = return []
@@ -32,11 +30,11 @@ genIdxs d l = do
   nxt <- [0..d]
   (nxt :) <$> genIdxs (d - nxt) (l - 1) 
 
-template :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> FreeTemplate
-template id label comment args (degrees, _) =
-  FreeTemplate id args label comment $ S.fromList coeffs
+template :: Args -> Int -> Text -> Text -> [Id] -> TemplateOptions -> FreeTemplate
+template potArgs id label comment args opts =
+  FreeTemplate id args [] label comment $ S.fromList coeffs
   where coeffs = map (mixed . S.fromList . zipWith (^) args)
-          $ genIdxs (last degrees) (length args)
+          $ genIdxs (last (degrees potArgs)) (length args)
           
 oneCoeff :: CoeffIdx
 oneCoeff = [mix||]
@@ -50,8 +48,8 @@ monoFnCoeff _ args c = Nothing
 cExternal :: FreeTemplate -> FreeTemplate -> [Constraint]
 cExternal q q' = []
 
-letCfIdxs :: FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [(P.JudgementType, CoeffIdx)] 
-letCfIdxs q xs (rangeA, rangeB) x = map (P.Cf 0,) $
+letCfIdxs :: FreeTemplate -> [Id] -> TemplateOptions -> Id -> [(P.JudgementType, CoeffIdx)] 
+letCfIdxs q xs opts x = map (P.Cf 0,) $
   filter (not . null . idxToSet ) $ mixesForVars q xs
 
 printBasePot :: CoeffIdx -> String

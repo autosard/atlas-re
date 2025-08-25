@@ -21,7 +21,7 @@ import Typing.Type
 import Typing.Scheme (toType)
 import CostAnalysis.Tactic
 import qualified CostAnalysis.Rules as R
-import CostAnalysis.Potential hiding (Factor(..), emptyAnn, defaultAnn, defaultTempl, defaultNegAnn, enrichWithDefaults)
+import CostAnalysis.Potential hiding (Factor(..), emptyAnn, defaultAnn, defaultTempl, enrichWithDefaults)
 --import CostAnalysis.RsrcAnn hiding (fromAnn)
 import CostAnalysis.Annotation hiding (sub)
 import CostAnalysis.Predicate
@@ -99,8 +99,8 @@ proveVar _ judgeType kind e@(Var id) (q, qe, preds) q' = do
 proveIte :: Prove PositionedExpr Derivation
 proveIte tactic judgeType kind e@(Ite (Coin p) e1 e2) (q, qe, preds) q' = do
   let [t1, t2] = subTactics 2 tactic
-  q1 <- enrichWithDefaults False "Q1" "" q
-  q2 <- enrichWithDefaults False "Q2" "" q
+  q1 <- enrichWithDefaults Templ.defaultTemplOpts "Q1" "" q
+  q2 <- enrichWithDefaults Templ.defaultTemplOpts "Q2" "" q
   qe1 <- fromAnn "Q1" "" qe
   qe2 <- fromAnn "Q1" "" qe
   let cs = concat $ [unifyAssertEq q (add
@@ -175,7 +175,7 @@ proveMatchArm matchVar tactic judgeType kind
                          -> Maybe Predicate
                          -> ProveMonad ([FreeTemplate], [Constraint])
         constrainCase pot t q args vars _case = do
-          p_ <- emptyTempl t "P" "match arm" args
+          p_ <- emptyTempl "P" "match arm" args (Templ.ghosts q)
           let (p, cs) = cMatch pot q p_ _case matchVar vars
           return ([p], cs)
         accum :: ([FreeTemplate], [Constraint]) -> ([FreeTemplate], [Constraint]) -> ([FreeTemplate], [Constraint])
@@ -197,20 +197,24 @@ proveMatch tactic judgeType kind e@(Match (Var x) arms) q q' = do
         proveArmWithTactic tactic arm = proveMatchArm x tactic judgeType kind arm q q'
 
 
-splitLetCtx :: PositionedExpr -> PositionedExpr -> FreeTemplate -> ([Id], [Id])
+splitLetCtx :: PositionedExpr -> PositionedExpr -> FreeTemplate -> ([Id], [Id], [Id])
 splitLetCtx e1 e2 q = 
   let qArgs = S.fromList $ Templ.args q
       varsE1 = freeVars e1
       argsE1 = qArgs `S.intersection` varsE1
-      argsE2 = qArgs S.\\ varsE1 in
-    (S.toList argsE1, S.toList argsE2)
+      argsE2 = qArgs S.\\ varsE1
+      gVars = S.fromList $ Templ.ghosts q in
+    (S.toList (argsE1 `S.union` (qArgs `S.intersection` gVars)),
+     S.toList argsE2,
+     S.toList gVars)
 
 proveLet :: Prove PositionedExpr Derivation
 proveLet tactic@(Rule (R.Let letArgs) _) judgeType kind e@(Let x e1 e2) (q, qe, preds) q' = do
   pots <- use potentials
   let [t1, t2] = subTactics 2 tactic
   let argSplit = M.map (splitLetCtx e1 e2) q
-  let (varsE1, varsE2) = M.foldr (\(xs, ys) (xss, yss) -> (xs ++ xss, ys ++ yss)) ([],[]) argSplit
+  let gammaDelta = M.map (\(g,d,_) -> (g,d)) argSplit
+  let (varsE1, varsE2) = M.foldr (\(xs, ys) (xss, yss) -> (xs ++ xss, ys ++ yss)) ([],[]) gammaDelta
   let preds1 = restrictByVars preds (S.fromList varsE1)
   let preds2 = restrictByVars preds (S.fromList varsE2)
   let mixedPreds = (preds S.\\ preds1) S.\\ preds2
@@ -231,13 +235,14 @@ proveLet tactic@(Rule (R.Let letArgs) _) judgeType kind e@(Let x e1 e2) (q, qe, 
   annPe <- fromAnn "PE" "let:base e1" qe
   let peCs = assertZero annPe
              
-  annP_ <- emptyAnn (M.map fst argSplit) "P" "let:base e1"
-  annR_ <- emptyAnn (M.map snd argSplit) "R" "let:base e2"
+  annP_ <- emptyAnn (M.map (\(args, _, ghosts) -> (args, ghosts))  argSplit) "P" "let:base e1"
+  annR_ <- emptyAnn (M.map (\(_, args, ghosts) -> (args, ghosts)) argSplit) "R" "let:base e2"
   -- base
   let (nonBindingAnnP, nonBindingCsP) = defineByWith annP_ nonBindingQ (\t idx p q -> geZero p ++ p `le` q)
   let (nonBindingAnnR, nonBindingCsR) = defineByWith annR_ nonBindingQ
         (\t idx r q -> r `eq` sub [q, (nonBindingAnnP M.! t) Templ.! idx])
-  let nonBindingCs = nonBindingCsP ++ nonBindingCsR ++ nonBindingMultiZero nonBindingQ argSplit      
+  let gammaDelta = M.map (\(g,d,_) -> (g,d)) argSplit
+  let nonBindingCs = nonBindingCsP ++ nonBindingCsR ++ nonBindingMultiZero nonBindingQ gammaDelta      
   -- let nonBindingCs = nonBindingCsP ++ nonBindingCsR ++ nonBindingMultiGeZero nonBindingQ argSplit
   
   -- potential bind
@@ -245,19 +250,19 @@ proveLet tactic@(Rule (R.Let letArgs) _) judgeType kind e@(Let x e1 e2) (q, qe, 
     Just t -> do
       let bindingQ = q M.! t
       potE1 <- potForType t 
-      let (gamma, delta) = argSplit M.! t
-      bindingP' <- defaultTempl t "P'"  "let e1" ["e1"]
+      let (gamma, delta, gVars) = argSplit M.! t
+      bindingP' <- defaultTempl t "P'"  "let e1" (Templ.args (q' M.! t))
+      --["e1"]
         
-      let rangeD = rangeA . ranges $ potE1
-      let rangeE = if R.NegE `elem` letArgs then
-            rangeBNeg . ranges $ potE1 else rangeB . ranges $ potE1
       
-      let is = letCfIdxs potE1 (q M.! t) delta (rangeD, rangeE) x
+      let templOpts = Templ.defaultTemplOpts {Templ.negBindingConst=R.NegE `elem` letArgs}
+      
+      let is = letCfIdxs potE1 (q M.! t) delta templOpts x
 
-      ps_ <- emptyArrayFromIdxs t is "P" gamma
-      ps'_ <- emptyArrayFromIdxs t is "P'" ["e1"]
+      ps_ <- emptyArrayFromIdxs x is "P" gamma gVars
+      ps'_ <- emptyArrayFromIdxs x is "P'" (Templ.args (q' M.! t)) gVars
 
-      r_ <-  emptyTempl t "R" "let:base e2" (x:delta)
+      r_ <-  emptyTempl "R" "let:base e2" (x:delta) gVars
 
       let (p, pCs) = Templ.defineByWith (annP_ M.! t) bindingQ (\idx p q -> geZero p ++ p `le` q)
       let (ps, ps', cfCs) | M.null ps_ = (ps_, ps'_, [])
@@ -277,6 +282,7 @@ proveLet tactic@(Rule (R.Let letArgs) _) judgeType kind e@(Let x e1 e2) (q, qe, 
       cfDerivs <- mapM
         (\(p, p', j@(judgeT, _)) -> case judgeT of
             (Cf _) -> proveExpr t1 CfAny kind e1 p p'
+            CfAny -> proveExpr t1 CfAny kind e1 p p'
             Aux m -> proveExpr t1 (Aux m) kind e1 p p')
         $ zip3 (zip3 annPs annPes cfPreds) annPs' is
       
@@ -344,14 +350,14 @@ proveApp tactic (Cf cf) kind e@(App id args) (q, qe, pred) q' = do
   let cfSigs = withoutCost $ fnSig M.! id
   zero <- emptyAnn M.empty "0" "app cf zero"
   let sigZero = FunSig (zero, zero) zero
-  let cs = or $ linCombOfSig (varsByType args) appScale ((q, qe), q') sigZero (cfSigs L.!! cf)
+  let cs = or $ linCombOfSig (orderArgsForCall q args) appScale ((q, qe), q') sigZero (cfSigs L.!! cf)
   conclude R.App (Cf cf) kind (q, qe, pred) q' cs e []
 proveApp tactic CfAny kind e@(App id args) (q, qe, pred) q' = do
   fnSig <- use sig
   let cfSigs = withoutCost $ fnSig M.! id
   zero <- emptyAnn M.empty "0" "app cf zero"
   let sigZero = FunSig (zero, zero) zero
-  let cs = or $ concatMap (linCombOfSig (varsByType args) appScale ((q, qe), q') sigZero) cfSigs
+  let cs = or $ concatMap (linCombOfSig (orderArgsForCall q args) appScale ((q, qe), q') sigZero) cfSigs
   conclude R.App CfAny kind (q, qe, pred) q' cs e []  
 proveApp tactic (Aux measure) kind e@(App id args) (q, qe, pred) q' = do
   fnSig <- use sig
@@ -361,6 +367,10 @@ proveApp tactic (Aux measure) kind e@(App id args) (q, qe, pred) q' = do
   let cs = or $ linCombOfSig (varsByType args) appScale ((q, qe), q') sigZero (auxSigs M.! (measure, kind))
   conclude R.App (Aux measure) kind (q, qe, pred) q' cs e []
 
+orderArgsForCall :: FreeAnn -> [PositionedExpr] -> M.Map Type [Id]
+orderArgsForCall q callArgs = let orderedArgs = varsByType callArgs in
+  M.mapWithKey (\t a -> (Templ.args a L.\\ (orderedArgs M.! t)) ++ orderedArgs M.! t) q
+
 appScale :: [Rational]
 appScale = [0,1,2]
 
@@ -368,21 +378,25 @@ linCombOfSig args rangeK ((q, qe), q') (FunSig (p, pe) p') (FunSig (r, re) r')
   = concat
   [ and $
     unifyAssertEqBy q (add p (scale r (ConstTerm k))) args
-    ++ unifyAssertEqBy qe (add p (scale re (ConstTerm k))) (M.map Templ.args qe)
+--    ++ unifyAssertEqBy qe (add p (scale re (ConstTerm k))) (M.map Templ.args qe)
     ++ unifyAssertEq q' (add p' (scale r' (ConstTerm k)))
   | k <- rangeK] 
 
-redundentVars :: FreeAnn -> Expr a -> [(Id, Type)]
-redundentVars qs e =
+redundentVars :: FreeAnn -> FreeAnn -> Expr a -> [(Id, Type)]
+redundentVars qs q' e = let ghostVars = annArgs Templ.ghosts qs in
   [ (x, t)
   | (t, q) <- M.toAscList qs,
     x <- Templ.args q,
-    not $ x `S.member` freeVars e]
+    not $ x `S.member` freeVars e,
+    x `L.notElem` ghostVars,
+    x `L.notElem` annArgs Templ.args q']
+  where annArgs :: (FreeTemplate -> [Id]) -> FreeAnn -> [Id]
+        annArgs getArgs qs = foldr (\q acc -> acc ++ getArgs q) [] (M.elems qs)
 
 
 proveWeakenVar :: Prove PositionedExpr Derivation
 proveWeakenVar tactic judgeType kind e (q, qe, preds) q' = do
-  let redundant = redundentVars q e
+  let redundant = redundentVars q q' e
   (var, tVar) <- if null redundant then
                 errorFrom (SynExpr e) "Could not find a redundant variable to eleminate with the (w:var) rule."
               else
@@ -391,7 +405,7 @@ proveWeakenVar tactic judgeType kind e (q, qe, preds) q' = do
   let redundantQ = q M.! tVar
   pot <- potForType tVar 
   
-  r_ <- emptyTempl tVar "R" "weaken var" $ L.delete var (Templ.args redundantQ)
+  r_ <- emptyTempl "R" "weaken var" (L.delete var (Templ.args redundantQ)) (Templ.ghosts redundantQ)
   let (r,rCs) = Templ.defineBy r_ redundantQ
   let cs = rCs ++ Templ.assertGeZero (Templ.sub redundantQ r)
   let annR = M.insert tVar r q
@@ -404,10 +418,10 @@ proveWeaken :: Prove PositionedExpr Derivation
 proveWeaken tactic@(Rule (R.Weaken wArgs) _) judgeType kind e (q, qe, preds) q' = do
   let [t] = subTactics 1 tactic
   let wArgs' = S.fromList wArgs
-  let neg = R.Neg `S.member` wArgs'
+  let templOpts = Templ.defaultTemplOpts {Templ.negBindingConst=R.Neg `S.member` wArgs'}
   
-  p <- enrichWithDefaults neg "P" "weaken" q
-  p' <- enrichWithDefaults neg "P'" "weaken" q'
+  p <- enrichWithDefaults templOpts "P" "weaken" q
+  p' <- enrichWithDefaults templOpts "P'" "weaken" q'
 
   (pCs, p'Cs) <- case kind of
     Upper -> (,) <$>
@@ -454,11 +468,11 @@ proveShiftConstSimple tactic judgeType kind e (q, qe, preds) q' = do
 
   k <- freshVar
 
-  p_ <- emptyAnn (M.map Templ.args q) "P" "shift" 
+  p_ <- emptyAnnFrom q "P" "shift" 
   (ps, pCs) <- defineByMinus p_ q k
     
 
-  p'_ <- emptyAnn (M.map Templ.args q') "P'" "shift"
+  p'_ <- emptyAnnFrom q' "P'" "shift"
   (ps', p'Cs) <- defineByMinus p'_ q' k
 
   let cs = pCs ++ p'Cs ++ geZero k
@@ -471,9 +485,9 @@ proveShiftConstMono tactic judgeType kind e (qs, qe, preds) qs' = do
 
   k <- freshVar
   
-  ps_ <- enrichWithDefaults False "P" "shift" qs
+  ps_ <- enrichWithDefaults Templ.defaultTemplOpts "P" "shift" qs
   (ps, constShiftCsQ) <- defineByMinus ps_ qs k
-  ps'_ <- enrichWithDefaults False "P'" "shift" qs'
+  ps'_ <- enrichWithDefaults Templ.defaultTemplOpts "P'" "shift" qs'
   (ps', constShiftCsQ') <- defineByMinus ps'_ qs' k
   let constShiftCs = and (constShiftCsQ ++ constShiftCsQ')
 
@@ -518,7 +532,7 @@ proveTickDefer tactic judgeType kind e@(Tick c e1) (q, qe, preds) q' = do
     deriv <- proveExpr subTactic judgeType kind e1 (q, qe, preds) q'
     conclude R.TickDefer judgeType kind (q, qe, preds) q' [] e [deriv]
   else do
-    p_ <- emptyAnn (M.map Templ.args q') "P" "" 
+    p_ <- emptyAnnFrom q' "P" "" 
     (p, cs) <- defineByPlus p_ q' (ConstTerm (fromMaybe 1 c))
 
     deriv <- proveExpr subTactic judgeType kind e1 (q, qe, preds) p
@@ -526,7 +540,7 @@ proveTickDefer tactic judgeType kind e@(Tick c e1) (q, qe, preds) q' = do
     conclude R.TickDefer judgeType kind (q, qe, preds) q' cs e [deriv]
 
 removeRedundantVars :: Prove PositionedExpr Derivation -> Prove PositionedExpr Derivation
-removeRedundantVars prove tactic judgeType kind e (q, qe, preds) q' = if (not . null) (redundentVars q e) then
+removeRedundantVars prove tactic judgeType kind e (q, qe, preds) q' = if (not . null) (redundentVars q q' e) then
   proveWeakenVar (Rule R.WeakenVar [tactic]) judgeType kind e (q, qe, preds) q'
   else prove tactic judgeType kind e (q, qe, preds) q'
 
@@ -539,7 +553,7 @@ proveExpr tactic@(Rule R.ConstUnfold _) judgeType kind e@(Const {}) = proveConst
 proveExpr tactic@(Rule R.Match _) judgeType kind e@(Match {}) = proveMatch tactic judgeType kind e 
 proveExpr tactic@(Rule R.Ite _) judgeType kind e@(Ite {}) = proveIte tactic judgeType kind e 
 proveExpr tactic@(Rule (R.Let _) _) judgeType kind e@(Let {}) = proveLet tactic judgeType kind e 
-proveExpr tactic@(Rule R.TickDefer _) judgeType kind e@(Tick {}) = removeRedundantVars proveTickDefer tactic judgeType kind e 
+proveExpr tactic@(Rule R.TickDefer _) judgeType kind e@(Tick {}) = removeRedundantVars proveTickDefer tactic judgeType kind e
 proveExpr tactic@(Rule R.WeakenVar _) judgeType kind e = proveWeakenVar tactic judgeType kind e 
 proveExpr tactic@(Rule (R.Weaken _) _) judgeType kind e = proveWeaken tactic judgeType kind e
 proveExpr tactic@(Rule R.ShiftTerm _) judgeType kind e = proveShiftTerm tactic judgeType kind e
@@ -632,7 +646,7 @@ proveFun fun@(FunDef _ fnId _ _) = do
   let cfAnns = withoutCost ann
   let auxAnns = aux ann
   derivsCf <- mapM (\(n, FunSig (p, pe) p') ->
-                      proveFunBody Auto (Cf n) Upper fun (p, pe, S.empty) p')
+                      proveFunBody Auto (Cf n) Upper fun (instGhostVars p, pe, S.empty) (instGhostVars p'))
               $ zip [0..] cfAnns
   
   
@@ -644,3 +658,4 @@ proveFun fun@(FunDef _ fnId _ _) = do
   auxMode .= False
   
   return $ T.Node (R.FunRuleApp fun) (deriv:derivsCf ++ derivsAux)
+--  return $ T.Node (R.FunRuleApp fun) (derivsCf ++ derivsAux)

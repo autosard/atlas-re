@@ -26,21 +26,21 @@ bearesPotential (TAp Tree [t]) | notNested t = True
                                | otherwise = nestedError                               
 bearesPotential _ = False
 
-ranges :: P.AnnRanges
-ranges = P.AnnRanges [0..1] [0..2] [0..2]
+rangeA = [0..1]
+rangeB = [0..2]
 
-template :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> FreeTemplate
-template id label comment args ranges =
-  FreeTemplate id args label comment $ S.fromList coeffs
-  where coeffs = defaultCoeffs args ranges
+template :: Int -> Text -> Text -> [Id] -> TemplateOptions -> FreeTemplate
+template id label comment args opts =
+  FreeTemplate id args [] label comment $ S.fromList coeffs
+  where coeffs = defaultCoeffs args
 
-defaultCoeffs :: [Id] -> ([Int], [Int]) -> [CoeffIdx]
-defaultCoeffs args (aRange, bRange) =
+defaultCoeffs :: [Id] -> [CoeffIdx]
+defaultCoeffs args =
   [[mix|x^(a, b), c|]
   | x <- args,
-    a <- aRange,
-    b <- aRange,
-    c <- bRange,
+    a <- rangeA,
+    b <- rangeA,
+    c <- rangeB,
     b + c <= 2,
     b + c > 0,
     not (a == 1 && b == 0 &&  c == 1)]
@@ -62,8 +62,8 @@ cExternal :: FreeTemplate -> FreeTemplate -> [Constraint]
 cExternal q q' = []
 
 -- univariate potential
-letCfIdxs :: Args -> FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [(P.JudgementType, CoeffIdx)] 
-letCfIdxs potArgs q xs (rangeA, rangeB) x = []
+letCfIdxs :: Args -> FreeTemplate -> [Id] -> TemplateOptions -> Id -> [(P.JudgementType, CoeffIdx)] 
+letCfIdxs potArgs q xs opts x = []
 
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = error "pure coefficients are not supported with linear logarithmic potential."

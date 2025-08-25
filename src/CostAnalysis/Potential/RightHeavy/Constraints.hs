@@ -6,7 +6,7 @@ import Prelude hiding (exp, (!!), sum, or, (^))
 import qualified Data.List as L
 import qualified Data.Set as S
 
-import Primitive(Id, traceShow)
+import Primitive(Id, traceShow, traceShowV)
 import CostAnalysis.Template hiding (sum, sub)
 import CostAnalysis.Constraint hiding (Le, Lt)
 import CostAnalysis.AnnIdxQuoter(mix)
@@ -19,7 +19,6 @@ import Data.List.Extra (groupSort)
 import qualified Data.Text as T
 import Data.Set (Set)
 import CostAnalysis.Predicate (Predicate (Predicate), PredOp (..), anyImplies)
-import CostAnalysis.Coeff (facForVar2)
 
 
 exp :: Id
@@ -46,8 +45,11 @@ cConst e@(Node (Var t) _ (Var u)) preds (q, qe) q'
   = let tLtU = [mix|t^(1,1),u^(2,1)|] in
   caseIndependentCs 
     ++ eq (q!?tLtU) (q'!?exp)
-    ++ concat [zero (q!idx) | idx <- mixes2 q,
-                              idx /= tLtU]
+    ++ concat [eq (q!idx) (q'!?[mix|_xs,exp^(a,b)|])
+              | idx <- mixes2 q,
+                let (a,b) = facForVar2 idx t,
+                (a,b) == facForVar2 idx u,
+                let xs = except idx [t,u]]
   where caseIndependentCs =
           eq (q!?t) (q'!?exp)
           ++ eq (q!?u) (q'!?exp)
@@ -55,7 +57,8 @@ cConst e@(Node (Var t) _ (Var u)) preds (q, qe) q'
                 | idx <- mixes1 q,
                   let a = facForVar idx t,
                   a == facForVar idx u,
-                  let c = constFactor idx]
+                  let c = constFactor idx,
+                  a + c > 0]
           ++ concat [zero (q![mix|t^a,c|])
                 | idx <- mixes1 q,
                   onlyVarsOrConst idx [t],
@@ -65,11 +68,12 @@ cConst e@(Node (Var t) _ (Var u)) preds (q, qe) q'
                 | idx <- mixes1 q,
                   onlyVarsOrConst idx [u],
                   let c = constFactor idx,
-                  let a = facForVar idx u]            
+                  let a = facForVar idx u]
           ++ concat [zero (q'![mix|exp^a,c|]) 
                 | idx <- mixes1 q',
                   let a = facForVar idx exp,
                   let c = constFactor idx,
+                  a + c > 0,
                   [mix|t^a,u^a,c|] `S.notMember` idxs q]
   
 cConst (Ast.Const id _) preds (q, _) q' = error $ "Constructor '" ++ T.unpack id ++ "' not supported."
@@ -77,12 +81,11 @@ cConst (Ast.Const id _) preds (q, _) q' = error $ "Constructor '" ++ T.unpack id
 cMatch :: FreeTemplate -> FreeTemplate -> Maybe Predicate -> Id -> [Id] -> (FreeTemplate, [Constraint])
 -- leaf  
 cMatch q p _ x [] = extend p $
-  [(`eq` (q!y)) <$> def y | y <- L.delete x (args q)]
+  [(`eq` (q!y)) <$> def y | y <- args q L.\\ [x,"!g1"]]
   ++ [(`eqSum` qs) <$> def [mix|_xs, c|]
      | ((xs, c), qs) <- sums]
-  ++ [(`eq` (q!idx)) <$> def idx
-     | idx <- mixes2 q,
-       x `notElem` coeffArgs idx]   
+  ++ [(`eqSum` qs) <$> def [mix|_xs, c|]
+     | ((xs, c), qs) <- iverSums]
   where sums = groupSort $
             [((xs, c), q!idx) 
             | idx <- mixes1 q,
@@ -90,6 +93,13 @@ cMatch q p _ x [] = extend p $
               let b = constFactor idx,
               a >= 0, b >= 0,
               let c = a + b,
+              let xs = varsExcept idx [x]]
+        iverSums = groupSort $
+            [((xs, d), q!idx) 
+            | idx <- mixes2 q,
+              let (a,b) = facForVar2 idx x,
+              let c = constFactor idx,
+              let d = c + b,
               let xs = varsExcept idx [x]]
 
 -- node
@@ -109,7 +119,7 @@ cMatch q r _ x [t, u]
   ++ [(`eq` (q!idx)) <$> def [mix|_xs,t^(a,b),u^(a,b)|]
      | idx <- mixes2 q,
        let (a,b) = facForVar2 idx x,
-       let xs = varsExcept idx [x]]
+       let xs = except idx [x]]
 
 cLetBodyMulti :: FreeTemplate -> TemplateArray -> Id -> [CoeffIdx] -> FreeTemplate -> (FreeTemplate, [Constraint])
 cLetBodyMulti q ps' x is r_ = extend r_ $
@@ -117,53 +127,43 @@ cLetBodyMulti q ps' x is r_ = extend r_ $
   | i <- restrictFacs1 is,
     let d = facForVar i x,
     let e = max 0 $ constFactor i]
-  -- ++ [(`eq` (ps'!!i!exp)) <$> def i
-  --    | i <- restrictFacs2 is]
+  ++ [(`eq` (ps'!!i![mix|_lhs,exp^(1,1)|])) <$> def i
+     | i <- restrictFacs2 is,
+       let lhs = restrictFacsNoConst i [2,1]]
   ++ [(`eq` (q!i)) <$> def i
      | i <- mixes2 q,
        onlyVars i (args r_)]
 
---cLetCf = Log.cLetCf
 cLetCf q _ps _ps' x (gamma, delta) bdes
   = let (ps, ps', _cs) = Log.cLetCf q _ps _ps' x (gamma, delta) bdes 
-        cs = concat [ geZero (q!idx)
-                    | idx <- mixes2 q,
-                      let xs = varsForFac idx [1,1],
-                      all (`elem` delta) xs,
-                      let ys = varsForFac idx [2,1],
-                      all (`elem` gamma) ys] in
-  (ps, ps', _cs ++ cs)
+        (psDefined, psCs) = extends ps $
+                            [eq (q!idx) . sum <$>
+                              sequence [
+                                 defEntry [mix|_rhs,_lhsDelta,lhsConst,x^(1,1)|] [mix|_rhs,_lhsGamma|],
+                                 defEntry [mix|_rhs,_lhsDelta,x^(1,1)|] [mix|_rhs,_lhsGamma,lhsConst|]]
+                            | idx <- mixes2 q,
+                              let rhs = restrictFacsNoConst idx [2,1],
+                              (not . null) rhs,
+                              let rhsVars = varsForFac idx [2,1],
+                              all (`elem` delta) rhsVars,
 
-  -- = let (ps, ps', _cs) = Log.cLetCf q _ps _ps' x (gamma, delta) bdes 
-  --       (psDefined, psCs) = extends ps $
-  --                           [(\p ->
-  --                               (or . concat) [p `eq` (q!idx)
-  --                                             | idx <- mixes2 q,
-  --                                               ys == varsForFac idx [2,1],
-  --                                               let xs = varsForFac idx [1,1],
-  --                                               z `elem` xs])
-  --                           <$> defEntry [mix|_bs,x^(1,1)|] (Pure z)
-  --                           | let byLHS = groupSort $
-  --                                  [((ys,bs), xs)
-  --                                  | idx <- mixes2 q,
-  --                                    let xs = varsForFac idx [1,1],
-  --                                    all (`elem` gamma) xs,
-  --                                    let ys = varsForFac idx [2,1],
-  --                                    all (`elem` delta) ys,
-  --                                    let bs = varsRestrict idx ys],
-  --                             ((ys,bs), xss) <- byLHS,
-  --                             z <- L.nub $ concat xss] 
-  --       (ps'Defined, ps'Cs) = extends ps' $
-  --                             [(`le` ConstTerm 1) <$> defEntry bde (Pure exp)
-  --                             | bde <- restrictFacs2 bdes]
-  --       cs = concat [ geZero (q!idx)
-  --                   | idx <- mixes2 q,
-  --                     let xs = varsForFac idx [1,1],
-  --                     all (`elem` delta) xs,
-  --                     let ys = varsForFac idx [2,1],
-  --                     all (`elem` gamma) ys] in
-  -- (psDefined, ps'Defined, _cs ++ psCs ++ ps'Cs ++ cs)
-        
+                              let lhs = restrictFacs idx [1,1],
+                              let lhsDelta = varsRestrict (mixed lhs) delta,
+                              let lhsGamma = varsRestrict (mixed lhs) gamma,
+                              let lhsConst = constFactor (mixed lhs),
+                              (not . null) lhsGamma]
+        cs = concat [ zero (q!idx)
+                    | idx <- mixes2 q,
+                      let rhsVars = varsForFac idx [2,1],
+                      any (`notElem` delta) rhsVars,
+                      let lhsVars = varsForFac idx [1,1],
+                      any (`elem` delta) lhsVars]
+        (ps'Defined, ps'Cs) = extends ps' $
+                              [[] <$ defEntry bde [mix|_lhs,exp^(1,1)|]
+                              | bde <- restrictFacs2 bdes,
+                                let ys = restrict bde delta,
+                                let lhs = restrictFacsNoConst (mixed ys) [2,1]] in
+        (psDefined, ps'Defined, _cs ++ psCs ++ ps'Cs ++ _cs ++ cs)
 
 constCases :: Pattern Positioned -> [Predicate]
 constCases _ = []

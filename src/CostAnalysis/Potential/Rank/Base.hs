@@ -14,20 +14,15 @@ import CostAnalysis.Coeff
 import CostAnalysis.Template
 import Typing.Type
 import CostAnalysis.AnnIdxQuoter(mix)
-import CostAnalysis.Potential (AnnRanges(..), MonoFn(..), JudgementType(..))
+import CostAnalysis.Potential (MonoFn(..), JudgementType(..))
 import CostAnalysis.Constraint (Constraint)
 
 
--- data Args = Args {}
-
 potType = TreeType
 
-ranges :: AnnRanges
-ranges = AnnRanges [] [] []
-
-template :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> FreeTemplate
-template id label comment args ranges =
-  FreeTemplate id args label comment $ S.fromList (oneCoeff:map Pure args)
+template :: Int -> Text -> Text -> [Id] -> TemplateOptions -> FreeTemplate
+template id label comment args opts =
+  FreeTemplate id args [] label comment $ S.fromList (oneCoeff:map Pure args)
                
 oneCoeff :: CoeffIdx
 oneCoeff = [mix|2|]
@@ -41,8 +36,8 @@ monoFnCoeff _ _ _ = Nothing
 cExternal :: FreeTemplate -> FreeTemplate -> [Constraint]
 cExternal q q' = []
 
-letCfIdxs :: FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [(JudgementType, CoeffIdx)] 
-letCfIdxs q xs (rangeA, rangeB) x = []
+letCfIdxs :: FreeTemplate -> [Id] -> TemplateOptions -> Id -> [(JudgementType, CoeffIdx)] 
+letCfIdxs q xs opts x = []
 
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = "†" ++ T.unpack x 

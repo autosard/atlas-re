@@ -31,6 +31,7 @@ class (Show a) => Template a where
   (!?) :: (Index i, Show i) => a -> i -> Term
   idxs :: a -> Set CoeffIdx
   args :: a -> [Id]
+  ghosts :: a -> [Id]
   empty :: a -> Bool
   merge :: a -> a -> a
 
@@ -48,10 +49,18 @@ restrictFacs2 = filter (onlyFacsOfLen 2)
 pures :: (Template a) => a -> [CoeffIdx]
 pures = S.toList . S.filter isPure . idxs
 
+data TemplateOptions = TemplateOptions {
+  negBindingConst :: Bool,
+  ghostVars :: Bool}
+
+defaultTemplOpts = TemplateOptions {
+  negBindingConst = False,
+  ghostVars = False}
 
 data FreeTemplate = FreeTemplate {
   _ftId :: Int,
   _ftArgs :: [Id],
+  _ftGhostArgs :: [Id],
   _ftLabel :: Text, -- ^ Human readable label, e.g. \"Q\", \"P\", ...
   _ftComment ::  Text, -- ^ Human readable comment, to trace the origin of the coefficient.
   _ftCoeffs :: Set CoeffIdx -- ^ non zero coefficients
@@ -60,8 +69,22 @@ data FreeTemplate = FreeTemplate {
 
 makeLenses ''FreeTemplate
 
+emptyTempl :: Int -> Text -> Text -> [Id] -> [Id] -> FreeTemplate
+emptyTempl id label comment args ghosts = FreeTemplate {
+  _ftId=id,
+  _ftArgs=args,
+  _ftGhostArgs=ghosts,
+  _ftLabel=label,
+  _ftComment=comment,
+  _ftCoeffs=S.empty}
+
+instGhostVars :: FreeTemplate -> FreeTemplate
+instGhostVars t = t & ftArgs %~ ((t ^. ftGhostArgs) <>)
+
+
 instance Template FreeTemplate where
   args = _ftArgs
+  ghosts = _ftGhostArgs
   idxs q = q^.ftCoeffs
   empty = S.null . _ftCoeffs
   (!) templ idx = case coeffForIdx templ (toIdx idx) of
@@ -73,6 +96,7 @@ instance Template FreeTemplate where
   merge q p = FreeTemplate {
     _ftId = q^.ftId,
     _ftArgs = (q^.ftArgs) `L.union` (p^.ftArgs),
+    _ftGhostArgs = (q^.ftGhostArgs) `L.union` (p^.ftGhostArgs),
     _ftLabel = q^.ftLabel,
     _ftComment = q^.ftComment,
     _ftCoeffs = (q^.ftCoeffs) `S.union` (p^.ftCoeffs)}
@@ -108,7 +132,10 @@ instance HasCoeffs FreeTemplate where
 
 
 defineFrom :: Int -> Text -> Text -> FreeTemplate -> FreeTemplate
-defineFrom id label comment templ = FreeTemplate id (templ^.ftArgs) label comment (templ^.ftCoeffs)
+defineFrom id label comment templ = templ {
+  _ftId=id,
+  _ftLabel=label,
+  _ftComment=comment}
 
 substArg :: Id -> Id -> FreeTemplate -> FreeTemplate
 substArg x y q = q
@@ -116,72 +143,84 @@ substArg x y q = q
   & ftCoeffs %~ S.map (substitute (q ^. ftArgs) args') 
   where args' = map (\z -> if z == x then y else z) $ q ^. ftArgs
 
-data BoundTemplate = BoundTemplate [Id] (Map CoeffIdx Rational)
+data BoundTemplate = BoundTemplate {
+  btArgs :: [Id],
+  btGhostVars :: [Id],
+  btCoeffs :: Map CoeffIdx Rational}
   deriving (Eq, Show)
 
 instance Template BoundTemplate where
-  args (BoundTemplate vars _) = vars
-  idxs (BoundTemplate _ m) = M.keysSet m
-  empty (BoundTemplate _ m) = M.null m
-  (!) (BoundTemplate _ m) idx = ConstTerm $ m M.! toIdx idx
-  (!?) (BoundTemplate _ m) idx = ConstTerm $ fromMaybe 0 (m M.!? toIdx idx)
-  merge (BoundTemplate xs ma) (BoundTemplate ys mb)
-    = BoundTemplate (xs `L.union` ys) (M.union ma mb)
+  args = btArgs
+  ghosts = btGhostVars
+  idxs t = M.keysSet (btCoeffs t)
+  empty t = M.null (btCoeffs t)
+  (!) t idx = ConstTerm $ btCoeffs t M.! toIdx idx
+  (!?) t idx = ConstTerm $ fromMaybe 0 (btCoeffs t M.!? toIdx idx)
+  merge q p = BoundTemplate {
+    btArgs = btArgs q `L.union` btArgs p,
+    btGhostVars = btGhostVars q `L.union` btGhostVars p,
+    btCoeffs = btCoeffs q `M.union` btCoeffs p}
 
 bindTemplate :: FreeTemplate -> Map Coeff Rational -> BoundTemplate
 bindTemplate q values = BoundTemplate
   (args q)
+  (ghosts q)
   (M.fromList [(i, v)
               | c@(Coeff _ _ _ i) <- getCoeffs q,
                 let v = fromMaybe 0 (values M.!? c)])
 
 split :: BoundTemplate -> [Id] -> (BoundTemplate, BoundTemplate)
-split (BoundTemplate args coeffs) argsY =
+split (BoundTemplate args ghosts coeffs) argsY =
   let argsX = (args L.\\ argsY)
-      x = BoundTemplate argsX
+      x = BoundTemplate argsX ghosts
         (M.filterWithKey (\idx _ -> hasArgsOrConst argsX idx) coeffs)
-      y = BoundTemplate argsY
+      y = BoundTemplate argsY ghosts
         (M.filterWithKey (\idx _ -> hasArgs argsY idx && (not . idxNull) idx) coeffs) in
     (x,y)
                                     
 
 addValues :: BoundTemplate -> BoundTemplate -> BoundTemplate
-addValues q@(BoundTemplate argsQ qIs) p@(BoundTemplate argsP pIs)
-  = BoundTemplate (argsQ `L.union` argsP)
+addValues q@(BoundTemplate argsQ gVarsQ qIs) p@(BoundTemplate argsP gVarsP pIs)
+  = BoundTemplate (argsQ `L.union` argsP) (gVarsQ `L.union` gVarsP)
     (M.fromList [(idx, fromMaybe 0 (qIs M.!? idx)
                        + fromMaybe 0 (pIs M.!? idx))
                 | idx <- S.toList $ idxs q `S.union` idxs p])
 
 data TermTemplate = TermTemplate {
-  ttArgs :: [Id] ,
-  terms :: Map CoeffIdx Term}
+  ttArgs :: [Id],
+  ttGhostVars :: [Id],
+  terms :: Map CoeffIdx Term}  
   deriving(Show)
 
 instance Template TermTemplate where
   args = ttArgs
+  ghosts = ttGhostVars
   idxs templ =  M.keysSet $ terms templ
   empty = M.null . terms
   (!) templ idx = terms templ M.! toIdx idx
   (!?) templ idx = fromMaybe (ConstTerm 0) $ terms templ M.!? toIdx idx
-  merge (TermTemplate argsA termsA) (TermTemplate argsB termsB)
-    = TermTemplate (argsA `L.union` argsB) (M.union termsA termsB)
+  merge q p = TermTemplate {
+    ttArgs = ttArgs q `L.union` ttArgs p,
+    ttGhostVars = ttGhostVars q `L.union` ttGhostVars p,
+    terms = terms q `M.union` terms p}
 
-zeroTemplate = TermTemplate [] M.empty
+
+zeroTemplate = TermTemplate [] [] M.empty
 
 
 -- operations
 
 scale :: (Template a) => a -> Term -> TermTemplate
-scale q k = TermTemplate (args q) $
+scale q k = TermTemplate (args q) (ghosts q) $
   M.fromList [(idx, C.prod2 (q!idx) k) | idx <- S.toList (idxs q)]
 
 add :: (Template a, Template b) => a -> b -> TermTemplate
-add q p = TermTemplate (args q `L.union` args p) $
+add q p = TermTemplate (args q `L.union` args p) (ghosts q `L.union` ghosts p)$
              M.fromList [(idx, C.sum [q!?idx, p!?idx])
                         | idx <- S.toList $ idxs q `S.union` idxs p]
 
 sub :: (Template a, Template b) => a -> b -> TermTemplate
-sub q p = TermTemplate (args q `L.union` args p) $
+sub q p = TermTemplate (args q `L.union` args p) (ghosts q `L.union` ghosts p)$
              M.fromList [(idx, C.sub [q!?idx, p!?idx])
                         | idx <- S.toList $ idxs q `S.union` idxs p]
 
@@ -213,12 +252,22 @@ unifyAssertEq :: (Template a, Template b) => a -> b -> [Constraint]
 unifyAssertEq q p = concat [C.eq (q!?idx) p'
                           | idx <- S.toList $ idxs q,
                             let p' | justConst idx = p!?idx 
-                                   | length (args q) == length (args p) 
-                                  = p!?substitute (args q) (args p) idx
+                                   | length argsQ == length argsP
+                                  = p!?substitute argsQ argsP idx
                                    | otherwise = ConstTerm 0]
+  where argsP = if L.null $ args p `L.intersect` ghosts p then ghosts p ++ args p else args p
+        argsQ = if length (args q) < length argsP
+                then ghosts p ++ args q
+                else args q
+
                   
 unifyAssertEqBy :: (Template a, Template b) => a -> b -> [Id] -> [Constraint]
-unifyAssertEqBy q p qArgs = concat [C.eq (q!?idx) (p!?substitute qArgs (args p) idx)
+unifyAssertEqBy q p qArgs = let pArgs = (ghosts p ++ args p) 
+                                qArgs' = if length qArgs < length pArgs
+                                         then ghosts p ++ qArgs
+                                         else qArgs in
+--                                qArgs' = qArgs in 
+                                  concat [C.eq (q!?idx) (p!?substitute qArgs' pArgs idx)
                                  | idx <- S.toList $ idxs q]
 
 -- | @'apply'@ returns a mapping between template indicies, that allow to apply function represented by
@@ -261,7 +310,7 @@ apply q p = case args p of
               _ys_greater_xs -> error $ "cannot apply potential function " ++ show p ++ " to arguments " ++ show (args q)
 
 symbolicCost :: (Template a, Template b) => a -> b -> TermTemplate
-symbolicCost q p = TermTemplate (args q) $  
+symbolicCost q p = TermTemplate (args q) (ghosts q) $  
   M.fromList [(idx, C.sub [q!idx, tP]) 
              | idx <- S.toList $ idxs q,
                let tP = maybe (ConstTerm 0) (p!?) (u M.!? idx)] 
@@ -269,13 +318,13 @@ symbolicCost q p = TermTemplate (args q) $
 
 calculateBound :: ((FreeTemplate, FreeTemplate), FreeTemplate) -> Map Coeff Rational -> BoundTemplate
 calculateBound ((from, fromRef), to) solution =
-  let diff = BoundTemplate (args from) $ M.fromList
+  let diff = BoundTemplate (args from) (ghosts from) $ M.fromList
         [(idx, from' M.! idx - fromMaybe 0 ((to' M.!?) =<< (u M.!? idx)))
         | idx <- S.toList $ idxs from] in
     addValues diff qe
-  where q@(BoundTemplate _ from') = bindTemplate from solution
+  where q@(BoundTemplate _ _ from') = bindTemplate from solution
         qe = bindTemplate fromRef solution
-        p@(BoundTemplate _ to') = bindTemplate to solution
+        p@(BoundTemplate _ _ to') = bindTemplate to solution
         u = apply q p
 
 -- array
@@ -319,7 +368,11 @@ defEntry :: CoeffIdx -> CoeffIdx -> CoeffDef TemplateArray Term
 defEntry arrIdx coeffIdx = do
   ix arrIdx . ftCoeffs %= (coeffIdx `S.insert`)
   arr <- get
-  return $ (arr M.! arrIdx)!coeffIdx
+  let entry = arr M.!? arrIdx
+  case entry of
+    Just e -> return $ e!coeffIdx
+    Nothing -> error (show arr ++ "[" ++ show arrIdx ++ "]: " ++ show coeffIdx)
+  --return $ (arr M.! arrIdx)!coeffIdx
 
 extend :: a -> [CoeffDef a [Constraint]] -> (a, [Constraint])
 extend ann defs = (ann', concat cs)
@@ -371,12 +424,15 @@ cLetBodyUni q p p' x r_ = extend r_ $
        justConst idx]
   
   ++ [(`C.eq` (p'!rhs)) <$> def x | (p'!?rhs) /= ConstTerm 0]
-  ++ [(`C.eq` (p'!pIdx)) <$> def [mix|x^d,e|]
+  ++ [(`C.eq` (p'!pIdx)) <$> def rIdx
      | pIdx <- mixes p',
-       let d = facForVar pIdx rhs,
-       let e = constFactor pIdx,
-       let rIdx = [mix|x^d,e|],
-       (not . justConst) rIdx]
+       
+--       let d = facForVar pIdx rhs,
+--       let e = constFactor pIdx,
+--       let rIdx = [mix|x^d,e|],
+--       (not . justConst) rIdx]
+       (not . justConst) pIdx,
+       let rIdx = substitute (args p') (args r_) pIdx]
   where ys = L.delete x (args r_)
 
 nonBindingMultiGeZero :: FreeTemplate -> [Id] -> [Id] -> [Constraint]

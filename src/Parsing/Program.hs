@@ -207,8 +207,9 @@ pFunResourceAnn = do
   from <- pTypedResourceAnn
   pArrow
   to <- pTypedResourceAnn
-  let (from', fromRef) = split from to
-  return (FunSig (from', fromRef) to)
+  -- let (from', fromRef) = split from to
+  --return (FunSig (from', fromRef) to)
+  return (FunSig (from, M.empty) to)
 
 pTypedResourceAnn :: Parser BoundAnn
 pTypedResourceAnn = M.fromList <$> sepBy pResourceAnn (symbol ",")
@@ -218,7 +219,7 @@ pResourceAnn = do
   t <- pType
   coeffs <- M.fromList <$> pSqParens pCoefficients
   let args = nub $ foldr (\i ids -> ids ++ coeffArgs i) [] (M.keys coeffs)
-  return (t, BoundTemplate args coeffs)
+  return (t, BoundTemplate args [] coeffs)
 
 pCoefficients :: Parser [(Coeff.CoeffIdx, Rational)]
 pCoefficients =  sepBy pCoefficient (symbol ",")
@@ -236,11 +237,11 @@ pCoeffIdx = Coeff.Pure <$> pIdentifier
 
 pFactor :: Parser Coeff.Factor
 pFactor = Coeff.Const <$> pInt
-  <|> try (do id <- pIdentifier
+  <|> try (do id <- pIdentifierInternal
               symbol "^"
               arg <- pInt
               return $ Coeff.Arg id [arg])
-  <|> (do id <- pIdentifier
+  <|> (do id <- pIdentifierInternal 
           symbol "^"
           Coeff.Arg id <$> pListInt)
 
@@ -388,6 +389,8 @@ pIdentifier = do
   if ident `elem` keywords
     then fail $ "Use of reserved keyword " ++ T.unpack ident
     else return ident
+
+pIdentifierInternal = lexeme (takeWhileP Nothing (\x -> isAlphaNum x || x == '!' ||(x == '_') || (x == '\'') || (x == '.')) <?> "identifier+")
 
 pInt :: Parser Int
 pInt = do

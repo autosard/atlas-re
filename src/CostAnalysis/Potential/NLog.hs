@@ -10,7 +10,6 @@ import CostAnalysis.Potential.Common(auxSigs)
 pot :: Args -> Potential
 pot args = Potential
   template
-  ranges
   oneCoeff
   zeroCoeff
   monoFnCoeff

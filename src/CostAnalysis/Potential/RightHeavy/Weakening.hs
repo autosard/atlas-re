@@ -18,6 +18,7 @@ import CostAnalysis.Weakening
 import CostAnalysis.Annotation(Measure(..))
 import CostAnalysis.Template(restrictFacs2)
 import qualified CostAnalysis.Predicate as P
+import CostAnalysis.Coeff (constFactor)
 
 
 supportedArgs = S.fromList [Mono, L2xy]
@@ -31,8 +32,8 @@ genExpertKnowledge wArgs preds args idxs = merge $ map select wArgs'
             m == Weight,
             op == P.Le || op == P.Lt || op == P.Eq]
         select Mono = merge [
-          monoLattice (monoLe preds') args idxs,
-          iversonLeOne args idxs]
+          monoLattice (monoLe preds') args idxs]
+--          iversonLeOne args idxs]
         select L2xy = merge [
           logLemma2 preds' args idxs,
           logLemmaIverson args idxs]
@@ -68,8 +69,10 @@ logLemmaIverson args idxs = merge $ [(V.fromList (row i l r lr), [0,0])
         lemmaCoeffs = [(idxI, idxL, idxR, idxLR)
                       | idxI <- restrictFacs2 $ S.toList idxs,
                         let xs = varsForFac idxI [1,1],
+                        let c = constFactor idxI,
                         let ys = varsForFac idxI [2,1],
-                        let idxL = mixed $ S.fromList $ map (\x -> Arg x [1]) xs,
+                        let idxL = mixed . S.fromList $
+                                     Const c:map (\x -> Arg x [1]) xs,
                         S.member idxL idxs,
                         let idxR = mixed $ S.fromList $ map (\x -> Arg x [1]) ys,
                         S.member idxR idxs,

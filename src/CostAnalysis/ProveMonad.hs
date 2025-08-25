@@ -17,13 +17,15 @@ import Data.Tree(Tree)
 import qualified Data.Set as S
 import Data.Set(Set)
 import qualified Data.Tree as T
+import qualified Data.List as L
 
 
-import Primitive(Id)
+import Primitive(Id, traceShowV)
 import CostAnalysis.Annotation hiding (sub, sum)
 import CostAnalysis.Predicate
 import CostAnalysis.Template (FreeTemplate(..),
-                              TemplateArray)
+                              TemplateArray,
+                              TemplateOptions)
 import CostAnalysis.Potential hiding (rsrcAnn, emptyAnn, defaultTempl)
 import CostAnalysis.Rules
 import qualified CostAnalysis.Potential as P
@@ -170,14 +172,21 @@ withId f pot label comment args = do
   id <- genAnnId
   return $ f pot id label comment args
 
-emptyTempl :: Type -> Text -> Text -> [Id] -> ProveMonad FreeTemplate
-emptyTempl t = withPotAndId t P.emptyAnn
+emptyTempl :: Text -> Text -> [Id] -> [Id] -> ProveMonad FreeTemplate
+emptyTempl label comment args ghosts = do
+  id <- genAnnId
+  return $ Templ.emptyTempl id label comment args ghosts
 
-emptyAnn :: Map Type [Id] -> Text -> Text -> ProveMonad FreeAnn
+emptyAnn :: Map Type ([Id], [Id]) -> Text -> Text -> ProveMonad FreeAnn
 emptyAnn args label comment = do
-  templs <- mapM (\(t, vars) -> (t, ) <$> emptyTempl t label comment vars) $ M.toAscList args
+  templs <- mapM (\(t, (vars, ghosts)) -> (t, ) <$> emptyTempl label comment vars ghosts) $ M.toAscList args
   return $ M.fromList templs
 
+emptyAnnFrom :: FreeAnn -> Text -> Text -> ProveMonad FreeAnn
+emptyAnnFrom ann label comment = do
+  templs <- mapM (\(t, templ) -> (t, ) <$> emptyTempl label comment (Templ.args templ) (Templ.ghosts templ)) (M.assocs ann)
+  return $ M.fromList templs
+  
 fromTempl :: Text -> Text -> FreeTemplate -> ProveMonad FreeTemplate
 fromTempl label comment ann = do
   id <- genAnnId
@@ -189,21 +198,29 @@ fromAnn label comment ctx = M.fromList <$> mapM go (M.toList ctx)
           templ' <- fromTempl label comment templ
           return (t, templ')
 
-enrichWithDefaults :: Bool -> Text -> Text -> FreeAnn -> ProveMonad FreeAnn
+enrichWithDefaults :: TemplateOptions -> Text -> Text -> FreeAnn -> ProveMonad FreeAnn
 enrichWithDefaults neg label comment ctx = do
   let qs = M.toAscList ctx
   M.fromList <$> mapM (enrichAnnWithDefaults neg label comment) qs
 
-enrichAnnWithDefaults :: Bool -> Text -> Text -> (Type, FreeTemplate) -> ProveMonad (Type, FreeTemplate)
-enrichAnnWithDefaults neg label comment (t, ann) = do
+enrichAnnWithDefaults :: TemplateOptions -> Text -> Text -> (Type, FreeTemplate) -> ProveMonad (Type, FreeTemplate)
+enrichAnnWithDefaults opts label comment (t, ann) = do
   pot <- potForType t 
   id <- genAnnId
-  return (t, P.enrichWithDefaults pot neg id label comment ann)
+  return (t, P.enrichWithDefaults pot opts id label comment ann)
 
-defaultAnn :: Map Type [Id] -> Text -> Text -> ProveMonad FreeAnn
+
+freshAnn :: Map Type [Id] -> Text -> Text -> TemplateOptions -> ProveMonad FreeAnn
+freshAnn args label comment opts = do
+  anns <- mapM (\(t, vars) -> (t, ) <$> freshTempl t opts label comment vars) $ M.toAscList args
+  return $ M.fromList anns
+
+defaultAnn :: Map Type [Id] -> Text -> Text  -> ProveMonad FreeAnn
 defaultAnn args label comment = do
   anns <- mapM (\(t, vars) -> (t, ) <$> defaultTempl t label comment vars) $ M.toAscList args
   return $ M.fromList anns
+
+
 
 singleAnn :: Potential -> Type -> Map Type [Id] -> Text -> Text -> ProveMonad FreeAnn
 singleAnn pot nonZeroType args label comment = do
@@ -212,24 +229,20 @@ singleAnn pot nonZeroType args label comment = do
   where templForType (t, vars) = do
           templ <- if t == nonZeroType
                    then defaultTemplFor pot label comment vars 
-                   else emptyTempl t label comment vars
+                   else emptyTempl label comment vars []
           return (t, templ)
-                  
+
+freshTempl :: Type -> TemplateOptions -> Text -> Text -> [Id] -> ProveMonad FreeTemplate
+freshTempl t opts = withPotAndId t (P.templForPot opts)
   
 defaultTempl :: Type -> Text -> Text -> [Id] -> ProveMonad FreeTemplate
-defaultTempl t = withPotAndId t P.defaultTempl
+defaultTempl t = withPotAndId t P.defaultTemplForPot
 
-defaultTemplFor :: Potential -> Text -> Text -> [Id] -> ProveMonad FreeTemplate
-defaultTemplFor = withId P.defaultTempl
+defaultTemplFor :: Potential -> Text -> Text -> [Id]  -> ProveMonad FreeTemplate
+defaultTemplFor = withId P.defaultTemplForPot
 
-defaultNegTempl :: Type -> Text -> Text -> [Id] -> ProveMonad FreeTemplate
-defaultNegTempl t = withPotAndId t P.defaultNegTempl
-
-emptyArrayFromIdxs :: Type -> [(JudgementType, CoeffIdx)] -> Text -> [Id] -> ProveMonad TemplateArray
-emptyArrayFromIdxs t idxs label args = templArrayFromIdxs t idxs label args emptyTempl
-
-defaultArrayFromIdxs :: Type -> [(JudgementType, CoeffIdx)] -> Text -> [Id] -> ProveMonad TemplateArray
-defaultArrayFromIdxs t idxs label args = templArrayFromIdxs t idxs label args defaultTempl
+emptyArrayFromIdxs :: Id -> [(JudgementType, CoeffIdx)] -> Text -> [Id] -> [Id] -> ProveMonad TemplateArray
+emptyArrayFromIdxs x idxs label args ghosts = templArrayFromIdxs x idxs label args ghosts emptyTempl
 
 defineByShift :: FreeAnn -> FreeAnn -> (Term -> Term) -> ProveMonad (FreeAnn, [Constraint])
 defineByShift qs_ ps shift = do
@@ -256,20 +269,22 @@ defineByPlus :: FreeAnn -> FreeAnn -> Term -> ProveMonad (FreeAnn, [Constraint])
 defineByPlus qs_ ps t = defineByShift qs_ ps (\s -> sum [s,t])
 
 
-templArrayFromIdxs :: Type -> [(JudgementType, CoeffIdx)] -> Text -> [Id] ->
-  (Type -> Text -> Text -> [Id] -> ProveMonad FreeTemplate) -> ProveMonad TemplateArray
-templArrayFromIdxs t idxs label args templGen = do
+templArrayFromIdxs :: Id -> [(JudgementType, CoeffIdx)] -> Text -> [Id] -> [Id]
+  -> (Text -> Text -> [Id] -> [Id] -> ProveMonad FreeTemplate)
+  -> ProveMonad TemplateArray
+templArrayFromIdxs x idxs label args ghosts templGen = do
   anns <- mapM annFromIdx idxs
   return $ M.fromList anns
   where annFromIdx (judgeT, idx) = (idx,) <$> do
           auxMode .= case judgeT of
             (Aux _) -> True
             _ -> False
-          t <- templGen t (label' idx) "" args
+          t <- templGen (label' idx) "" (addArgs idx ++ args) ghosts
           auxMode .= False
           return t
         printIdx idx = "(" ++ intercalate "," (map show (S.toAscList idx)) ++ ")"
-        label' idx = Te.concat [label, "_", Te.pack $ show idx]  
+        label' idx = Te.concat [label, "_", Te.pack $ show idx]
+        addArgs idx = (coeffArgs . mixed) (restrictFacs idx [2,1]) L.\\ args
 
 annCOptimize :: (FreeAnn, FreeAnn) -> FreeAnn -> ProveMonad [Term]
 annCOptimize (qs, qes) qs' = concat <$> mapM go (zip3 (M.assocs qs) (M.assocs qes) (M.assocs qs'))

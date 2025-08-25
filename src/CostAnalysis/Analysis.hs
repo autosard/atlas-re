@@ -27,7 +27,9 @@ import Typing.Type
 import CostAnalysis.Potential(PotFnMap, Potential (cExternal), auxSigs)
 import CostAnalysis.Potential.Kind (fromKind)
 import Control.Monad.Extra (concatMapM, ifM)
-import CostAnalysis.Template (TermTemplate, FreeTemplate)
+import CostAnalysis.Template (TermTemplate, FreeTemplate,
+                              defaultTemplOpts,
+                              TemplateOptions(..))
 import CostAnalysis.Weakening (annFarkas)
 import CostAnalysis.Predicate(potForMeasure)
 import CostAnalysis.Annotation 
@@ -228,9 +230,9 @@ genFunAnn fn@(FunDef funAnn _ _ _) = do
   from <- defaultAnn argsFrom "Q" "fn"
   fromRef <- ifM (view rhsTerms)
     (defaultAnn argsTo "QE" "fn")
-    (emptyAnn argsTo "QE" "fn")
-  fromCfs <- mapM (const $ genCf argsFrom argsTo) [1..numCfSigs]
-  toCfs <- mapM (const $ defaultAnn argsTo "P'" "fn cf") [1..numCfSigs]
+    (emptyAnn (M.map (,[]) argsTo) "QE" "fn")
+  (fromCfs, toCfs) <- unzip <$> mapM (const $ genCf argsFrom argsTo) [1..numCfSigs]
+  -- toCfs <- mapM (const $ defaultAnn argsTo "P'" "fn cf") [1..numCfSigs]
   auxs <- M.fromList . concat <$> mapM (genAuxs argsFrom argsTo) (M.assocs pots)
   return $ FunAnn
     (FunSig (from, fromRef) to)
@@ -238,18 +240,20 @@ genFunAnn fn@(FunDef funAnn _ _ _) = do
     auxs
     (hasPotential fn)
   where genCf argsFrom argsTo= do
-          q <- defaultAnn argsFrom "P" "fn cf" 
+          let opts = defaultTemplOpts {ghostVars=True}
+          q <- freshAnn argsFrom "P" "fn cf" opts
           qe <- ifM (view rhsTerms)
-            (defaultAnn argsTo "PE" "fn cf")
-            (emptyAnn argsTo "PE" "fn cf")
-          return (q, qe)
+            (freshAnn argsTo "PE" "fn cf" opts)
+            (emptyAnn (M.map (,[]) argsTo) "PE" "fn cf")
+          q' <- freshAnn argsTo "P'" "fn cf" opts
+          return ((q, qe), q')
         genAux argsFrom argsTo t m = do
           let pot = (fromKind . potForMeasure) m
           auxPotentials . at t ?= pot
           q <- singleAnn pot t argsFrom "A" "fn aux"
           qe <- ifM (view rhsTerms)
             (defaultAnn argsTo "AE" "fn aux")
-            (emptyAnn argsTo "AE" "fn aux")
+            (emptyAnn (M.map (,[]) argsTo) "AE" "fn aux")
           q' <- singleAnn pot t argsTo "A'" "fn aux"
           return (FunSig (q, qe) q')
         genAuxs argsFrom argsTo (t, (pot, _)) = do

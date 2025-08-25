@@ -1,4 +1,3 @@
-{-# LANGUAGE StrictData #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -24,7 +23,10 @@ import CostAnalysis.Template (Template(..),
                               BoundTemplate(..),
                               TemplateArray,
                               calculateBound,
-                              bindTemplate)
+                              bindTemplate,
+                              TemplateOptions(..),
+                              emptyTempl,
+                              defaultTemplOpts)
 import qualified CostAnalysis.Template as Templ
 import Typing.Type (Type)
 import Ast hiding (FunRsrcAnn)
@@ -38,7 +40,7 @@ data JudgementType =
   | Cf Int
   | CfAny
   | Aux Measure
-  deriving Show
+  deriving (Eq, Show)
 
 type LeMatrix = (V.Vector (V.Vector Rational), [Rational])
 
@@ -64,9 +66,9 @@ data Potential = Potential {
   -- Annotation
   
   -- | @ 'template' id label comment vars (rangeA, rangeB) @ constructs a fresh function template with arguments from @vars@ (types are considered). @rangeA@, @rangeB@ are used to define non-zero coefficients. @id@ specifies a unique identifier for the annotation and @label@ is the human readable label, e.g \"Q\", \"Q\'\" or \"P\".
-  template :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> FreeTemplate,
+  template :: Int -> Text -> Text -> [Id] -> TemplateOptions -> FreeTemplate,
 
-  ranges :: AnnRanges,
+--  ranges :: AnnRanges,
 
   -- | @ 'oneCoeff'@ returns the coefficient index for the constant basic potential function.
   oneCoeff :: CoeffIdx,
@@ -89,7 +91,7 @@ data Potential = Potential {
   cLetBodyMulti :: FreeTemplate -> TemplateArray -> Id -> [CoeffIdx] -> FreeTemplate -> (FreeTemplate, [Constraint]),
 
   -- | @ 'letCfIdxs' q xs (rangeA, rangeB) x@ generates an index for every cf derivation in the rule from the indices in @q@ and the given ranges.
-  letCfIdxs :: FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [(JudgementType, CoeffIdx)],
+  letCfIdxs :: FreeTemplate -> [Id] -> TemplateOptions -> Id -> [(JudgementType, CoeffIdx)],
 
   -- | @ 'cLetCf' q ps_ ps'_ x is = (ps, ps', cs)@
   cLetCf :: FreeTemplate -> TemplateArray -> TemplateArray -> Id -> ([Id], [Id]) -> [CoeffIdx] -> (TemplateArray, TemplateArray, [Constraint]),
@@ -105,23 +107,21 @@ data Potential = Potential {
   printBasePot :: CoeffIdx -> String,
 
   auxSigs :: [(Measure, ProveKind)]}
-
-defaultNegTempl :: Potential -> Int -> Text -> Text -> [Id] -> FreeTemplate
-defaultNegTempl pot id label comment args = template pot id label comment args abRanges
-  where abRanges = (rangeA (ranges pot), rangeBNeg (ranges pot))
   
-defaultTempl :: Potential -> Int -> Text -> Text -> [Id] -> FreeTemplate
-defaultTempl pot id label comment args = template pot id label comment args abRanges 
-  where abRanges = (rangeA (ranges pot), rangeB (ranges pot))
+templForPot :: TemplateOptions -> Potential -> Int -> Text -> Text -> [Id] -> FreeTemplate
+templForPot opts pot id label comment args = template pot id label comment args opts
 
-emptyAnn :: Potential -> Int -> Text -> Text -> [Id] -> FreeTemplate
-emptyAnn pot id label comment args = FreeTemplate id args label comment S.empty
+defaultTemplForPot :: Potential -> Int -> Text -> Text -> [Id] -> FreeTemplate
+defaultTemplForPot pot id label comment args =
+  template pot id label comment args defaultTemplOpts
 
-enrichWithDefaults :: Potential -> Bool -> Int -> Text -> Text -> FreeTemplate -> FreeTemplate
-enrichWithDefaults pot neg id label comment origin =
-  FreeTemplate id (args origin) label comment (idxs origin `S.union` idxs
-                                               (templGen pot id "" "" (args origin)))
-  where templGen = if neg then defaultNegTempl else defaultTempl
+enrichWithDefaults :: Potential -> TemplateOptions -> Int -> Text -> Text -> FreeTemplate -> FreeTemplate
+enrichWithDefaults pot opts id label comment origin = origin {
+  _ftId=id,
+  _ftLabel=label,
+  _ftComment=comment,
+  _ftCoeffs=idxs origin `S.union` idxs tDefault}
+  where tDefault = templForPot opts pot id "" "" (args origin) 
 
 
 defineByExceptConst :: Potential -> FreeTemplate -> FreeTemplate -> (FreeTemplate, [Constraint])
@@ -139,14 +139,14 @@ printBound pots (FunSig (from, fromRef) to) solution =
   where bounds = filter (/= "0") (map costForType (M.keys from))
         costForType :: Type -> String
         costForType t = let pot = fst $ pots M.! t
-                            to' = fromMaybe (emptyAnn pot 0 "" "" []) $ to M.!? t
-                            from' = fromMaybe (emptyAnn pot 0 "" "" []) $ from M.!? t
-                            fromRef' = fromMaybe (emptyAnn pot 0 "" "" []) $ fromRef M.!? t
+                            to' = fromMaybe (emptyTempl 0 "" "" [] []) $ to M.!? t
+                            from' = fromMaybe (emptyTempl 0 "" "" [] []) $ from M.!? t
+                            fromRef' = fromMaybe (emptyTempl 0 "" "" [] []) $ fromRef M.!? t
                             bound = calculateBound ((from', fromRef'), to') solution in
                           printPotential pot bound
 
 printPotential :: Potential -> BoundTemplate -> String
-printPotential pot (BoundTemplate _ coeffs) = 
+printPotential pot (BoundTemplate _ _ coeffs) = 
   printTerms printProd $ map (first (printPotTerm pot)) (M.assocs coeffs')
   where coeffs' = M.filter (/= 0) coeffs
         

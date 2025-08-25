@@ -5,6 +5,7 @@ module CostAnalysis.Potential.RightHeavy.Base where
 
 import Prelude hiding ((^))
 import qualified Data.Set as S
+import Data.Set(Set)
 import Data.Text(Text)
 import qualified Data.Text as T
 import qualified Data.List as L
@@ -27,27 +28,40 @@ data Args = Args {
 
 potType = TreeType
 
-ranges :: Args -> AnnRanges
-ranges potArgs = AnnRanges (aRange potArgs) (bRange potArgs) (-1:bRange potArgs)
+-- ranges :: Args -> AnnRanges
+-- ranges potArgs = AnnRanges (aRange potArgs) (bRange potArgs) (-1:bRange potArgs)
 
-template :: Int -> Text -> Text -> [Id] -> ([Int], [Int]) -> FreeTemplate
-template id label comment args ranges =
-  FreeTemplate id args label comment $ S.fromList
+template :: Args -> Int -> Text -> Text -> [Id] -> TemplateOptions -> FreeTemplate
+template potArgs id label comment args opts =
+  let rangeA = aRange potArgs
+      rangeB = bRange potArgs
+      ghosts = ["!g1" | ghostVars opts] in
+  FreeTemplate id args ghosts label comment $ S.fromList
   (map Pure args
-   ++ logCoeffs args ranges
-   ++ iversonCoeffs args)
+   ++ logCoeffs args (rangeA, rangeB `L.union` [-1 | negBindingConst opts])
+   ++ iversonCoeffs args ghosts rangeB)
 
 -- x_1^(1,1) + ... + x_n^(1,1) < y^(2,1)
-iversonCoeffs :: [Id] -> [CoeffIdx]
-iversonCoeffs args = 
-  [[mix|x^(2,1),_yArgs|]
-  | x <- args,
-    ys <- sums (L.delete x args),
-    (not . null) ys,
-    let yArgs = S.fromList $ map (`Arg` [1,1]) ys]
+iversonCoeffs :: [Id] -> [Id] -> [Int] -> [CoeffIdx]
+iversonCoeffs args ghosts cRange = 
+  [[mix|x^(2,1),_ys|]
+  | x <- args ++ ghosts,
+    ys <- map S.fromList $ sums (L.delete x args) cRange,
+    (not . null) ys]
+    
 
-sums :: [Id] -> [[Id]]
-sums = foldr (\x -> concatMap (\y -> [y,x:y])) [[]] 
+sums :: [Id] -> [Int] -> [[Factor]]
+sums args cRange = 
+  concatMap (\xs -> let varFacs = map (`Arg` [1,1]) xs in
+                      varFacs:[cFac:varFacs |
+                               c <- cRange,
+                               c /= 0,
+                               let cFac = Const c])
+  (varSums args)
+
+  
+varSums :: [Id] -> [[Id]]
+varSums = tail . foldr (\x -> concatMap (\y -> [y,x:y])) [[]] 
 
 oneCoeff :: CoeffIdx
 oneCoeff = [mix|2|]
@@ -59,21 +73,21 @@ monoFnCoeff :: MonoFn -> [Id] -> Int -> Maybe CoeffIdx
 monoFnCoeff _ _ _ = Nothing
 
 cExternal :: FreeTemplate -> FreeTemplate -> [Constraint]
-cExternal q q' = concatMap (\i -> zero (q!i)) $ mixes2 q
+cExternal q q' = concatMap (\i -> zero (q!i)) (mixes2 q)
+  ++ zero (q![mix|1|])
 
-letCfIdxs :: FreeTemplate -> [Id] -> ([Int], [Int]) -> Id -> [(JudgementType, CoeffIdx)] 
-letCfIdxs q xs (rangeA, rangeB) x = [(Cf 0, [mix|_bs,x^d,e|])
-  | idx <- mixesForVars1 q xs,
-    let bs = idxToSet idx,
-    (not . null) bs,
-    d <- rangeA,
-    e <- rangeB,
-    d + max e 0 > 0]
-  -- ++ [(Aux Weight, [mix|_bs,x^(1,1)|])
-  --    | idx <- mixesForVars2 q xs,
-  --      onlyFac [2,1] idx,
-  --      let bs = idxToSet idx,
-  --      (not . null) bs]                                   
+letCfIdxs :: Args -> FreeTemplate -> [Id] -> TemplateOptions -> Id -> [(JudgementType, CoeffIdx)] 
+letCfIdxs args q delta opts x
+  = logCfIdxs (aRange args, bRange args) q delta opts x
+  ++ (L.nub . concat)
+  [[(CfAny, [mix|_bs,x^(1,1)|]),
+    (CfAny, [mix|_bs,c,x^(1,1)|])]
+  | idx <- mixes2 q,
+    let rhs = varsForFac idx [2,1],
+    all (`elem` delta) rhs,
+    let bs = varsRestrict idx delta,
+    let c = constFactor idx,
+    (not . null) bs]
 
 printBasePot :: CoeffIdx -> String
 printBasePot (Pure x) = "rh(" ++ T.unpack x ++ ")"

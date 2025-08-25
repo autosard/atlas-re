@@ -21,8 +21,7 @@ import Data.Ratio((%))
 
 pot :: Args -> Potential
 pot args = Potential
-  template
-  (ranges args)
+  (template args)
   oneCoeff
   zeroCoeff
   monoFnCoeff
@@ -30,7 +29,7 @@ pot args = Potential
   (cMatch args)
   (constCases args)
   cLetBodyMulti
-  letCfIdxs
+  (letCfIdxs args)
   cLetCf
   (genExpertKnowledge args)
   cExternal
