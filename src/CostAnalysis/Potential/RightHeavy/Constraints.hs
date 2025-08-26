@@ -24,97 +24,50 @@ import CostAnalysis.Predicate (Predicate (Predicate), PredOp (..), anyImplies)
 exp :: Id
 exp = "e1"
 
+logArgs = Log.Args{
+                 Log.leafRank=False,
+                 Log.rankL=0,
+                 Log.rankR=0,
+                 Log.rankLR=0}
+
 cConst :: PositionedExpr -> Set Predicate -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
-cConst (Leaf {}) _ (q, qe) q'
-  = concat [eqSum (q![mix|c|]) ([q'!?[mix|exp^a,b|]
-                                | a <- [0..c],
-                                  let b = c - a,
-                                  a + b == c])
-           | idx <- mixes1 q,
-             let c = constFactor idx,
-             c >= 2]
-    ++ concat [zero (q'!idx)
-       | let qConsts = S.fromList $ (filter (>=1) . map constFactor) (mixes1 q),
-         idx <- mixes1 q',
-         idxSum idx >= 2,
-         idxSum idx `S.notMember` qConsts]
-    ++ concat [zero (q!idx)
-              | idx <- mixes2 q]
---    ++ zero (q'!exp)
-cConst e@(Node (Var t) _ (Var u)) preds (q, qe) q'
-  = let tLtU = [mix|t^(1,1),u^(2,1)|] in
-  caseIndependentCs 
+cConst e@(Leaf {}) _ (q, _) q' =
+  Log.cConst logArgs e q q'
+  ++ concat [zero (q!idx)
+            | idx <- mixes2 q]
+cConst e@(Node (Var t) _ (Var u)) preds (q, qe) q' =
+  let tLtU = [mix|t^(1,1),u^(2,1)|] in
+    Log.cConst logArgs e q q'
+    ++ eq (q!?t) (q'!?exp)
+    ++ eq (q!?u) (q'!?exp)
     ++ eq (q!?tLtU) (q'!?exp)
     ++ concat [eq (q!idx) (q'!?[mix|_xs,exp^(a,b)|])
               | idx <- mixes2 q,
                 let (a,b) = facForVar2 idx t,
                 (a,b) == facForVar2 idx u,
                 let xs = except idx [t,u]]
-  where caseIndependentCs =
-          eq (q!?t) (q'!?exp)
-          ++ eq (q!?u) (q'!?exp)
-          ++ concat [eq (q!idx) (q'!?[mix|exp^a,c|])
-                | idx <- mixes1 q,
-                  let a = facForVar idx t,
-                  a == facForVar idx u,
-                  let c = constFactor idx,
-                  a + c > 0]
-          ++ concat [zero (q![mix|t^a,c|])
-                | idx <- mixes1 q,
-                  onlyVarsOrConst idx [t],
-                  let c = constFactor idx,
-                  let a = facForVar idx t]
-          ++ concat [zero (q![mix|u^a,c|])
-                | idx <- mixes1 q,
-                  onlyVarsOrConst idx [u],
-                  let c = constFactor idx,
-                  let a = facForVar idx u]
-          ++ concat [zero (q'![mix|exp^a,c|]) 
-                | idx <- mixes1 q',
-                  let a = facForVar idx exp,
-                  let c = constFactor idx,
-                  a + c > 0,
-                  [mix|t^a,u^a,c|] `S.notMember` idxs q]
-  
-cConst (Ast.Const id _) preds (q, _) q' = error $ "Constructor '" ++ T.unpack id ++ "' not supported."
       
 cMatch :: FreeTemplate -> FreeTemplate -> Maybe Predicate -> Id -> [Id] -> (FreeTemplate, [Constraint])
--- leaf  
 cMatch q p _ x [] = extend p $
   [(`eq` (q!y)) <$> def y | y <- args q L.\\ [x,"!g1"]]
-  ++ [(`eqSum` qs) <$> def [mix|_xs, c|]
-     | ((xs, c), qs) <- sums]
+  ++ Log.cMatch logArgs q x []
   ++ [(`eqSum` qs) <$> def [mix|_xs, c|]
      | ((xs, c), qs) <- iverSums]
-  where sums = groupSort $
-            [((xs, c), q!idx) 
-            | idx <- mixes1 q,
-              let a = facForVar idx x,
-              let b = constFactor idx,
-              a >= 0, b >= 0,
-              let c = a + b,
-              let xs = varsExcept idx [x]]
-        iverSums = groupSort $
-            [((xs, d), q!idx) 
-            | idx <- mixes2 q,
-              let (a,b) = facForVar2 idx x,
-              let c = constFactor idx,
-              let d = c + b,
-              let xs = varsExcept idx [x]]
+  where iverSums = groupSort $
+                   [((xs, d), q!idx) 
+                   | idx <- mixes2 q,
+                     let (a,b) = facForVar2 idx x,
+                     let c = constFactor idx,
+                     let d = c + b,
+                     let xs = varsExcept idx [x]]
 
--- node
-cMatch q r _ x [t, u]
-  = extend r $
+cMatch q r _ x xs@[t, u] = extend r $
   [
     (`eq` (q!x)) <$> def t,
     (`eq` (q!x)) <$> def u,
     (`eq` (q!x)) <$> def [mix|t^(1,1),u^(2,1)|]
   ]
-  ++ [(`eq` (q!idx)) <$> def [mix|_xs,t^a,u^a,b|]
-     | idx <- mixes1 q,
-       let a = facForVar idx x,
-       let b = constFactor idx,
-       let xs = varsExcept idx [x]]
+  ++ Log.cMatch logArgs q x xs
   ++ [(`eq` (q!?z)) <$> def z | (Pure z) <- pures q, z /= x]
   ++ [(`eq` (q!idx)) <$> def [mix|_xs,t^(a,b),u^(a,b)|]
      | idx <- mixes2 q,

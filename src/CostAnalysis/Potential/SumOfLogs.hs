@@ -12,7 +12,7 @@ import CostAnalysis.Potential.SumOfLogs.Constraints
 import CostAnalysis.Potential.SumOfLogs.Optimization
 import CostAnalysis.Potential.SumOfLogs.Weakening
 import CostAnalysis.Potential(Potential(Potential))
-import CostAnalysis.Potential.Logarithm.Constraints
+import CostAnalysis.Potential.Logarithm.Constraints hiding (Args, cConst, cMatch)
 import CostAnalysis.Potential.Common(auxSigs)
 import CostAnalysis.Annotation(Measure(Weight))
 import CostAnalysis.Predicate(PredOp(Le))
