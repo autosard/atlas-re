@@ -22,7 +22,8 @@ data Args = Args {
   leafRank :: Bool,
   rankL :: !Rational,
   rankR :: !Rational,
-  rankLR :: !Rational
+  rankLR :: !Rational,
+  rankOne :: Bool
 }
 
 cConst :: Args -> PositionedExpr -> FreeTemplate -> FreeTemplate -> [Constraint]
@@ -40,28 +41,32 @@ cConst (Args{leafRank=rank}) (Leaf {}) q q' =
          idx <- mixes1 q',
          idxSum idx >= 2,
          idxSum idx `S.notMember` qConsts]
-cConst args@(Args {rankL=cL, rankR=cR, rankLR=cLR}) e@(Node (Var x1) _ (Var x2)) q q'
+cConst args@(Args {rankL=cL, rankR=cR, rankLR=cLR, rankOne=rank})
+  e@(Node (Var x1) _ (Var x2)) q q'
     = eq (q!?[mix|x1^1|]) (prod [ConstTerm cL, q'!?exp])
       ++ eq (q!?[mix|x2^1|]) (prod [ConstTerm cR, q'!?exp])
       ++ eq (q!?[mix|x1^1,x2^1|]) (sum [
                                       prod [ConstTerm cLR, q'!?exp],
                                       q'!?[mix|exp^1|]])
+      ++ eqSum (q!?[mix|2|]) (q'!?[mix|2|] : [q'!?exp | rank])
       ++ concat [eq (q!idx) (q'!?[mix|exp^a,c|])
                 | idx <- mixes1 q,
                   let a = facForVar idx x1,
                   a == facForVar idx x2,
                   let c = constFactor idx,
---                  a + c > 0,
+                  not (a == 0 && c == 2),
                   c /= 0]
-      ++ concat [zero (q![mix|x1^a,c|])
+      ++ concat [zero (q!idx)
                 | idx <- mixes1 q,
                   onlyVarsOrConst idx [x1],
+                  not $ justConst idx,
                   let c = constFactor idx,
                   c /= 0,
                   let a = facForVar idx x1]
-      ++ concat [zero (q![mix|x2^a,c|])
+      ++ concat [zero (q!idx)
                 | idx <- mixes1 q,
                   onlyVarsOrConst idx [x2],
+                  not $ justConst idx,
                   let c = constFactor idx,
                   c /= 0,
                   let a = facForVar idx x2]            
@@ -86,19 +91,21 @@ cMatch (Args{leafRank=rank}) q x [] =
               a >= 0, --b >= 0,
               let c = a + b,
               let xs = varsExcept idx [x]]
-cMatch (Args {rankL=cL, rankR=cR, rankLR=cLR}) q x [u, v] = 
+cMatch (Args {rankL=cL, rankR=cR, rankLR=cLR, rankOne=rank}) q x [u, v] = 
   [(`eq` prod [ConstTerm cL, q!x]) <$> def [mix|u^1|],
    (`eq` prod [ConstTerm cR, q!x]) <$> def [mix|v^1|],
    (`eq` sum [
        q![mix|x^1|],
-       prod [ConstTerm cLR, q!x]]) <$> def [mix|u^1,v^1|]]
+       prod [ConstTerm cLR, q!x]]) <$> def [mix|u^1,v^1|],
+   (`eqSum` ((q![mix|2|]):[q!x | rank])) <$> def [mix|2|]]
   ++ [(`eq` (q!idx)) <$> def [mix|_xs,u^a,v^a,b|]
      | idx <- mixes1 q,
        let a = facForVar idx x,
        let b = constFactor idx,
        let xs = varsExcept idx [x],
-       not (null xs && b == 0)]
-
+       not (null xs && b == 0),
+       not (null xs && a == 0 && b == 2)]
+ 
 cLetBodyMulti :: FreeTemplate -> TemplateArray -> Id -> [CoeffIdx] -> FreeTemplate -> (FreeTemplate, [Constraint])
 cLetBodyMulti _ ps' x is r_ = extend r_ $
   [(`eq` (ps'!!i![mix|exp^d,e|])) <$> def i

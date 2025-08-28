@@ -19,13 +19,17 @@ import Text.Megaparsec(SourcePos, unPos, sourceLine, sourceColumn)
 import Data.List(intercalate)
 import Prelude hiding (break)
 
-import Primitive(Id, printRat)
+import Primitive(Id, printRat, traceShow)
 import Typing.Type (Type, splitProdType, splitFnType)
 import Typing.Subst(Types(apply, tv))
 import Typing.Scheme (Scheme, toType)
 import Data.Tuple (swap)
 import Data.List.Extra (groupSort)
-import CostAnalysis.Annotation(BoundFunAnn, BoundAnn)
+import CostAnalysis.Annotation(BoundFunAnn,
+                               BoundAnn,
+                               FunAnn(..),
+                               FunSig(..))
+import CostAnalysis.Template(idxs)       
     
 type Fqn = (Text, Text)
 
@@ -86,7 +90,8 @@ data FunDef a = FunDef (XFunAnn a) Id [Id] (Expr a)
 hasPotential :: FunDef Positioned -> Bool
 hasPotential fn = case tfCostAnn (funAnn fn) of
                     Just (Cost True _) -> False
-                    Just _ -> True
+                    Just (Coeffs target) -> let ann = to . withCost $ target in
+                      any ((not . null) . idxs) $ M.elems ann
                     Nothing -> True
 
 data Op = LT | EQ | GT

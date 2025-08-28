@@ -29,19 +29,24 @@ import Data.Maybe (maybeToList)
 exp :: Id
 exp = "e1"
 
+logArgs :: Args -> Log.Args
+logArgs (Args {logL=cL, logR=cR, logLR=cLR}) =
+  Log.Args{
+    Log.leafRank=True,
+    Log.rankL=cL,
+    Log.rankR=cR,
+    Log.rankLR=cLR,
+    Log.rankOne=False}
+
 constCases :: Args -> Pattern Positioned -> [Predicate]
 constCases _ (ConstPat _ "leaf" _) = []
 constCases args p@(ConstPat _ "node" [Id _ t, _, Id _ u])
   = maybeToList (predFromInvariant args t u (getType p))
 
 cConst :: Args -> PositionedExpr -> Set Predicate -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
-cConst (Args {logL=cL, logR=cR, logLR=cLR}) e@(Leaf {}) _ (q, _) q' =
-  Log.cConst (Log.Args{
-                 Log.leafRank=True,
-                 Log.rankL=cL,
-                 Log.rankR=cR,
-                 Log.rankLR=cLR}) e q q' 
-cConst args@(Args {logL=cL, logR=cR, logLR=cLR}) e@(Node (Var x1) _ (Var x2)) preds (q, qe) q'
+cConst args e@(Leaf {}) _ (q, _) q' =
+  Log.cConst (logArgs args) e q q' 
+cConst args e@(Node (Var x1) _ (Var x2)) preds (q, qe) q'
     = let invariantCs = case predFromInvariant args x1 x2 (getType e) of
             Just p -> case anyImplies preds p of
               (True, cs) -> cs
@@ -49,29 +54,17 @@ cConst args@(Args {logL=cL, logR=cR, logLR=cLR}) e@(Node (Var x1) _ (Var x2)) pr
             Nothing -> [] in
       eq (q!?x1) (q'!?exp) 
       ++ eq (q!?x2) (q'!?exp)
-      ++ Log.cConst (Log.Args{
-                        Log.leafRank=True,
-                        Log.rankL=cL,
-                        Log.rankR=cR,
-                        Log.rankLR=cLR}) e q q'
+      ++ Log.cConst (logArgs args) e q q'
   
       
 cMatch :: Args -> FreeTemplate -> FreeTemplate -> Maybe Predicate -> Id -> [Id] -> (FreeTemplate, [Constraint])
-cMatch (Args {logL=cL, logR=cR, logLR=cLR}) q p _ x [] = extend p $
+cMatch pArgs q p _ x [] = extend p $
   [(`eq` (q!y)) <$> def y | y <- L.delete x (args q)]
-  ++ Log.cMatch (Log.Args{
-                    Log.leafRank=True,
-                    Log.rankL=cL,
-                    Log.rankR=cR,
-                    Log.rankLR=cLR}) q x []
-cMatch (Args {logL=cL, logR=cR, logLR=cLR}) q r _ x xs@[u, v] = extend r $
+  ++ Log.cMatch (logArgs pArgs) q x []
+cMatch pArgs q r _ x xs@[u, v] = extend r $
   [
     (`eq` (q!x)) <$> def u,
     (`eq` (q!x)) <$> def v]
   ++ [(`eq` (q!y)) <$> def y | y <- L.delete x (args q)]
-  ++ Log.cMatch (Log.Args{
-                    Log.leafRank=True,
-                    Log.rankL=cL,
-                    Log.rankR=cR,
-                    Log.rankLR=cLR}) q x xs
+  ++ Log.cMatch (logArgs pArgs) q x xs
   

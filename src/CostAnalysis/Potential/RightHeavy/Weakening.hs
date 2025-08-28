@@ -18,7 +18,6 @@ import CostAnalysis.Weakening
 import CostAnalysis.Annotation(Measure(..))
 import CostAnalysis.Template(restrictFacs2)
 import qualified CostAnalysis.Predicate as P
-import CostAnalysis.Coeff (constFactor)
 
 
 supportedArgs = S.fromList [Mono, L2xy]

@@ -378,7 +378,7 @@ linCombOfSig args rangeK ((q, qe), q') (FunSig (p, pe) p') (FunSig (r, re) r')
   = concat
   [ and $
     unifyAssertEqBy q (add p (scale r (ConstTerm k))) args
---    ++ unifyAssertEqBy qe (add p (scale re (ConstTerm k))) (M.map Templ.args qe)
+    ++ unifyAssertEqBy qe (add pe (scale re (ConstTerm k))) (M.map Templ.args qe)
     ++ unifyAssertEq q' (add p' (scale r' (ConstTerm k)))
   | k <- rangeK] 
 
@@ -421,12 +421,15 @@ proveWeaken tactic@(Rule (R.Weaken wArgs) _) judgeType kind e (q, qe, preds) q' 
   let templOpts = Templ.defaultTemplOpts {Templ.negBindingConst=R.Neg `S.member` wArgs'}
   
   p <- enrichWithDefaults templOpts "P" "weaken" q
+  pe <- enrichWithDefaults templOpts "PE" "weaken" qe
   p' <- enrichWithDefaults templOpts "P'" "weaken" q'
 
   (pCs, p'Cs) <- case kind of
     Upper -> (,) <$>
       -- p <= q
-      annFarkas wArgs' preds p q
+      ((++) <$> annFarkas wArgs' preds p q
+      -- pe <= qe
+       <*> annFarkas wArgs' preds pe qe)
       -- q' <= p'
       <*> annFarkas wArgs' S.empty q' p'
     Lower -> (,) <$>
@@ -435,7 +438,7 @@ proveWeaken tactic@(Rule (R.Weaken wArgs) _) judgeType kind e (q, qe, preds) q' 
       -- p' <= q'
       <*> annFarkas wArgs' S.empty p' q'
   
-  deriv <- proveExpr t judgeType kind e (p, qe, preds) p'
+  deriv <- proveExpr t judgeType kind e (p, pe, preds) p'
   conclude (R.Weaken wArgs) judgeType kind (q, qe, preds) q' (pCs ++ p'Cs) e [deriv]
 
 proveShiftTerm :: Prove PositionedExpr Derivation
@@ -597,7 +600,9 @@ genTactic cfg rhsTerms judgeType e@(App {}) = autoWeaken cfg judgeType e $
   Rule R.ShiftConst [Rule R.App []]
 genTactic cfg rhsTerms judgeType e@(Let _ binding body) =
   let tBinding = genTactic cfg rhsTerms judgeType binding
-      t1 = tBinding
+      t1 = if rhsTerms
+           then Rule R.ShiftTerm [tBinding]
+           else tBinding
       t2 = genTactic cfg rhsTerms judgeType body
       ctx = peCtx $ getAnn e 
       neg = S.member BindsAppOrTickRec ctx in
@@ -658,4 +663,4 @@ proveFun fun@(FunDef _ fnId _ _) = do
   auxMode .= False
   
   return $ T.Node (R.FunRuleApp fun) (deriv:derivsCf ++ derivsAux)
---  return $ T.Node (R.FunRuleApp fun) (derivsCf ++ derivsAux)
+-- return $ T.Node (R.FunRuleApp fun) (derivsCf ++ derivsAux)

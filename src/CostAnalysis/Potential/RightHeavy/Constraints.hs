@@ -28,7 +28,8 @@ logArgs = Log.Args{
                  Log.leafRank=False,
                  Log.rankL=0,
                  Log.rankR=0,
-                 Log.rankLR=0}
+                 Log.rankLR=0,
+                 Log.rankOne=False}
 
 cConst :: PositionedExpr -> Set Predicate -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
 cConst e@(Leaf {}) _ (q, _) q' =
@@ -58,8 +59,11 @@ cMatch q p _ x [] = extend p $
                    | idx <- mixes2 q,
                      let (a,b) = facForVar2 idx x,
                      let c = constFactor idx,
-                     let d = c + b,
+                     let d = c + offset (a,b),
                      let xs = varsExcept idx [x]]
+        offset (2,1) = -1
+        offset (1,1) = 1
+        offset (0,0) = 0
 
 cMatch q r _ x xs@[t, u] = extend r $
   [

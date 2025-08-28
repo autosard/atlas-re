@@ -75,6 +75,7 @@ monoFnCoeff _ _ _ = Nothing
 cExternal :: FreeTemplate -> FreeTemplate -> [Constraint]
 cExternal q q' = concatMap (\i -> zero (q!i)) (mixes2 q)
   ++ zero (q![mix|1|])
+  ++ zero (q'![mix|1|])
 
 letCfIdxs :: Args -> FreeTemplate -> [Id] -> TemplateOptions -> Id -> [(JudgementType, CoeffIdx)] 
 letCfIdxs args q delta opts x

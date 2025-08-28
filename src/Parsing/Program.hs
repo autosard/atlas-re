@@ -207,9 +207,9 @@ pFunResourceAnn = do
   from <- pTypedResourceAnn
   pArrow
   to <- pTypedResourceAnn
-  -- let (from', fromRef) = split from to
-  --return (FunSig (from', fromRef) to)
-  return (FunSig (from, M.empty) to)
+  let (from', fromRef) = split from to
+  return (FunSig (from', fromRef) to)
+  --return (FunSig (from, M.empty) to)
 
 pTypedResourceAnn :: Parser BoundAnn
 pTypedResourceAnn = M.fromList <$> sepBy pResourceAnn (symbol ",")

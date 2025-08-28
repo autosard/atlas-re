@@ -8,9 +8,9 @@ import CostAnalysis.Potential(Potential(Potential))
 import CostAnalysis.Potential.Common(auxSigs)
 
 
-pot :: Potential
-pot = Potential
-  template
+pot :: Args -> Potential
+pot args = Potential
+  (template args)
   oneCoeff
   zeroCoeff
   monoFnCoeff
@@ -18,7 +18,7 @@ pot = Potential
   cMatch
   constCases
   cLetBodyMulti
-  letCfIdxs
+  (letCfIdxs args)
   cLetCf
   genExpertKnowledge
   cExternal
@@ -26,4 +26,7 @@ pot = Potential
   printBasePot
   auxSigs
 
-defaultPot = pot 
+defaultARange = [0,1]
+defaultBRange = [-1,0,1,2]
+
+defaultPot = pot $ Args defaultARange defaultBRange

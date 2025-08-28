@@ -193,8 +193,9 @@ addFullCostOptimization fn = do
   ann <- (M.! fn) <$> use sig
   let (FunSig (q, qe) q') = withCost ann
   costTerms <- annCOptimize (q, qe) q'
-  --absTerms <- mapM abs costTerms
-  let absTerms = []
+  absTerms <- ifM (view rhsTerms)
+    (mapM abs costTerms)
+    (return [])
   let costTerm = C.sum $ costTerms ++ absTerms
   optiTargets %= (costTerm:)
   where abs :: Term -> ProveMonad Term

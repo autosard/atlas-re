@@ -37,6 +37,6 @@ weightedNonRankDifference potArgs q q' = sum $ map weightedDiff pairs
 --   constantDifference q q']
 
 cOptimize :: Args -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Term]
-cOptimize _ (q, qe) q' = M.elems $ M.mapWithKey weighted (terms (symbolicCost q q'))
+cOptimize _ (q, qe) q' = M.elems $ M.mapWithKey weighted (terms (add qe (symbolicCost q q')))
   where weighted c v = prod [ConstTerm $ indexWeight' c, v]
 
