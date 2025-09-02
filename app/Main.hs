@@ -32,7 +32,7 @@ import Ast(Module(..),
            TypedExpr,
            Fqn, defs,
            printProg,
-           PositionedModule)
+           PositionedModule, funAnn, TypedFunAnn (tfFnConfig), FnConfig (costMode))
 import CostAnalysis.Coeff
 import CostAnalysis.PrettyProof(renderProof, css, js)
 
@@ -67,6 +67,7 @@ import CostAnalysis.Constraint (Constraint)
 import Control.Monad (when)
 import AstContext (contextualizeMod)
 import Benchmark(sort, genBenchmark, median)
+import Control.Concurrent (yield)
 
 type App a = LoggerT (Msg Severity) IO a
 
@@ -111,8 +112,9 @@ run Options{..} AnalyzeOptions{..} = do
         liftIO $ putStr "Done. "
         liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv sigCs)
         liftIO $ printSolution switchDumpCoeffs sig pots solution
-        liftIO $ putStrLn ""
-        liftIO $ putStrLn $ "objective: " ++ objective
+        liftIO $ when switchPrintObjective (do
+                                               putStrLn ""
+                                               putStrLn ("objective: " ++ objective))
 
 printAnalysisInfo :: PositionedModule -> IO ()
 printAnalysisInfo (Module {..}) = putStrLn $
@@ -135,7 +137,11 @@ printSolution dumpCoeffs sig potFns solution = do
   where printFnBound fn = do
           let fnSig = sig M.! fn
           putStrLn $ T.unpack fn ++ ":"
-          putStrLn $ "\t" ++ printBound potFns (withCost fnSig) solution
+          let CostSig s1 s2 = withCost fnSig
+          putStrLn $ "\t" ++ printBound potFns s1 solution
+          case s2 of
+            Just s -> putStrLn $ "\t" ++ printBound potFns s solution ++ " (worst case)"
+            Nothing -> putStr ""
         printPotFn (kind, (pot, rhs)) = do
           putStrLn $ "\t" ++ show kind ++ ": " ++ printRHS pot rhs solution 
           

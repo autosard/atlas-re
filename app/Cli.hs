@@ -54,6 +54,7 @@ data AnalyzeOptions = AnalyzeOptions {
   switchIncremental :: Bool,
   switchHideConstraints :: Bool,
   switchPrintProg :: Bool,
+  switchPrintObjective :: Bool,
   switchDumpCoeffs :: Bool}
 
 runOptionsP :: Parser AnalyzeOptions
@@ -81,7 +82,10 @@ runOptionsP = do
     <> help "Output the normalized program.")
   switchDumpCoeffs <- switch
     (long "dump-coeffs"
-    <> help "Dump the values of found coefficients.")      
+    <> help "Dump the values of found coefficients.")
+  switchPrintObjective <- switch
+    (long "print-objective"
+    <> help "Output the final value of the objective function.")      
   target <- argument (eitherReader parseFqn) (metavar "MODULE[.FUNCTION]" <> help "Analysis target. When a specific function is specified only this function and its dependencies are analyzed, which can save time.")
   return AnalyzeOptions{..}
 

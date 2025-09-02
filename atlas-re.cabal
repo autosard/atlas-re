@@ -96,17 +96,17 @@ library
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
-    build-depends:    base ^>= 4.17.2.1,
+    build-depends:    base ^>= 4.18,
                       containers,
-                      template-haskell ^>= 2.19.0.0,
-                      megaparsec,
+                      template-haskell ^>= 2.20,
+                      megaparsec ^>= 9.7.0,
                       text,
-                      mtl,
+                      mtl ^>= 2.3.1,
                       parser-combinators,
                       filepath ^>= 1.5.2.0,
                       Glob ^>= 0.10.2,
                       extra ^>= 1.7.14,
-                      array,
+                      array ^>= 0.5.8,
                       random ^>= 1.2.1,
                       microlens-platform ^>= 0.4.3,
                       random-fu ^>= 0.3,
@@ -128,16 +128,16 @@ executable atlas-re
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
     build-depends:
-        base ^>=4.17.2.1,
+        base ^>=4.18,
         atlas-re,
         text,
-        directory ^>= 1.3.8.5,
-        optparse-applicative ^>= 0.17.1.0,
+        directory ^>= 1.3.9,
+        optparse-applicative,
         filepath ^>= 1.5.2.0,
-        mtl ^>= 2.2.2,
+        mtl ^>= 2.3.1,
         containers,
         random ^>= 1.2.1,
-        co-log ^>= 0.6.1.0,
+        co-log ^>= 0.7,
         ansi-terminal >=1.0
     hs-source-dirs: app
     -- profiling: True

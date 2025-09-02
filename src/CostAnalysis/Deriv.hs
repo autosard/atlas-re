@@ -13,8 +13,7 @@ import Prelude hiding (or, and, negate, sum)
 
 import Ast hiding (Coefficient, CostAnnotation(..))
 import Constants (isBasicConst)
-import Primitive(Id, traceShow, traceShowV)
-import Control.Monad.RWS
+import Primitive(Id)
 
 import Lens.Micro.Platform
 import Typing.Type
@@ -42,9 +41,8 @@ import Data.Maybe (fromMaybe, mapMaybe, catMaybes)
 
 import CostAnalysis.Coeff (coeffArgs, justVars, CoeffIdx (Pure))
 import CostAnalysis.Potential.Kind (fromKind)
-import Control.Monad (when, unless)
-import CostAnalysis.ProveMonad (defaultAnn)
-import Control.Monad.Extra (ifM)
+import Control.Monad (foldM, zipWithM)
+import Control.Monad.Extra (maybeM)
   
 type ProofResult = (Derivation, [Constraint], FreeSignature)
 
@@ -341,9 +339,13 @@ noAuxSigs (Predicate m _ _ _ _ _) =
 proveApp :: Prove PositionedExpr Derivation
 proveApp tactic Standard kind e@(App id args) (q, qe, pred) q' = do
   fnSig <- use sig
-  let cSig = withCost $ fnSig M.! id
+  let CostSig s1 s2 = withCost $ fnSig M.! id
   let cfSigs = withoutCost $ fnSig M.! id
-  let cs = or $ concatMap (linCombOfSig (varsByType args) appScale ((q, qe), q') cSig) cfSigs
+  let cs = or $
+        concatMap (linCombOfSig (varsByType args) appScale ((q, qe), q') s1) cfSigs
+        ++ (case s2 of
+              Just s -> concatMap (linCombOfSig (varsByType args) appScale ((q, qe), q') s) cfSigs
+              Nothing -> [])
   conclude R.App Standard kind (q, qe, pred) q' cs e []
 proveApp tactic (Cf cf) kind e@(App id args) (q, qe, pred) q' = do
   fnSig <- use sig
@@ -352,6 +354,7 @@ proveApp tactic (Cf cf) kind e@(App id args) (q, qe, pred) q' = do
   let sigZero = FunSig (zero, zero) zero
   let cs = or $ linCombOfSig (orderArgsForCall q args) appScale ((q, qe), q') sigZero (cfSigs L.!! cf)
   conclude R.App (Cf cf) kind (q, qe, pred) q' cs e []
+--proveApp tactic judgeType kind e@(App id args) (q, qe, pred) q' | isCostFree judgeType = do
 proveApp tactic CfAny kind e@(App id args) (q, qe, pred) q' = do
   fnSig <- use sig
   let cfSigs = withoutCost $ fnSig M.! id
@@ -653,14 +656,17 @@ proveFun fun@(FunDef _ fnId _ _) = do
   derivsCf <- mapM (\(n, FunSig (p, pe) p') ->
                       proveFunBody Auto (Cf n) Upper fun (instGhostVars p, pe, S.empty) (instGhostVars p'))
               $ zip [0..] cfAnns
-  
-  
-  let (FunSig (q, qe) q') = withCost ann  
-  deriv <- proveFunBody Auto Standard Upper fun (q, qe, S.empty) q'
+
+  let (CostSig s1 s2) = withCost ann
+  deriv1 <- proveCostSig s1
+  deriv2 <- case s2 of
+    Just s -> L.singleton <$> proveCostSig s
+    Nothing -> return []
   
   auxMode .= True
   derivsAux <- mapM (\((measure, kind), FunSig (a, ae) a') -> proveFunBody Auto (Aux measure) kind fun (a, ae, S.empty) a') $ M.assocs auxAnns
   auxMode .= False
   
-  return $ T.Node (R.FunRuleApp fun) (deriv:derivsCf ++ derivsAux)
+  return $ T.Node (R.FunRuleApp fun) (deriv1:deriv2 ++ derivsCf ++ derivsAux)
+  where proveCostSig (FunSig (q, qe) q') = proveFunBody Auto Standard Upper fun (q, qe, S.empty) q'
 -- return $ T.Node (R.FunRuleApp fun) (derivsCf ++ derivsAux)

@@ -4,21 +4,17 @@ module CostAnalysis.Potential.RightHeavy.Constraints where
 
 import Prelude hiding (exp, (!!), sum, or, (^))
 import qualified Data.List as L
-import qualified Data.Set as S
 
-import Primitive(Id, traceShow, traceShowV)
+import Primitive(Id)
 import CostAnalysis.Template hiding (sum, sub)
 import CostAnalysis.Constraint hiding (Le, Lt)
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Coeff
-import CostAnalysis.Potential.RightHeavy.Base(oneCoeff)
 import qualified CostAnalysis.Potential.Logarithm.Constraints as Log
 import Ast hiding (PotentialKind(..))
-import CostAnalysis.Annotation(Measure(..))
 import Data.List.Extra (groupSort)
-import qualified Data.Text as T
 import Data.Set (Set)
-import CostAnalysis.Predicate (Predicate (Predicate), PredOp (..), anyImplies)
+import CostAnalysis.Predicate (Predicate)
 
 
 exp :: Id
@@ -47,6 +43,7 @@ cConst e@(Node (Var t) _ (Var u)) preds (q, qe) q' =
                 let (a,b) = facForVar2 idx t,
                 (a,b) == facForVar2 idx u,
                 let xs = except idx [t,u]]
+    ++ zero (q!?[mix|t^(2,1),u^(1,1)|])
       
 cMatch :: FreeTemplate -> FreeTemplate -> Maybe Predicate -> Id -> [Id] -> (FreeTemplate, [Constraint])
 cMatch q p _ x [] = extend p $

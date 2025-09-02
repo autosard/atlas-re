@@ -82,6 +82,7 @@ cExternal q q' =
     let t = if M.member idx u then q'!?(u M.! idx) else ConstTerm 0]
   ++ zero (q![mix|1|])
   ++ zero (q'![mix|1|])
+  ++ zero (q'![mix|2|])
   where u = apply q q'
     
 

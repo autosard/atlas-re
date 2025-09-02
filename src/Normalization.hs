@@ -1,9 +1,10 @@
 module Normalization where
 
 import Ast
-import Control.Monad.State (State, foldM, get, put, evalState)
+import Control.Monad.State (State, get, put, evalState)
 import Typing.Type
 import Primitive(Id, enumId)
+import Control.Monad (foldM)
 
 type Norm = State Int
 

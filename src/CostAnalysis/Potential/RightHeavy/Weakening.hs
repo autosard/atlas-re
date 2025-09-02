@@ -31,7 +31,7 @@ genExpertKnowledge wArgs preds args idxs = merge $ map select wArgs'
             m == Weight,
             op == P.Le || op == P.Lt || op == P.Eq]
         select Mono = merge [
-          monoLattice (monoLe preds') args idxs]
+          monoLattice (monoLe False preds') args idxs]
 --          iversonLeOne args idxs]
         select L2xy = merge [
           logLemma2 preds' args idxs,

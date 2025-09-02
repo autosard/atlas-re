@@ -9,8 +9,8 @@ import Typing.Inference (inferExpr)
 import System.Exit (die)
 import qualified Data.List as L
 import System.Random (randomRIO)
-import Control.Monad.State
-import qualified Data.IntMap as M
+import Control.Monad.Extra(replicateM)
+
 
 defaultAnn = SourcePos "bench" (mkPos 1) (mkPos 1)
 

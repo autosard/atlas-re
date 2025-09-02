@@ -34,11 +34,11 @@ import Ast
 import Typing.Type
 import Typing.Scheme
 import Control.Monad.RWS
-import Primitive(Id)
+import Primitive(Id, traceShow)
 import qualified CostAnalysis.Coeff as Coeff
 import CostAnalysis.Annotation (FunAnn(..),
                                 BoundAnn,
-                                split, FunSig(..))
+                                split, FunSig(..), CostSig (CostSig))
 import CostAnalysis.Template (BoundTemplate(..))
 import CostAnalysis.Coeff (coeffArgs)
 
@@ -71,17 +71,44 @@ quantifyTypeVar id = do
 type Parser = ParsecT Void Text (RWS ParserContext () ParserState)
 
 
+data ModPragmas = ModPragmas {
+  potMapping :: Maybe (Map Type PotentialKind),
+  rhsTerms :: Bool}
+  deriving (Show)
+
+defaultModPragmas = ModPragmas Nothing False
+
+
 pModule :: Parser (ModConfig, [ParsedFunDef])
 pModule = sc *> do
-  pots <- optional $ pPragma "POTENTIAL" pPotentialMapping
-  rhsTerms <- optional $ pPragma "RHSTERMS" (return True)
+  ModPragmas{..} <- pModPragmas
   let config = ModConfig
-        (fromMaybe M.empty pots)
-        (fromMaybe False rhsTerms)
+        (fromMaybe M.empty potMapping)
+        rhsTerms
   (config,) <$> manyTill pFunc eof
 
 pPragma :: Text -> Parser a -> Parser a
 pPragma word p = try $ between (symbol "{-#") (symbol "#-}") $ symbol word *> p
+
+pPotMappingPragma :: Parser (ModPragmas -> ModPragmas)
+pPotMappingPragma = do
+  p <- pPragma "POTENTIAL" pPotentialMapping
+  return $ \ps -> ps {potMapping = Just p}
+
+pRhsTermsPragma :: Parser (ModPragmas -> ModPragmas)
+pRhsTermsPragma = do
+  p <- pPragma "VALUE_VARS" (return True)
+  return $ \ps -> ps {rhsTerms = p}
+
+pModPragma :: Parser (ModPragmas -> ModPragmas)
+pModPragma = choice [pPotMappingPragma,
+                     pRhsTermsPragma]
+
+pModPragmas :: Parser ModPragmas
+pModPragmas = do
+  updates <- many pModPragma
+  return $ foldr (\f ps -> f ps) defaultModPragmas updates
+                     
 
 pPotentialMapping :: Parser (Map Type PotentialKind)
 pPotentialMapping = M.fromList <$> pParens (sepBy (do
@@ -110,17 +137,55 @@ data Signature = Signature
   Scheme
   (Maybe CostAnnotation)
 
-pNumCf :: Parser Int
-pNumCf = do
+pNumSig :: Parser Int
+pNumSig = do
   n <- pInt
   if n > 0 then return n else
-    fail "Number of cf derivations need to be at least one."
+    fail "Number of signatures must at least one."
+
+    
+
+data FunPragmas = FunPragmas {
+  costModePrag :: CostMode,
+  numCfSigs :: Maybe Int,
+  strongCfPrag :: Bool
+} deriving (Show)
+
+defaultFunPragmas = FunPragmas AmortizedCost Nothing False
+
+pCostModePragma :: Parser (FunPragmas -> FunPragmas)
+pCostModePragma = do
+  mode <- choice [
+    pPragma "MODE" (AmortizedCost <$ symbol "amortized"),
+    pPragma "MODE" (WorstCaseCost <$ symbol "worst_case"),
+    pPragma "MODE" (HybridCost <$ symbol "hybrid")]
+  return $ \ps -> ps {costModePrag = mode}
+
+pNumCfSigsPragma :: Parser (FunPragmas -> FunPragmas)
+pNumCfSigsPragma = do
+  n <- pPragma "NUM_CF_SIGS" pNumSig
+  return $ \ps -> ps {numCfSigs = Just n}
+
+pStrongCfPragma :: Parser (FunPragmas -> FunPragmas)
+pStrongCfPragma = do
+  strong <- pPragma "STRONG_CF" (return True)
+  return $ \ps -> ps {strongCfPrag = strong}  
+
+pFunPragma :: Parser (FunPragmas -> FunPragmas)
+pFunPragma = choice [pCostModePragma,
+                     pNumCfSigsPragma,
+                     pStrongCfPragma]
+
+pFunPragmas :: Parser FunPragmas
+pFunPragmas = do
+  updates <- many pFunPragma
+  return $ foldr (\f ps -> f ps) defaultFunPragmas updates
+   
 
 pFunc :: Parser ParsedFunDef
 pFunc = do
   pos <- getSourcePos
-  numCfs <- optional $ try (pPragma "NUMCF" pNumCf)
-  strongCf <- optional $ try (pPragma "STRONGCF" (return True))
+  FunPragmas{..} <- pFunPragmas
   sig <- optional pSignature
   funName <- pIdentifier
   (_type, cost) <- case sig of
@@ -132,8 +197,7 @@ pFunc = do
   let funFqn = (modName, funName)
   args <- manyTill pIdentifier (symbol "=")
   varIdentifiers %= (\s -> foldr S.insert s args)
-  let cfg = FnConfig numCfs
-            (fromMaybe False strongCf)
+  let cfg = FnConfig costModePrag numCfSigs strongCfPrag
   FunDef (ParsedFunAnn pos funFqn _type cost cfg) funName args <$> pExpr
 
 pSignature :: Parser Signature
@@ -148,15 +212,21 @@ pSignature = do
 pCoeffAnn :: Parser CostAnnotation
 pCoeffAnn = do
   symbol "|" 
-  withCost <- pFunResourceAnn
+  withCostPrimary <- pFunResourceAnn
+  withCostSecondary <- optional $ do
+    symbol ";"
+    pFunResourceAnn
   costFree <- optional $ pCurlyParens $ sepBy pFunResourceAnn (symbol ";")
-  return $ Coeffs (FunAnn withCost (fromMaybe [] costFree) M.empty False)
+  return $ Coeffs (FunAnn
+                   (CostSig withCostPrimary withCostSecondary)
+                   (fromMaybe [] costFree)
+                   M.empty)
 
 pCostAnn :: Parser CostAnnotation
 pCostAnn = do
   symbol "@"
   worstCase <- isJust <$> optional (symbol ">")
-  Cost worstCase <$> pTypedResourceAnn
+  Cost <$> pTypedResourceAnn
   
 pConstraints :: Parser ()
 pConstraints = void (try $ pParens (some pConstraint))

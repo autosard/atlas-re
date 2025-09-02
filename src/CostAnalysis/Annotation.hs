@@ -12,7 +12,7 @@ import qualified Data.Map.Merge.Strict as Merge(merge, zipWithMatched, mapMissin
 import Control.Monad.State
 import Lens.Micro.Platform hiding (to)
 
-import Primitive(Id, Substitution)
+import Primitive(Id, Substitution, traceShowV)
 import CostAnalysis.Template (Template,
                               TermTemplate,
                               BoundTemplate,
@@ -24,6 +24,7 @@ import CostAnalysis.Constraint
 import qualified CostAnalysis.Constraint as C
 import Typing.Type
 import CostAnalysis.Coeff
+import Data.Maybe (fromMaybe)
 
 
 type Ann a = Map Type a
@@ -173,23 +174,36 @@ type FreeFunSig = FunSig FreeTemplate
 data Measure = Weight | Rank
   deriving(Eq, Ord, Show)
 
+data (Template a) => CostSig a = CostSig {
+  primarySig :: FunSig a,
+  secondarySig :: Maybe (FunSig a)}
+  deriving(Eq,Show)
+
 data (Template a) => FunAnn a = FunAnn {
-  withCost :: FunSig a,
+  withCost :: CostSig a,
   withoutCost :: [FunSig a],
-  aux :: Map (Measure, ProveKind) (FunSig a),
-  worstCase :: Bool}
+  aux :: Map (Measure, ProveKind) (FunSig a)}
   deriving(Eq, Show)
+
+assertCostSigsEq :: (Template a, Template b) => CostSig a -> CostSig b -> [Constraint]
+assertCostSigsEq s1 s2 =
+  let primaryCs = assertSigEq (primarySig s1) (primarySig s2)
+      secondaryCs = fromMaybe [] $ do
+        secS1 <- secondarySig s1
+        secS2 <- secondarySig s2
+        return $ assertSigEq secS1 secS2 in
+    primaryCs ++ secondaryCs
 
 assertFunAnnEq :: (Template a, Template b) => FunAnn a -> FunAnn b -> [Constraint]
 assertFunAnnEq q p = 
-  assertSigEq (withCost q) (withCost p)
+  assertCostSigsEq (withCost q) (withCost p)
   ++ concat (P.zipWith assertSigEq (withoutCost q) (withoutCost p))
-  where assertSigEq x y = 
+
+assertSigEq :: (Template a, Template b) => FunSig a -> FunSig b -> [Constraint]
+assertSigEq x y = 
           assertEq (fst . from $ x) (fst . from $ y)
           ++ assertEq (snd . from $ x) (snd . from $ y)
           ++ assertEq (to x) (to y)
-
-
 
 type FreeFunAnn = FunAnn FreeTemplate
 
@@ -198,7 +212,8 @@ instance HasCoeffs (FunSig FreeTemplate) where
     ++ getCoeffs (to ann)
 
 instance HasCoeffs FreeFunAnn where
-  getCoeffs ann = getCoeffs (withCost ann)
+  getCoeffs ann = (getCoeffs . primarySig . withCost $ ann)
+    ++ maybe [] getCoeffs ((secondarySig . withCost) ann)
     ++ getCoeffs (withoutCost ann)
     
 

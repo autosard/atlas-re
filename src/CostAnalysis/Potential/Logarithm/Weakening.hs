@@ -17,8 +17,8 @@ import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Weakening
 import CostAnalysis.Coeff 
 
-monoLe :: [(Id, Id)] -> [Id] -> CoeffIdx -> CoeffIdx -> Bool
-monoLe lePreds vars i@(Mixed _) j@(Mixed _) | onlyFacsOfLen 1 i && onlyFacsOfLen 1 j
+monoLe :: Bool -> [(Id, Id)] -> [Id] -> CoeffIdx -> CoeffIdx -> Bool
+monoLe leRank lePreds vars i@(Mixed _) j@(Mixed _) | onlyFacsOfLen 1 i && onlyFacsOfLen 1 j
   = let p = a `sub` b
         q = c `sub` d
         k = constFactor j - constFactor i in
@@ -38,8 +38,8 @@ monoLe lePreds vars i@(Mixed _) j@(Mixed _) | onlyFacsOfLen 1 i && onlyFacsOfLen
         sub = V.zipWith (-)
         sum = V.foldr (+) 0
         le v x = V.all (<= x) v
-monoLe vars _ i j@(Pure _) = justConst i && constFactor i == 2
-monoLe _ _ _ _ = False
+monoLe True vars _ i j@(Pure _) = justConst i && constFactor i == 2
+monoLe _ _ _ _ _ = False
 
 predOffset :: [Id] -> [(Id, Id)] -> (Map Id Int, Map Id Int)
 predOffset vars = let initM = M.fromList $ map (,0) vars  in

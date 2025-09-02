@@ -25,7 +25,7 @@ genExpertKnowledge :: Set WeakenArg -> Set P.Predicate -> [Id] -> Set CoeffIdx -
 genExpertKnowledge wArgs preds args idxs = merge $ map select wArgs' 
   where wArgs' = S.toList $ S.intersection wArgs supportedArgs
         select Mono = merge [
-          monoLattice (monoLe []) args idxs,
+          monoLattice (monoLe False []) args idxs,
           rankLeLog args idxs]
 
 rankLeLog :: [Id] -> Set CoeffIdx -> LeMatrix
@@ -33,8 +33,7 @@ rankLeLog args idxs = merge [(V.singleton (row (Pure x) [mix|x^1|]), [0])
                             | x <- args,
                               S.member (Pure x) idxs,
                               S.member [mix|x^1|] idxs]
-  where iConst = S.findIndex [mix|2|] idxs
-        row idxRank idxLog =
+  where row idxRank idxLog =
           let iRank = S.findIndex idxRank idxs
               iLog = S.findIndex idxLog idxs in
             V.fromList $

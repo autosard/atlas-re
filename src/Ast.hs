@@ -19,17 +19,14 @@ import Text.Megaparsec(SourcePos, unPos, sourceLine, sourceColumn)
 import Data.List(intercalate)
 import Prelude hiding (break)
 
-import Primitive(Id, printRat, traceShow)
+import Primitive(Id, printRat)
 import Typing.Type (Type, splitProdType, splitFnType)
 import Typing.Subst(Types(apply, tv))
 import Typing.Scheme (Scheme, toType)
 import Data.Tuple (swap)
 import Data.List.Extra (groupSort)
 import CostAnalysis.Annotation(BoundFunAnn,
-                               BoundAnn,
-                               FunAnn(..),
-                               FunSig(..))
-import CostAnalysis.Template(idxs)       
+                               BoundAnn)
     
 type Fqn = (Text, Text)
 
@@ -50,6 +47,7 @@ data Module a = Module {
 }
 
 data FnConfig = FnConfig {
+  costMode :: CostMode,
   numCf :: Maybe Int,
   strongCf :: Bool}
   deriving (Eq, Show)
@@ -87,12 +85,20 @@ modReplaceDefs (Module {..}) newDefs = Module {defs = withIds, ..}
 
 data FunDef a = FunDef (XFunAnn a) Id [Id] (Expr a)
 
-hasPotential :: FunDef Positioned -> Bool
-hasPotential fn = case tfCostAnn (funAnn fn) of
-                    Just (Cost True _) -> False
-                    Just (Coeffs target) -> let ann = to . withCost $ target in
-                      any ((not . null) . idxs) $ M.elems ann
-                    Nothing -> True
+data CostMode = AmortizedCost | WorstCaseCost | HybridCost
+  deriving (Eq, Show)
+
+-- hasPotential :: FunDef Positioned -> [Bool]
+-- hasPotential fn = let n = fromMaybe 1 (numSigs (tfFnConfig (funAnn fn))) in
+--   case tfCostAnn (funAnn fn) of
+--     Just (Cost True _) -> [False]
+--     Just (Coeffs target) ->
+--       let anns = map to (withCost target) 
+--           annsPot = map (any ((not . null) . idxs) . M.elems) anns in
+--         if length anns < n
+--         then annsPot ++ replicate (n - length anns) True
+--         else annsPot
+--     Nothing -> replicate n True
 
 data Op = LT | EQ | GT
   deriving (Eq, Show)
@@ -133,7 +139,7 @@ type family XFunAnn a
 
 data CostAnnotation
   = Coeffs BoundFunAnn
-  | Cost {worstCase :: Bool, costCoeffs :: BoundAnn}
+  | Cost BoundAnn
   deriving (Eq, Show)
   
 

@@ -31,7 +31,7 @@ genExpertKnowledge (Args {logLemmaInstance = llCoeffs}) wArgs preds args idxs = 
           | (P.Predicate m op x y [] _) <- S.toList preds,
             m == Weight,
             op == P.Le || op == P.Lt || op == P.Eq]
-        select Mono = monoLattice (monoLe preds') args idxs
+        select Mono = monoLattice (monoLe True preds') args idxs
         select L2xy = merge [
           logLemma llCoeffs args idxs,
           logLemma2 preds' args idxs]

@@ -12,16 +12,16 @@ import qualified Data.Map as M
 import Data.Set(Set)
 import qualified Data.Set as S
 import qualified Data.List as L
+import qualified Data.Text as T
 import Data.Text(Text)
 import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
 
-import Primitive(Id, Substitution, traceShow, traceShowV)
+import Primitive(Id, Substitution)
 import CostAnalysis.Coeff
 import Control.Monad.State
 import  CostAnalysis.Constraint(Term, Constraint, Term(..))
 import qualified CostAnalysis.Constraint as C
-import CostAnalysis.AnnIdxQuoter(mix)
 
 
 class (Show a) => Template a where
@@ -171,7 +171,7 @@ bindTemplate q values = BoundTemplate
 
 split :: BoundTemplate -> [Id] -> (BoundTemplate, BoundTemplate)
 split (BoundTemplate args ghosts coeffs) argsY =
-  let argsX = (args L.\\ argsY)
+  let argsX = (args L.\\ (filter (not . (T.isPrefixOf "!g")) argsY))
       x = BoundTemplate argsX ghosts
         (M.filterWithKey (\idx _ -> hasArgsOrConst argsX idx) coeffs)
       y = BoundTemplate argsY ghosts

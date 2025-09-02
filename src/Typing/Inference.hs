@@ -13,6 +13,7 @@ import Data.Map(Map)
 import qualified Data.Map as M
 import Data.Array(Array)
 import qualified Data.Array as A
+import Control.Monad.Extra(mapAndUnzipM, foldM)
 import Data.List(uncons)
 
 import qualified Data.List as L
