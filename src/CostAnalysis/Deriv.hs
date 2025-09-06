@@ -42,7 +42,6 @@ import Data.Maybe (fromMaybe, mapMaybe, catMaybes)
 import CostAnalysis.Coeff (coeffArgs, justVars, CoeffIdx (Pure))
 import CostAnalysis.Potential.Kind (fromKind)
 import Control.Monad (foldM, zipWithM)
-import Control.Monad.Extra (maybeM)
   
 type ProofResult = (Derivation, [Constraint], FreeSignature)
 

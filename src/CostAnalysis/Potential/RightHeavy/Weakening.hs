@@ -8,7 +8,7 @@ import qualified Data.Vector as V
 import Data.Set(Set)
 import qualified Data.Set as S
 
-import Primitive(Id)
+import Primitive(Id, traceShowV)
 import CostAnalysis.Rules(WeakenArg(..))
 import CostAnalysis.Potential(LeMatrix)
 import CostAnalysis.Coeff

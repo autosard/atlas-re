@@ -465,6 +465,7 @@ data ExprCtx = PseudoLeaf
   | OutermostLet
   | FirstAfterMatch
   | IteCoin
+  | ConstEmptyTree
   deriving (Eq, Ord, Show)
 
 data PositionedExprAnn = PositionedExprAnn {

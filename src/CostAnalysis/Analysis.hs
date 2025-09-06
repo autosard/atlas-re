@@ -131,7 +131,7 @@ analyzeFn' def@(FunDef funAnn fnId _ body) = do
       tellSigCs =<< maybe (return []) externalCsForCtx s2
       rhs <- view rhsTerms
       let hybrid = (costMode . tfFnConfig) funAnn == HybridCost
-      addFullCostOptimization fnId (rhs || hybrid)
+      addFullCostOptimization fnId True -- (rhs || hybrid)
   proveFun def
 
 externalCsForCtx :: FunSig FreeTemplate -> ProveMonad [Constraint]
@@ -239,7 +239,7 @@ genFunAnn fn@(FunDef funAnn _ _ _) = do
                       (emptyAnn (M.map (,[]) argsTo) "QE" "fn")
     zero <- if null argsTo
                 then defaultAnn (M.map (const []) argsFrom) "Q'" "fn" 
-                else defaultAnn argsTo "Q'" "fn"
+                else defaultAnn argsTo "Q' zero" "fn"
     tellSigCs $ assertZero zero                  
     case (costMode . tfFnConfig) funAnn of
       AmortizedCost -> do

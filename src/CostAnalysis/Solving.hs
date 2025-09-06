@@ -102,7 +102,6 @@ solve fns = do
       let coeffs = S.toList . S.unions $ map (S.fromList . getCoeffs) (cs ++ extCs)
       tracker <- createSolverZ3 coeffs cs extCs opti
       smt <- optimizeToString
---      error $ "coeffs: " ++ show (length coeffs)
       result <- solveZ3 tracker coeffs (isJust opti)
       return (result, smt)
   liftIO $ writeFile "out/instance.smt" smt

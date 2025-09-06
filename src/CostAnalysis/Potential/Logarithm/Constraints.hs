@@ -12,7 +12,6 @@ import CostAnalysis.Template hiding (sum, sub)
 import CostAnalysis.Constraint hiding (Le, Lt)
 import CostAnalysis.AnnIdxQuoter(mix)
 import CostAnalysis.Coeff
-import CostAnalysis.Predicate
 import Ast
 
 exp :: Id
@@ -33,6 +32,7 @@ cConst (Args{leafRank=rank}) (Leaf {}) q q' =
                                   let b = c - a,
                                   a + b == c] ++ addRank)
            | idx <- mixes1 q,
+             justConst idx,
              let c = constFactor idx,
              let addRank = [q'!?exp | c == 2, rank],
              c >= 2]

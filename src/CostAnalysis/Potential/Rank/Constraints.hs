@@ -39,6 +39,10 @@ constCases p@(ConstPat _ "node" [Id _ t, _, Id _ u])
 
 cConst :: PositionedExpr -> Set Predicate -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
 cConst e@(Leaf {}) _ (q, qe) q' = Log.cConst logArgs e q q'
+--  ++ zero (q'!?exp)
+  ++ zero (q'!?[mix|exp^1|])
+  ++ zero (q'!?[mix|exp^1, 2|])
+  ++ zero (q'!?[mix|exp^1, 1|]) 
 cConst e@(Node (Var t) _ (Var u)) preds (q, qe) q'
   = let invariantCs = case anyImplies preds (Predicate Rank Le u t [] (getType e)) of
                         (True, cs) -> cs
@@ -53,11 +57,13 @@ cMatch :: FreeTemplate -> FreeTemplate -> Maybe Predicate -> Id -> [Id] -> (Free
 -- leaf  
 cMatch q p _ x [] = extend p $
   [(`eq` (q!?z)) <$> def z | (Pure z) <- pures q, z /= x]
+  ++ [(\i -> geZero (q!?x)) <$> def [mix|2|]]
   ++ Log.cMatch logArgs q x []
 -- node
 cMatch q r _ x xs@[u, v] = extend r $
   [
-    (`eq` (q!x)) <$> def v
+    (`eq` (q!x)) <$> def v,
+    zero <$> def u
   ]
   ++ [(`eq` (q!?z)) <$> def z | (Pure z) <- pures q, z /= x]
   ++ Log.cMatch logArgs q x xs
