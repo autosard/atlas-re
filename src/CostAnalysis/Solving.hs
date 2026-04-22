@@ -97,14 +97,16 @@ solve fns = do
                ts -> Just . sum $ ts
   extCs <- use sigCs
   cs <- use constraints
-  (result, smt) <- liftIO . evalZ3 $
+  (result, smt, numAssertions) <- liftIO . evalZ3 $
     do
       let coeffs = S.toList . S.unions $ map (S.fromList . getCoeffs) (cs ++ extCs)
       tracker <- createSolverZ3 coeffs cs extCs opti
       smt <- optimizeToString
+      numAssertions <- length <$> optimizeGetAssertions
       result <- solveZ3 tracker coeffs (isJust opti)
-      return (result, smt)
+      return (result, smt, numAssertions)
   liftIO $ writeFile "out/instance.smt" smt
+  liftIO $ appendFile "out/instance.smt" ("; number of assertions: " ++ show numAssertions)
   solution <- case result of 
     Left unsatCore -> throwError $ UnsatErr unsatCore
     Right solution -> return solution
