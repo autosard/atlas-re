@@ -342,8 +342,11 @@ proveApp tactic Standard kind e@(App id args) (q, qe, pred) q' = do
   let cs = or $
         concatMap (linCombOfSig (varsByType args) appScale ((q, qe), q') s1) cfSigs
         ++ (case s2 of
-              Just s -> concatMap (linCombOfSig (varsByType args) appScale ((q, qe), q') s) cfSigs
-              Nothing -> [])
+                Just (FunSig (p,pe) p') -> and $
+                  unifyAssertEqBy q p (varsByType args)
+                  ++ unifyAssertEqBy qe pe (M.map Templ.args qe)
+                  ++ unifyAssertEq q' p' 
+                Nothing -> [])
   conclude R.App Standard kind (q, qe, pred) q' cs e []
 proveApp tactic (Cf cf) kind e@(App id args) (q, qe, pred) q' = do
   fnSig <- use sig
