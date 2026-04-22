@@ -268,7 +268,7 @@ substitute from to idx@(Mixed factors) = Mixed (S.map subFactor factors)
   where subFactor (Const c) = Const c
         subFactor (Arg x a) = case L.elemIndex x from of
           Just i -> Arg (to !! i) a
-          Nothing -> error $ "invalid index" ++ show idx ++ "[" ++ show from ++ " -> " ++ show to ++ "]"
+          Nothing -> error $ "invalid index " ++ show idx ++ "[" ++ show from ++ " -> " ++ show to ++ "]"
 
 
 substitute' :: Substitution -> CoeffIdx -> CoeffIdx

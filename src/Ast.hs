@@ -421,11 +421,16 @@ ctxFromFn (FunDef ann _ args _) =
       ctxFrom = zip args tsFrom 
       ctxTo = ctxFromType tTo in
     (ctxFrom, ctxTo)
+
     
 ctxFromType :: Type -> [(Id, Type)]
 ctxFromType t = let ts = splitProdType t in 
   zip [T.pack $ "e" ++ show n
       |n <- [1..]] ts 
+
+returnTypeToArgs :: Type -> [Id]
+returnTypeToArgs t = map fst (ctxFromType t)
+
 
 fnArgsByType :: FunDef Positioned -> (Map Type [Id], Map Type [Id])
 fnArgsByType fn = let (from, to) = ctxFromFn fn in

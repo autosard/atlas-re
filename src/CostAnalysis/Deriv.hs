@@ -248,17 +248,16 @@ proveLet tactic@(Rule (R.Let letArgs) _) judgeType kind e@(Let x e1 e2) (q, qe, 
       let bindingQ = q M.! t
       potE1 <- potForType t 
       let (gamma, delta, gVars) = argSplit M.! t
-      bindingP' <- defaultTempl t "P'"  "let e1" (Templ.args (q' M.! t))
-      --["e1"]
-        
+      let argsP' = returnTypeToArgs t -- ++ Templ.ghosts (q' M.! t)
+      bindingP' <- defaultTempl t "P'"  "let e1" argsP'
       
       let templOpts = Templ.defaultTemplOpts {Templ.negBindingConst=R.NegE `elem` letArgs}
       
       let is = letCfIdxs potE1 (q M.! t) delta templOpts x
 
       ps_ <- emptyArrayFromIdxs x is "P" gamma gVars
-      ps'_ <- emptyArrayFromIdxs x is "P'" (Templ.args (q' M.! t)) gVars
-
+      ps'_ <- emptyArrayFromIdxs x is "P'" argsP' gVars
+      
       r_ <-  emptyTempl "R" "let:base e2" (x:delta) gVars
 
       let (p, pCs) = Templ.defineByWith (annP_ M.! t) bindingQ (\idx p q -> geZero p ++ p `le` q)
@@ -452,7 +451,7 @@ proveShiftTerm tactic judgeType kind e (q, qe, preds) q' = do
 
   r <- fromAnn "R" "shift:term" q'
   
-  let cs = unifyAssertEq (add qe r) pe
+  let cs = unifyAssertEq pe (add qe r) 
         ++ unifyAssertEq p' (add q' r)
         ++ assertGeZero r
 
