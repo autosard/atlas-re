@@ -13,3 +13,5 @@ pdfs
 ### output ###
 
 out
+
+cabal.project.freeze

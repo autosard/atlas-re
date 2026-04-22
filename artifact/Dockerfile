@@ -11,10 +11,14 @@ WORKDIR atlas-re
 RUN cabal install
 ENTRYPOINT ["/bin/sh"]
 
-FROM alpine:3.22
+FROM alpine:3.22 AS wrapper
 RUN apk add --no-cache bash z3-dev gmp-dev libgomp
 COPY --from=0 /build/atlas-examples /usr/share/atlas/examples
 COPY --from=0 /root/.cabal/bin/atlas-re /usr/bin/atlas-re
 ADD wrapper.sh /usr/bin/wrapper.sh
 RUN chmod +x /usr/bin/wrapper.sh
+ADD smoke-test.sh /usr/bin/smoke-test.sh
+RUN chmod +x /usr/bin/smoke-test.sh
+ADD full-test.sh /usr/bin/full-test.sh
+RUN chmod +x /usr/bin/full-test.sh
 ENTRYPOINT ["wrapper.sh"]
