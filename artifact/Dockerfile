@@ -2,7 +2,7 @@ FROM alpine:3.22
 RUN apk add --no-cache build-base git curl ncurses gmp-dev z3-dev
 RUN mkdir /build
 WORKDIR /build
-RUN git clone -b skew-heaps https://github.com/autosard/atlas-re.git
+RUN git clone -b cav26-artifact https://github.com/autosard/atlas-re.git
 RUN git clone -b atlas-revisited https://github.com/autosard/atlas-examples.git 
 RUN git clone https://github.com/IagoAbal/haskell-z3
 RUN curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh
