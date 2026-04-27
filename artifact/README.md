@@ -1,6 +1,6 @@
 # Artifact Submission 
 
-The artifact consists of (1) a docker image bundling a pre-built version of the tool together with a set of example benchmark programs and test scripts for functional evaluation (2) a copy of our Github source repo with frozen dependency versions to ensure reuseability and reproducablity. 
+This artifact consists of (1) a docker image bundling a pre-built version of the tool together with a set of example benchmark programs and test scripts for functional evaluation (2) a copy of our Github source repo with frozen dependency versions to ensure reuseability and reproducablity. 
 
 # Usage
 
@@ -15,7 +15,11 @@ The provided docker image `image.tar.gz` can be imported to docker as follows.
 docker load -i image.tar.gz
 ```
 
-## Smoke Test
+We include the corresponding `Dockerfile` for reference, but it can be safely ignored for the tests.
+
+# Smoke Test
+
+## Docker Image
 
 The following smoke test will type check one instance of the skew heap benchmark.
 
@@ -51,22 +55,30 @@ where (e1,...,en) := f x1 ... xm
 
 The amortised bounds for the different functions in the benchmark can be read of here. For example the function `meld` has a bound of `1/2 * log(|y| + |x| - 1) + 1/2 * log(|x|) + 1/2 * log(|y|)`. 
 
-## Reproducing our results (Functional)
+## Build
 
-The script `full-test.sh` runs full type inference for all examples listed in the paper, reproducing Table 2. This mode infers the bounds of the functions without considering the any annotations. This is expected to take some time, since the SMT solver will optimise a large number of constraints (~ 14 hours on our machine). The benchmark `RankBiased` is the most expensive, taking roughly 10 hours alone. For an estimate on individual runtimes you can consult the evaluation metrics given in the next section.
+For the Reusable batch, you should build the project as a smoke test. See section "Building the tool yourself". 
+
+# Reproducing our results (Functional)
+
+The script `full-test.sh` runs full type inference for all examples listed in the paper and reproduces Table 2. In this mode, the system infers function bounds without relying on user-provided annotations.
+
+This process is computationally expensive and may take a significant amount of time, as the SMT solver must optimize a large number of constraints. On our machine, running full-test.sh inside the provided Docker image took approximately 11 hours. 
+
+We observed some runtime variance when executing the same benchmark multiple times (e.g., RankBiased ranged from approximately 1h20 to 3h40), likely due to non-deterministic behavior in the optimization procedures of Z3. We did not systematically measure this variance, as doing so for the most expensive benchmarks would require multiple multi-hour runs. However, in all our experiments, benchmarks consistently terminated and produced the reported results.
 
 ```
 docker run --entrypoint full-test.sh artifact10
 ```
 
-### Evaluation Metrics
+## Evaluation Metrics
 
 In the following we provide the number of assertions, runtime and process memory we obtained for our benchmarks. It was suggested by the reviewers to include these performance metrics, but the primary contribution that should be verified are the produced complexity bounds (Table 2). These metrics serve more as an orientation for anyone trying to reproduce our results. The second table additionally provides a description of the benchmarks, to make them more easily identifiable. The numbers were obtained with the dockerized artefact provided and ran on the following hardware:
 
 CPU: AMD Ryzen 5 5600 6-Core
 RAM: 16 GB
-os: alpine 3.22 (Docker)
-z3 version: 4.15.0
+os: Arch Linux
+z3 version: 4.15.4
 
 
 | Benchmark      | Number of assertions | Runtime  | Memory    |
@@ -109,7 +121,7 @@ Optionally the reviewers might want to modify examples or or test them in isolat
 
 In this mode the tool type checks the annotation present in example file,
 ```
-docker run atlas-artifact check <example>
+docker run artifact10 check <example>
 ```
 - `<example>` should be replaced with the name of a program from list-examples.
 - This process is typically fast (seconds to minutes).
@@ -119,7 +131,7 @@ docker run atlas-artifact check <example>
 Alternatively the tool can infer the type (amortised bounds) from scratch. 
 
 ```
-docker run atlas-artifact infer <example>
+docker run artifact10 infer <example>
 ```
 This process is much more expensive computationally and can take hours on some benchmarks.
 
@@ -128,6 +140,7 @@ This process is much more expensive computationally and can take hours on some b
 Please note that the wrapper script does not support all examples but only the ones relevant for the paper (subdirectory `leftist-heaps`). The tool can also be invoked without the wrapper, exposing its full set of cli options: 
 
 ```
+docker run -ti --entrypoint /bin/bash artifact10
 # atlas-re --help
 atlas - automated amortized complexity analysis
 
@@ -160,13 +173,12 @@ The sources for our tool are hosted on Github under the GPL-3.0 License, at the 
 
 ## Offline build bundle (recommended)
 
-Instead of cloning the repository, you can use the provided copy of the source repo. It provides a `cabal.project.freeze` file which freezes the dependencies to ensure reproduceability and in contrast to git repo it includes a tarball for the dependency `haskell-z3`. `haskell-z3` is packaged externally, because the version on Hackage is hopelessly out-of-date (see https://github.com/IagoAbal/haskell-z3/issues/96).
+Instead of cloning the repository, you can use the provided copy of the source repo. It provides a `cabal.project.freeze` file which freezes the dependencies to ensure reproduceability and in contrast to the git repo it includes a tarball for the dependency `haskell-z3`. `haskell-z3` is packaged externally, because the version on Hackage is hopelessly out-of-date (see https://github.com/IagoAbal/haskell-z3/issues/96).
 
-*Note*: 
 
 ## Build steps (offline)
 
-Build the tool with cabal. This will pull the frozen version of our dependencies from Hackage and will therefore require internet access. 
+Build the tool with Cabal. This will pull the frozen version of our dependencies from Hackage and will therefore require internet access. 
 
 ```
 cd source
@@ -185,5 +197,5 @@ cabal run -- atlas-re --search examples/leftist-heaps analyze --analysis-mode in
 
 If you want to install it globally:
 ```
-cabal install --offline
+cabal install 
 ```

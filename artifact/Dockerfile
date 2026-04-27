@@ -1,4 +1,4 @@
-FROM alpine:3.22
+FROM alpine:3.23
 RUN apk add --no-cache build-base git curl ncurses gmp-dev z3-dev
 RUN mkdir /build
 WORKDIR /build
@@ -11,7 +11,7 @@ WORKDIR atlas-re
 RUN cabal install
 ENTRYPOINT ["/bin/sh"]
 
-FROM alpine:3.22 AS wrapper
+FROM alpine:3.23 AS wrapper
 RUN apk add --no-cache bash z3-dev gmp-dev libgomp
 COPY --from=0 /build/atlas-examples /usr/share/atlas/examples
 COPY --from=0 /root/.cabal/bin/atlas-re /usr/bin/atlas-re
