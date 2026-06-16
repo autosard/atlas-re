@@ -167,16 +167,16 @@ The wrapper outputs the exact command it ran for each benchmark, so it should be
 The sources for our tool are hosted on Github under the GPL-3.0 License, at the following URL: https://github.com/autosard/atlas-re/ .
 
 *Requirements*:
-- To build the tool from scratch, a working Haskell toolchain is required (GHC (>= 9.6.7) + Cabal (>= 3.12.1.0)). The easiest way to set those tools up is the project [https://www.haskell.org/ghcup/](GHCUp), which provides a one-line install Linux, macOS, FreeBSD and WSL2. 
+- To build the tool from scratch, a working Haskell toolchain is required (GHC (== 9.6.7) + Cabal (>= 3.12.1.0)). The easiest way to set those tools up is the project [https://www.haskell.org/ghcup/](GHCUp), which provides a one-line install for Linux, macOS, FreeBSD and WSL2. 
 - A recent z3 (>= 4.8, <= 4.15.4) installed. z3 should be available in the package repositories for most distributions. Make sure that `libz3` is included.
 
 
-## Offline build bundle (recommended)
+## Build bundle (recommended)
 
 Instead of cloning the repository, you can use the provided copy of the source repo. It provides a `cabal.project.freeze` file which freezes the dependencies to ensure reproduceability and in contrast to the git repo it includes a tarball for the dependency `haskell-z3`. `haskell-z3` is packaged externally, because the version on Hackage is hopelessly out-of-date (see https://github.com/IagoAbal/haskell-z3/issues/96).
 
 
-## Build steps (offline)
+## Build steps 
 
 Build the tool with Cabal. This will pull the frozen version of our dependencies from Hackage and will therefore require internet access. 
 

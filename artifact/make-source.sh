@@ -21,7 +21,10 @@ cp -r artifact/cabal.project "$BUNDLE_NAME/" 2>/dev/null || true
 cp -r src "$BUNDLE_NAME/" 2>/dev/null || true
 cp -r app "$BUNDLE_NAME/" 2>/dev/null || true
 cp -r test "$BUNDLE_NAME/" 2>/dev/null || true
-cp -r examples "$BUNDLE_NAME/" 2>/dev/null || true
+cd examples
+mkdir -p "../$BUNDLE_NAME/examples"
+git archive HEAD | tar -x -C "../$BUNDLE_NAME/examples"
+cd ..
 cp -r README "$BUNDLE_NAME/" 2>/dev/null || true
 
 # vendor tarballs (like your haskell-z3 sdist)
