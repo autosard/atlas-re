@@ -10,12 +10,12 @@ module Cli(Options(..),
            BenchOptions(..),
            cliP) where
 
-import Ast(Fqn)
+import Syntax.Ast(Fqn)
 
 import Options.Applicative
 import qualified Data.Text as T
 import Data.Text (Text)
-import CostAnalysis.ProveMonad (AnalysisMode (CheckCoefficients, CheckCost, ImproveCost, Infer))
+-- import CostAnalysis.ProveMonad (AnalysisMode (CheckCoefficients, CheckCost, ImproveCost, Infer))
 
 data Options = Options
   { searchPath :: !(Maybe FilePath)
@@ -50,7 +50,7 @@ data AnalyzeOptions = AnalyzeOptions {
   target :: Either Text Fqn,
   tacticsPath :: Maybe FilePath,
   switchPrintDeriv :: Bool,
-  analysisMode :: AnalysisMode,
+--  analysisMode :: AnalysisMode,
   switchIncremental :: Bool,
   switchHideConstraints :: Bool,
   switchPrintProg :: Bool,
@@ -67,10 +67,10 @@ runOptionsP = do
   switchPrintDeriv <- switch
     (long "print-deriv"
     <> help "Print the derivation tree in ascii.")
-  analysisMode <- option (eitherReader parseAnalysisMode)
-    (long "analysis-mode"
-    <> help "Analysis mode. One of [check-coeffs, check-cost, improve-cost, infer]."
-    <> value CheckCoefficients)
+  -- analysisMode <- option (eitherReader parseAnalysisMode)
+  --   (long "analysis-mode"
+  --   <> help "Analysis mode. One of [check-coeffs, check-cost, improve-cost, infer]."
+  --   <> value CheckCoefficients)
   switchIncremental <- switch
     (long "incremental"
     <> help "When active, individual constraint systems for each recursive binding group are solved incrementally.")
@@ -92,12 +92,12 @@ runOptionsP = do
 analyzeCommandP :: Parser Command
 analyzeCommandP = Analyze <$> runOptionsP
 
-parseAnalysisMode :: String -> Either String AnalysisMode
-parseAnalysisMode "check-coeffs" = Right CheckCoefficients
-parseAnalysisMode "check-cost" = Right CheckCost
-parseAnalysisMode "improve-cost" = Right ImproveCost
-parseAnalysisMode "infer" = Right Infer
-parseAnalysisMode _ = Left "not a valid inference mode"
+-- parseAnalysisMode :: String -> Either String AnalysisMode
+-- parseAnalysisMode "check-coeffs" = Right CheckCoefficients
+-- parseAnalysisMode "check-cost" = Right CheckCost
+-- parseAnalysisMode "improve-cost" = Right ImproveCost
+-- parseAnalysisMode "infer" = Right Infer
+-- parseAnalysisMode _ = Left "not a valid inference mode"
 
 parseFqn :: String -> Either String (Either Text Fqn)
 parseFqn s = case suffix of

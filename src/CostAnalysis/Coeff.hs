@@ -15,6 +15,7 @@ import qualified Data.List as L
 import Data.Maybe (mapMaybe)
 
 import Primitive(Id, Substitution, applySubst)
+import Syntax.ResourceExpression
 
 data Factor = Const Int | Arg Id [Int]
   deriving (Eq, Ord)
@@ -44,9 +45,7 @@ instance Index (Set Factor) where
 data Coeff =
   Coeff
     Int -- ^ Unique identifier for the annotation; used together with coefficent index to identify coeffients when encoding them for smt. 
-    Text -- ^ Human readable label, e.g. \"Q\", \"P\", ...
-    Text -- ^ Human readable comment, to trace the origin of the coefficient, e.g. "log".
-    CoeffIdx -- ^ An index to identify the coefficient.
+    ResourceTerm -- ^ An index to identify the coefficient.
   deriving (Eq, Ord, Show)
 
 
@@ -54,11 +53,11 @@ isPure :: CoeffIdx -> Bool
 isPure (Pure _) = True
 isPure _ = False
 
-getIdx :: Coeff -> CoeffIdx
-getIdx (Coeff _ _ _ idx) = idx
+getTerm :: Coeff -> ResourceTerm
+getTerm (Coeff _ idx) = idx
 
 printCoeff :: Coeff -> String
-printCoeff (Coeff id label comment idx) = "q" ++ show id ++ "[" ++ T.unpack label ++ "]" ++ show idx
+printCoeff (Coeff id t) = show id ++ "[" ++ show t ++ "]" 
 
 
 instance Show Factor where

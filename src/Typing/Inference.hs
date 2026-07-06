@@ -18,16 +18,15 @@ import Data.List(uncons)
 
 import qualified Data.List as L
   
-import Typing.Type
-    (fn, Tycon(Prod, Bool, Arrow), Type(..), Tyvar(..) )
+import Typing.Type(Type(..),fn)
 import Typing.Subst
 import Typing.Scheme
-import Ast
+import Syntax.Ast
 import Primitive(Id, enumId)
 import Text.Megaparsec(SourcePos(sourceName, sourceLine, sourceColumn))
 import Text.Megaparsec.Pos(unPos)
 import SourceError
-import Constants
+import Syntax.Constants
 
 data TiState = TiState {
   idGen :: Int,
@@ -63,8 +62,9 @@ popSyn = do
 
 data TypeError
   = TypeMismatch Type Type
-  | OccursCheck Tyvar Type
+  | OccursCheck Id Type
   | UnboundIdentifier Id
+  | UnknownDataConstructor Id
   deriving Eq
 
 instance Show TypeError where
@@ -74,6 +74,7 @@ instance Show TypeError where
     ++ "\tActual: " ++ show actual
   show (OccursCheck var t) = "Occurs check failed for '" ++ show var ++ "' in '" ++ show t ++ "'."
   show (UnboundIdentifier id) = "Unbound identifier: '" ++ show id ++ "'"
+  show (UnknownDataConstructor id) = "Unknown data constructor: '" ++ show id ++ "'"
   
 type TI = ExceptT TypeError (State TiState)
 
@@ -88,7 +89,7 @@ mgu (TVar u) t = varBind u t
 mgu t (TVar u) = varBind u t
 mgu t1 t2 = throwError $ TypeMismatch t1 t2
 
-varBind :: Tyvar -> Type -> TI Subst
+varBind :: Id -> Type -> TI Subst
 varBind u t | t == TVar u = return nullSubst
             | u `elem` tv t = throwError $ OccursCheck u t
             | otherwise = return (u +-> t)
@@ -104,8 +105,16 @@ extSubst s' = do
   state <- get
   put state{subst = s' @@ subst state}
 
+
+type CtorEnv = Map Id Scheme
 type Context = Map Id Scheme
 
+buildCtorEnv :: DataEnv -> CtorEnv
+buildCtorEnv dEnv = let cis = concatMap diCtors (M.elems dEnv) in
+  M.fromList $ map (\ci -> (ciName ci, ciType ci)) cis
+
+lookupCtor :: Id -> CtorEnv -> TI Scheme
+lookupCtor id cEnv = maybe (throwError $ UnknownDataConstructor id) return (cEnv M.!? id)
 
 instance Types b => Types (Map a b) where
   apply :: Types b => Subst -> Map a b -> Map a b
@@ -121,7 +130,7 @@ findMaybe = M.lookup
 newTVar :: TI Type
 newTVar = do
   s <- lift get
-  let v = Tyvar (enumId (idGen s))
+  let v = enumId (idGen s)
   lift $ put s{idGen = idGen s + 1}
   return (TVar v)
 
@@ -143,84 +152,74 @@ instScheme (Forall len t) = do
   return (inst ts t)
 
 
-type Infer e t = Context -> e -> TI t
-
-tiPatternVar :: Infer ParsedPatternVar (Context, TypedPatternVar)
-tiPatternVar ctx (Id ann id) = do
-  t <- newTVar
-  let ann' = extendWithType t ann
-  return (M.insert id (Forall 0 t) ctx, Id ann' id)
-tiPatternVar ctx (WildcardVar ann) = do
-  t <- newTVar
-  let ann' = extendWithType t ann
-  return (M.empty, WildcardVar ann')
+type Infer e t = Context -> CtorEnv -> e -> TI t
 
 tiPattern :: Infer ParsedPattern (Context, TypedPattern)
-tiPattern ctx (ConstPat ann id vars) = do
+tiPattern ctx cEnv (PConst ann id ps) = do
   tp <- newTVar
-  constT <- instScheme (constType id)
-  (ctxs, vars') <- mapAndUnzipM (tiPatternVar ctx) vars
-  let varTs = map getType vars'
-  unify constT (varTs `fn` tp)
+  constT <- instScheme =<< lookupCtor id cEnv
+  (ctxs, ps') <- mapAndUnzipM (tiPattern ctx cEnv) ps
+  let psTs = map getType ps'
+  unify constT (psTs `fn` tp)
   let ann' = extendWithType tp ann
-  return (M.unions (ctxs ++ [ctx]), ConstPat ann' id vars')
-tiPattern ctx (PatAlias ann id) = do
+  return (M.unions (ctxs ++ [ctx]), PConst ann' id ps')
+tiPattern ctx _ (PVar ann id) = do
   v <- newTVar
   let ann' = extendWithType v ann
-  return (M.insert id (Forall 0 v) ctx, PatAlias ann' id)
-tiPattern ctx (PatWildcard ann) = do
+  return (M.insert id (Forall 0 v) ctx, PVar ann' id)
+tiPattern ctx _ (PWildcard ann) = do
   v <- newTVar
   let ann' = extendWithType v ann
-  return (ctx, PatWildcard ann')
+  return (ctx, PWildcard ann')
 
 tiMatchArm :: Infer ParsedMatchArm TypedMatchArm
-tiMatchArm ctx arm@(MatchArmAnn ann pat e) = do
+tiMatchArm ctx cEnv arm@(MatchArmAnn ann pat e) = do
   trace arm
-  (ctx', pat') <- tiPattern ctx pat
-  e' <- tiExpr ctx' e
+  (ctx', pat') <- tiPattern ctx cEnv pat
+  e' <- tiExpr ctx' cEnv e
   untrace arm
   let ann' = extendWithType (getType e') ann 
   return $ MatchArmAnn ann' pat' e'
 
 tiExpr :: Infer ParsedExpr TypedExpr
-tiExpr ctx e = do
+tiExpr ctx cEnv e = do
   trace e
-  e' <- tiExpr' ctx e
+  e' <- tiExpr' ctx cEnv e
   untrace e
   return e'
 
 
 tiExpr' :: Infer ParsedExpr TypedExpr
-tiExpr' ctx (VarAnn ann id) = do
+tiExpr' ctx _ (VarAnn ann id) = do
   sc <- find id ctx
   t <- instScheme sc
   let ann' = extendWithType t ann
   return $ VarAnn ann' id
-tiExpr' ctx (ConstAnn ann id args) = do
+tiExpr' ctx cEnv (ConstAnn ann id args) = do
   to <- newTVar
-  let sc = constType id
+  sc <- lookupCtor id cEnv
   tConst <- instScheme sc
-  args' <- mapM (tiExpr ctx) args
+  args' <- mapM (tiExpr ctx cEnv) args
   let tArgs = map getType args'
   unify tConst (tArgs `fn` to)
   let ann' = extendWithType to ann 
   return $ ConstAnn ann' id args'
-tiExpr' ctx (IteAnn ann e1 e2 e3) = do
+tiExpr' ctx cEnv (IteAnn ann e1 e2 e3) = do
   r <- newTVar
   
-  e1' <- tiExpr ctx e1
+  e1' <- tiExpr ctx cEnv e1
   let t1 = getType e1'
   trace e1
-  unify (TAp Bool []) t1
+  unify (TAp "Bool" []) t1
   untrace e1
   
-  e2' <- tiExpr ctx e2
+  e2' <- tiExpr ctx cEnv e2
   let t2 = getType e2'
   trace e2
   unify r t2
   untrace e2
   
-  e3' <- tiExpr ctx e3
+  e3' <- tiExpr ctx cEnv e3
   let t3 = getType e3'
   trace e3
   unify r t3
@@ -228,57 +227,57 @@ tiExpr' ctx (IteAnn ann e1 e2 e3) = do
   
   let ann' = extendWithType r ann
   return $ IteAnn ann' e1' e2' e3'
-tiExpr' ctx (MatchAnn ann e arms) = do
+tiExpr' ctx cEnv (MatchAnn ann e arms) = do
   r <- newTVar
-  e' <- tiExpr ctx e
+  e' <- tiExpr ctx cEnv e
   let te = getType e'
-  arms' <- mapM (tiMatchArm ctx) arms
+  arms' <- mapM (tiMatchArm ctx cEnv) arms
   mapM_ (unifyWithArm (te, r)) arms'
   let ann' = extendWithType r ann
   return $ MatchAnn ann' e' arms'
   where unifyWithArm (tp, te) (MatchArm pat e) = do
           unify tp $ getType pat
           unify te $ getType e
-tiExpr' ctx (AppAnn ann id args) = do
+tiExpr' ctx cEnv (AppAnn ann id args) = do
   to <- newTVar
   scFun <- find id ctx
   tFun <- instScheme scFun
-  args' <- mapM (tiExpr ctx) args
+  args' <- mapM (tiExpr ctx cEnv) args
   let tArgs = map getType args'
   unify tFun (tArgs `fn` to)
   let ann' = extendWithType to ann
   return $ AppAnn ann' id args'
-tiExpr' ctx (LetAnn ann x e1 e2) = do
-  e1' <- tiExpr ctx e1
+tiExpr' ctx cEnv (LetAnn ann x e1 e2) = do
+  e1' <- tiExpr ctx cEnv e1
   let tx = getType e1'
   s <- gets subst
   let tx' = apply s tx
   let fs = tv (apply s ctx)
   let gs = tv tx' L.\\ fs
   let ctx' = M.insert x (quantify gs tx) ctx
-  e2' <- tiExpr ctx' e2
+  e2' <- tiExpr ctx' cEnv e2
   let te2 = getType e2'
   
   let ann' = extendWithType te2 ann
   return $ LetAnn ann' x e1' e2'
-tiExpr' ctx (TickAnn ann c e) = do
-  e' <- tiExpr ctx e
+tiExpr' ctx cEnv (TickAnn ann c e) = do
+  e' <- tiExpr ctx cEnv e
   let t = getType e'
   let ann' = extendWithType t ann
   return $ TickAnn ann' c e'
-tiExpr' ctx (CoinAnn ann p) = do
-  t <- instScheme boolSc
+tiExpr' ctx cEnv (CoinAnn ann p) = do
+  let t = TAp "Bool" []
   let ann' = extendWithType t ann
   return $ CoinAnn ann' p
 
-funArgTypes :: Type -> [Type]
-funArgTypes (TAp Arrow [TAp Prod ts, _]) = ts
-funArgTypes _ = error "cannot extract arg types from non-function type."
+-- funArgTypes :: Type -> [Type]
+-- funArgTypes (TFun t _]) = ts
+-- funArgTypes _ = error "cannot extract arg types from non-function type."
 
 tiFun :: Infer ParsedFunDef (Type, TypedExpr)
-tiFun ctx (FunDef ann id args exp) = do
+tiFun ctx cEnv (FunDef ann id args exp) = do
   (tsFrom, tTo) <- case toType <$> ctx M.!? id of
-    Just (TAp Arrow [TAp Prod from, to]) -> return (from, to)
+    Just (TFun (TAp "(,)" from) to) -> return (from, to)
     Just _ -> do
       from <- mapM (const newTVar) args
       to <- newTVar
@@ -288,45 +287,44 @@ tiFun ctx (FunDef ann id args exp) = do
   let ctx' = M.fromList $ zip args argSchemes
   let ctx'' = ctx' `M.union` ctx
   trace exp
-  exp' <- tiExpr ctx'' exp
+  exp' <- tiExpr ctx'' cEnv exp
   unify (getType exp') tTo
   untrace exp
   let te = tsFrom `fn` getType exp'
   return (te, exp')
 
 tiApply :: Infer TypedExpr TypedExpr
-tiApply ctx e = do
+tiApply ctx _ e = do
   s <- gets subst
   return $ apply s e
 
-tiProg :: Infer ParsedModule TypedModule
-tiProg ctx mod = do
-  ctx' <- initCtx (fns mod)
+tiProg :: Infer ParsedProgram TypedProgram
+tiProg ctx tEnv prog = do
+  ctx' <- initCtx prog
   
-  (ts, bodies) <- mapAndUnzipM (tiFun ctx') (fns mod)
+  (ts, bodies) <- mapAndUnzipM (tiFun ctx' tEnv) (fns prog)
   s <- gets subst
   let ts' = apply s ts
   let bodies' = apply s bodies
   let fs = tv (apply s ctx')
   let gss = map (\t -> tv t L.\\ fs) ts'
   let qts = zipWith quantify gss ts'
-  return $ modReplaceDefs mod (map extendDef (zip3 (fns mod) qts bodies'))
+  return $ progReplaceDefs prog (map extendDef (zip3 (fns prog) qts bodies'))
   where extendAnn t ann = TypedFunAnn{
           tfType = t,
-          tfCostAnn = pfCostAnn ann,
-          tfLoc = pfLoc ann,
-          tfFqn = pfFqn ann,
-          tfFnConfig = pfFnConfig ann}
+          tfLoc = pfLoc ann}
         extendDef :: (ParsedFunDef, Scheme, TypedExpr) -> TypedFunDef
         extendDef (FunDef ann id args e, t, e')
           = FunDef (extendAnn t ann) id args e'
 
 
-initCtx :: [ParsedFunDef] -> TI Context
-initCtx defs = M.fromList <$> mapM assumeType defs
-  where assumeType (FnParsed ann id args _) = case pfType ann of
-          Just sc -> (id,) . toScheme <$> instScheme sc
-          Nothing -> (id,) . toScheme <$> newTVar
+initCtx :: ParsedProgram -> TI Context
+initCtx prog = M.fromList <$> mapM assumeType (M.elems (pFunDefs prog))
+  where assumeType (FnParsed ann id args _) 
+          = case pSig prog M.!? id of
+              Just sig -> let sc = typeSig sig in
+                (id,) . toScheme <$> instScheme sc
+              Nothing -> (id,) . toScheme <$> newTVar
 
 showSrcPos :: SourcePos -> String
 showSrcPos pos = let name = sourceName pos
@@ -354,10 +352,15 @@ infer ti = case runTI initState ti of
   (Right x, _) -> Right x
   where initState = TiState 0 nullSubst []
 
-inferModule :: ParsedModule -> Either SourceError TypedModule
-inferModule = infer . tiProg M.empty
+inferProgram :: ParsedProgram -> Either SourceError TypedProgram
+inferProgram p = (infer . tiProg M.empty (cTorEnvForProg p)) p
+  -- left-biased union (does not overide builtins)
 
-inferExpr :: TypedModule -> ParsedExpr -> Either SourceError TypedExpr
-inferExpr mod expr = infer $ tiApply M.empty =<< tiExpr initCtx expr
-  where initCtx = M.fromList $ map getScheme (fns mod)
+cTorEnvForProg :: Program a -> CtorEnv
+cTorEnvForProg p = buildCtorEnv $ M.union builtInDataDefs (pDataEnv p)
+
+inferExpr :: TypedProgram -> ParsedExpr -> Either SourceError TypedExpr
+inferExpr p expr = infer $ tiApply M.empty cEnv =<< tiExpr initCtx cEnv expr
+  where initCtx = M.fromList $ map getScheme (fns p)
         getScheme (FunDef funAnn id _ _) = (id, tfType funAnn)
+        cEnv = cTorEnvForProg p

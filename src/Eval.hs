@@ -8,14 +8,14 @@ module Eval where
 import qualified Data.Map as M
 import Data.Map(Map)
 
-import Ast
+import Syntax.Ast
 import Primitive(Id)
 import Control.Monad (msum)
 import Control.Monad.Except (Except, liftEither, runExcept, MonadError (throwError))
 import Control.Monad.State(StateT, runStateT)
 import Control.Monad.Reader (ReaderT (runReaderT), lift, asks)
 import Data.Either.Extra (maybeToEither)
-import Constants(evalConst, algebraicConsts, toBool)
+import Syntax.Constants(evalConst, algebraicConsts, toBool)
 import Data.Maybe (fromMaybe)
 import System.Random
 import Data.Random.Sample
@@ -68,8 +68,8 @@ evalEval defs initState eval = runExcept (
     (val, s) <- (`runStateT` initState) . (`runReaderT` defs) $ eval
     return (s^.rng, (s ^. cost, val)))
 
-evalWithModule :: TypedModule -> TypedExpr -> StdGen -> (StdGen, (Rational, Val))
-evalWithModule mod exp rng = case evalEval (defs mod) (EvalState rng 0) (evalExpr M.empty exp) of
+evalWithProgram :: TypedProgram -> TypedExpr -> StdGen -> (StdGen, (Rational, Val))
+evalWithProgram mod exp rng = case evalEval (defs mod) (EvalState rng 0) (evalExpr M.empty exp) of
   Left e -> error $ show e
   Right r -> r
   where splitDef fun@(Fn id _ _) = (id, fun)
@@ -80,10 +80,10 @@ matchPatterns val arms = msum $ map (matchArm val) arms
 
 match :: Val -> TypedPattern -> Maybe Env
 match (NumVal _) _ = Nothing
-match (ConstVal id1 args) (ConstPat _ id2 vars)
+match (ConstVal id1 args) (PConst _ id2 vars)
   | id1 == id2 && length args == length vars = Just $ bindPatVars vars args
-match val (Alias _ id) = Just $ M.singleton id val
-match _ (WildcardPat _) = Just M.empty
+match val (PVar _ id) = Just $ M.singleton id val
+match _ (PWildcard _) = Just M.empty
 match _ _ = Nothing
 
 bindPatVars :: [PatternVar a] -> [Val] -> Env

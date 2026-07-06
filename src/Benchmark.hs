@@ -2,7 +2,7 @@
 
 module Benchmark where
 
-import Ast
+import Syntax.Ast
 import Text.Megaparsec (SourcePos(SourcePos), mkPos)
 import qualified Data.Text as T
 import Typing.Inference (inferExpr)

@@ -1,16 +1,16 @@
-module AstContext where
+module Syntax.AstContext where
 
 import Data.Set(Set)
 import qualified Data.Set as S
 
 import Primitive(Id)
 import StaticAnalysis(calledFunctions')
-import Ast
-import Constants (isBasicConst)
+import Syntax.Ast
+import Syntax.Constants (isBasicConst)
 
 
-contextualizeMod :: TypedModule -> PositionedModule
-contextualizeMod = modMap contextualizeFun
+contextualizeProg :: TypedProgram -> PositionedProgram 
+contextualizeProg = programMap contextualizeFun
 
 contextualizeFun :: TypedFunDef -> PositionedFunDef
 contextualizeFun (FunDef ann id args body) = FunDef ann id args (contextualizeExpr id body)
@@ -81,11 +81,7 @@ contextualizeArm fn ctx (MatchArmAnn ann pat e) = MatchArmAnn (extendWithCtx S.e
         e' = contextualizeExpr' fn ctx e
 
 contextualizePattern :: TypedPattern -> PositionedPattern
-contextualizePattern (ConstPat ann id args) = ConstPat (extendWithCtx S.empty ann) id args'
-  where args' = map contextualizePatternVar args
-contextualizePattern (Alias ann id)  = Alias (extendWithCtx S.empty ann) id
-contextualizePattern (WildcardPat ann)  = WildcardPat (extendWithCtx S.empty ann) 
-
-contextualizePatternVar :: TypedPatternVar -> PositionedPatternVar
-contextualizePatternVar (Id ann id) = Id (extendWithCtx S.empty ann) id
-contextualizePatternVar (WildcardVar ann) = WildcardVar (extendWithCtx S.empty ann)
+contextualizePattern (PConst ann id args) = PConst (extendWithCtx S.empty ann) id args'
+  where args' = map contextualizePattern args
+contextualizePattern (PVar ann id)  = PVar (extendWithCtx S.empty ann) id
+contextualizePattern (PWildcard ann)  = PWildcard (extendWithCtx S.empty ann) 

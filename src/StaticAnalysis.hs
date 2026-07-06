@@ -2,7 +2,7 @@
 
 module StaticAnalysis where
 
-import Ast
+import Syntax.Ast
 import Primitive(Id)
 import Data.Text(Text)
 import qualified Data.Text as T

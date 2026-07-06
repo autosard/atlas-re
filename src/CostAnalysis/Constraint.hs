@@ -18,151 +18,141 @@ printVar i = "k" ++ show i
 
 type Var = Int
 
-data Term
+data ArithExpr
   = VarTerm Var
   | CoeffTerm Coeff
-  | Sum [Term]
-  | Diff [Term]
-  | Prod [Term]
-  | Minus Term
+  | Sum [ArithExpr]
+  | Diff [ArithExpr]
+  | Prod [ArithExpr]
+  | Minus ArithExpr
   | ConstTerm Rational
   deriving (Eq, Ord, Show)
 
-termIsZero (ConstTerm 0) = True
-termIsZero _ = False
+exprIsZero (ConstTerm 0) = True
+exprIsZero _ = False
 
-data Constraint
-  = Eq Term Term
-  | Le Term Term
-  | Ge Term Term
-  | Impl Constraint Constraint
-  | Iff Constraint Constraint
-  | Not Constraint
-  | Or [Constraint]
-  | And [Constraint]
+data Formula
+  = Eq ArithExpr ArithExpr
+  | Le ArithExpr ArithExpr
+  | Ge ArithExpr ArithExpr
+  | Impl Formula Formula
+  | Iff Formula Formula
+  | Not Formula
+  | Or [Formula]
+  | And [Formula]
   | Atom Var
   | Bot
   deriving (Eq, Ord, Show)
 
--- pattern Prod2 :: Term -> Term -> Term 
--- pattern Prod2 t1 t2 <- Prod [t1, t2]
---   where Prod2 t1 t2 = Prod [t1, t2]
-
-
-eq :: Term -> Term -> [Constraint]
+eq :: ArithExpr -> ArithExpr -> [Formula]
 eq (ConstTerm x) (ConstTerm y) | x == y = []
 eq t1 t2 = [Eq t1 t2]
 
-sum :: [Term] -> Term
-sum ts | all termIsZero ts = ConstTerm 0
-       | otherwise = sum' (filter (not. termIsZero) ts)
+sum :: [ArithExpr] -> ArithExpr
+sum ts | all exprIsZero ts = ConstTerm 0
+       | otherwise = sum' (filter (not. exprIsZero) ts)
 
-sum' :: [Term] -> Term
+sum' :: [ArithExpr] -> ArithExpr
 sum' [t] = t
 sum' ts = Sum ts
 
-prod :: [Term] -> Term
-prod ts | any termIsZero ts = ConstTerm 0
+prod :: [ArithExpr] -> ArithExpr
+prod ts | any exprIsZero ts = ConstTerm 0
        | otherwise = Prod ts
 
-prod2 :: Term -> Term -> Term
+prod2 :: ArithExpr -> ArithExpr -> ArithExpr
 prod2 t1 (ConstTerm 1) = t1
 prod2 (ConstTerm 1) t2 = t2
 prod2 t1 (ConstTerm (-1)) = minus t1
 prod2 (ConstTerm (-1)) t2 = minus t2
 prod2 t1 t2 = prod [t1, t2]
 
-sub :: [Term] -> Term
+sub :: [ArithExpr] -> ArithExpr
 sub [t] = t
 sub [t, ConstTerm 0] = t
-sub ts | all termIsZero ts = ConstTerm 0
+sub ts | all exprIsZero ts = ConstTerm 0
        | otherwise = Diff ts
 
-minus :: Term -> Term
+minus :: ArithExpr -> ArithExpr
 minus = Minus
 
-eqSum :: Term -> [Term] -> [Constraint]
+eqSum :: ArithExpr -> [ArithExpr] -> [Formula]
 eqSum t ts = eq t $ sum ts
 
--- eqSumNonZero :: Term -> [Term] -> [Constraint]
--- eqSumNonZero t ts | (not . all termIsZero) ts = eqSum t ts
---                   | otherwise = []
-
-
-eqPlusMulti :: Coeff -> Coeff -> Coeff -> Var -> [Constraint]
+eqPlusMulti :: Coeff -> Coeff -> Coeff -> Var -> [Formula]
 eqPlusMulti q p r k = eq (CoeffTerm q) $ Sum [CoeffTerm p, Prod [VarTerm k, CoeffTerm r]]
 
-eqMulti :: Coeff -> Coeff -> Var -> [Constraint]
+eqMulti :: Coeff -> Coeff -> Var -> [Formula]
 eqMulti q p k = eq (CoeffTerm q) $ Prod [VarTerm k, CoeffTerm p]
 
-zero :: Term -> [Constraint]
+zero :: ArithExpr -> [Formula]
 zero t = eq t (ConstTerm 0)
 
-geSum :: [Term] -> Term -> Constraint
+geSum :: [ArithExpr] -> ArithExpr -> Formula
 geSum ts = Ge (Sum ts)
 
-notZero :: Term -> [Constraint]
+notZero :: ArithExpr -> [Formula]
 notZero t = Not <$> zero t
 
-geZero :: Term -> [Constraint]
+geZero :: ArithExpr -> [Formula]
 geZero (ConstTerm 0) = []
 geZero t = ge t (ConstTerm 0)
 
-le :: Term -> Term -> [Constraint]
+le :: ArithExpr -> ArithExpr -> [Formula]
 le t1 t2 | t1 == t2 = []
 le t1 t2 = [Le t1 t2]
 
-ge :: Term -> Term -> [Constraint]
+ge :: ArithExpr -> ArithExpr -> [Formula]
 ge t1 t2 | t1 == t2 = []
 ge t1 t2 = [Ge t1 t2]
 
 
 -- empty list corresponds to a true constraint
-impl :: [Constraint] -> [Constraint] -> [Constraint]
+impl :: [Formula] -> [Formula] -> [Formula]
 impl [] [] = []
 impl [] [c2] = [c2]
 impl [c1] [] = []
 impl [c1] [c2] = [Impl c1 c2]
 impl _ _ = error "cannot construct implication. "
 
-iff :: [Constraint] -> [Constraint] -> [Constraint]
+iff :: [Formula] -> [Formula] -> [Formula]
 iff [] [] = []
 iff [c1] [c2] = [Iff c1 c2]
 
-or :: [Constraint] -> [Constraint]
+or :: [Formula] -> [Formula]
 or [] = []
 or cs = [Or cs]
 
-or2 :: [Constraint] -> [Constraint] -> [Constraint]
+or2 :: [Formula] -> [Formula] -> [Formula]
 or2 [] _ = []
 or2 _ [] = []
 or2 xs ys = or (xs ++ ys)
 
-and :: [Constraint] -> [Constraint]
+and :: [Formula] -> [Formula]
 and cs = [And cs]
 
-printTerm :: Term -> String
-printTerm (VarTerm k) = printVar k
-printTerm (CoeffTerm q) = printCoeff q
-printTerm (Sum terms) = printOpTerm "+" terms
-printTerm (Diff terms) = printOpTerm "-" terms
-printTerm (Prod terms) = printOpTerm "*" terms
-printTerm (ConstTerm c) = show c
+printArithExpr :: ArithExpr -> String
+printArithExpr (VarTerm k) = printVar k
+printArithExpr (CoeffTerm q) = printCoeff q
+printArithExpr (Sum terms) = printOpTerm "+" terms
+printArithExpr (Diff terms) = printOpTerm "-" terms
+printArithExpr (Prod terms) = printOpTerm "*" terms
+printArithExpr (ConstTerm c) = show c
 
-printOpTerm :: String -> [Term] -> String
+printOpTerm :: String -> [ArithExpr] -> String
 printOpTerm op [] = "0"
-printOpTerm op [t] = printTerm t
-printOpTerm op terms = "(" ++ intercalate (" " ++ op ++ " ") (map printTerm terms) ++ ")"
+printOpTerm op [t] = printArithExpr t
+printOpTerm op terms = "(" ++ intercalate (" " ++ op ++ " ") (map printArithExpr terms) ++ ")"
 
-printConstraint :: Constraint -> String
-printConstraint (Eq t1 t2) = printTerm t1 ++ " = " ++ printTerm t2
-printConstraint (Le t1 t2) = printTerm t1 ++ " <= " ++ printTerm t2
-printConstraint (Ge t1 t2) = printTerm t1 ++ " >= " ++ printTerm t2
-printConstraint (Impl c1 c2) = "(" ++ printConstraint c1 ++ ") => (" ++ printConstraint c2 ++ ")"
-printConstraint (Not c) = "not (" ++ printConstraint c ++ ")"
-printConstraint (Or cs) = "or (" ++ intercalate "," (map printConstraint cs) ++ ")"
+printFormula :: Formula -> String
+printFormula (Eq t1 t2) = printArithExpr t1 ++ " = " ++ printArithExpr t2
+printFormula (Le t1 t2) = printArithExpr t1 ++ " <= " ++ printArithExpr t2
+printFormula (Ge t1 t2) = printArithExpr t1 ++ " >= " ++ printArithExpr t2
+printFormula (Impl c1 c2) = "(" ++ printFormula c1 ++ ") => (" ++ printFormula c2 ++ ")"
+printFormula (Not c) = "not (" ++ printFormula c ++ ")"
+printFormula (Or cs) = "or (" ++ intercalate "," (map printFormula cs) ++ ")"
 
-instance HasCoeffs Term where
+instance HasCoeffs ArithExpr where
   getCoeffs (CoeffTerm q) = [q]
   getCoeffs (Sum terms) = getCoeffs terms
   getCoeffs (Diff terms) = getCoeffs terms
@@ -170,7 +160,7 @@ instance HasCoeffs Term where
   getCoeffs (Minus term) = getCoeffs term
   getCoeffs _ = []
 
-instance HasCoeffs Constraint where
+instance HasCoeffs Formula where
   getCoeffs (Eq t1 t2) = getCoeffs t1 ++ getCoeffs t2
   getCoeffs (Le t1 t2) = getCoeffs t1 ++ getCoeffs t2
   getCoeffs (Ge t1 t2) = getCoeffs t1 ++ getCoeffs t2

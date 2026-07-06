@@ -7,7 +7,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Ast where
+module Syntax.Ast where
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -20,13 +20,14 @@ import Data.List(intercalate)
 import Prelude hiding (break)
 
 import Primitive(Id, printRat)
-import Typing.Type (Type, splitProdType, splitFnType)
+import Typing.Type (Type)
 import Typing.Subst(Types(apply, tv))
 import Typing.Scheme (Scheme, toType)
 import Data.Tuple (swap)
 import Data.List.Extra (groupSort)
-import CostAnalysis.Annotation(BoundFunAnn,
-                               BoundAnn)
+import Syntax.Measure(Measure, MeasureEnv)
+import CostAnalysis.TemplateLanguage
+import Syntax.ResourceExpression
     
 type Fqn = (Text, Text)
 
@@ -34,17 +35,87 @@ printFqn (mod, fn) = T.unpack mod ++ "." ++ T.unpack fn
 
 type Number = Int
 
-data ModConfig = ModConfig {
-  modPotMap :: Map Type PotentialKind,
-  modRhsTerms :: Bool}
+data Parsed
+data Typed
+data Positioned
+
+--------------------------------------------------------------------------------
+-- Surface Programs
+--------------------------------------------------------------------------------
+
+type TemplateLanguageConfig = [AtomicLang]
+
+newtype ProgramConfig = ProgConfig {
+  templateConfig :: TemplateLanguageConfig
+  }
   deriving (Show)
 
-data Module a = Module {
-  name :: Text,
-  config :: ModConfig,
-  mutRecGroups :: [[Id]],
-  defs :: Map Id (FunDef a)
+type family ProgramSig a
+
+data SurfaceFunDef
+  = SurfaceFunDef
+      Id
+      [SurfaceClause]
+  deriving Show
+      
+data SurfaceClause
+  = SurfaceClause
+    (XExprAnn Parsed)
+    [Pattern Parsed]
+    (Expr Parsed)
+  deriving Show
+
+data SurfaceProgram = SurfaceProgram {
+  sfSig :: Map Id ParsedFunSig,
+  sfConfig :: ProgramConfig,
+  sfFunDefs :: Map Id SurfaceFunDef,
+  sfDataDefs :: [DataDecl],
+  sfMeasureDefs :: [MeasureDef]
+} deriving Show
+
+data DataDecl = DataDecl {
+  ddPos    :: SourcePos,
+  ddName   :: Id,
+  ddParams :: [Id],     
+  ddCtors  :: [CtorDecl]
+} deriving Show
+
+data CtorDecl = CtorDecl{
+  ctorName :: Id,
+  ctorArgs :: [Type]  
+} deriving Show
+
+data MeasureDef = MeasureDef {
+  mType :: Type,
+  mMeasure :: Measure,
+  mName :: Id,
+  mClauses :: [SurfaceClause]
+} deriving Show
+
+--------------------------------------------------------------------------------
+-- Core Programs
+--------------------------------------------------------------------------------
+  
+data Program a = Program {
+  pSig :: Map Id ParsedFunSig,
+  pConfig :: ProgramConfig,
+  pMutRecGroups :: [[Id]],
+  pFunDefs :: Map Id (FunDef a),
+  pDataEnv :: DataEnv,
+  pMeasureSig :: Map Scheme MeasureEnv
 }
+
+type DataEnv = Map Id DataInfo
+
+data DataInfo = DataInfo
+  { diParams :: [Id]
+  , diCtors  :: [CtorInfo]
+  } deriving Show
+
+data CtorInfo = CtorInfo
+  { ciName :: Id
+  , ciType :: Scheme
+  } deriving Show
 
 data FnConfig = FnConfig {
   costMode :: CostMode,
@@ -67,21 +138,22 @@ data PotentialKind
   deriving (Eq, Ord, Show)
 
 
-fns :: Module a -> [FunDef a]
-fns = M.elems . defs
+fns :: Program a -> [FunDef a]
+fns = M.elems . pFunDefs
 
-modMap :: (FunDef a -> FunDef b) -> Module a -> Module b
-modMap f (Module {..}) = Module {defs = M.map f defs, ..} 
+programMap :: (FunDef a -> FunDef b) -> Program a -> Program b
+programMap f (Program {..}) = Program {pFunDefs = M.map f pFunDefs, ..} 
 
-modMapM :: Monad m => (FunDef a -> m (FunDef b)) -> Module a -> m (Module b)
-modMapM f (Module {..}) = do
-  defs' <- mapM f defs 
-  return Module {defs = defs', ..}
+programMapM :: Monad m => (FunDef a -> m (FunDef b)) -> Program a -> m (Program b)
+programMapM f (Program {..}) = do
+  defs' <- mapM f pFunDefs
+  return Program {pFunDefs = defs', ..}
 
-modReplaceDefs :: Module b -> [FunDef a] -> Module a
-modReplaceDefs (Module {..}) newDefs = Module {defs = withIds, ..}
+progReplaceDefs :: Program b -> [FunDef a] -> Program a
+progReplaceDefs (Program {..}) newDefs = Program {pFunDefs = withIds, ..}
   where fnId (Fn id _ _) = id
         withIds = M.fromList $ zip (map fnId newDefs) newDefs
+
 
 data FunDef a = FunDef (XFunAnn a) Id [Id] (Expr a)
 
@@ -107,25 +179,27 @@ data Syntax a
    = SynExpr (Expr a)
    | SynArm (MatchArm a)
    | SynPat (Pattern a)
-   | SynPatVar (PatternVar a)
 
 data MatchArm a = MatchArmAnn (XExprAnn a) (Pattern a) (Expr a)
 
 armExpr :: MatchArm a -> Expr a
 armExpr (MatchArmAnn _ _ e) = e
-
-data PatternVar a = Id (XExprAnn a) Id
-  | WildcardVar (XExprAnn a)
-
+  
 data Pattern a
-  = ConstPat (XExprAnn a) Id [PatternVar a]
-  | Alias (XExprAnn a) Id
-  | WildcardPat (XExprAnn a) 
+  = PVar (XExprAnn a) Id
+  | PConst (XExprAnn a) Id [Pattern a]
+  | PWildcard (XExprAnn a)
+
+data Literal
+  = LNat Integer
+  | LRat Rational
+  | LString Text
+  deriving (Eq, Show)
 
 -- We use extensible AST types to model the different stages (parsed, typed, etc.) (see https://www.microsoft.com/en-us/research/uploads/prod/2016/11/trees-that-grow.pdf)
-
 data Expr a
-  = VarAnn (XExprAnn a) Id
+  = LitAnn (XExprAnn a) Literal
+  | VarAnn (XExprAnn a) Id
   | ConstAnn (XExprAnn a) Id [Expr a]
   | IteAnn (XExprAnn a) (Expr a) (Expr a) (Expr a)
   | MatchAnn (XExprAnn a) (Expr a) [MatchArm a]
@@ -137,25 +211,9 @@ data Expr a
 type family XExprAnn a
 type family XFunAnn a
 
-data CostAnnotation
-  = Coeffs BoundFunAnn
-  | Cost BoundAnn
-  deriving (Eq, Show)
-  
 
 funAnn :: FunDef a -> XFunAnn a
 funAnn (FunDef ann _ _ _) = ann
-  
--- pattern synomyms for constructor patterns
-pattern PatTreeNode :: XExprAnn a -> PatternVar a -> PatternVar a -> PatternVar a -> Pattern a
-pattern PatTreeNode ann l v r <- ConstPat ann "node" [l, v, r]
-  where PatTreeNode ann l v r = ConstPat ann "node" [l, v, r]
-pattern PatTreeLeaf :: XExprAnn a -> Pattern a
-pattern PatTreeLeaf ann <- ConstPat ann "leaf" []
-  where PatTreeLeaf ann = ConstPat ann "leaf" []
-pattern PatTuple :: XExprAnn a -> PatternVar a -> PatternVar a -> Pattern a
-pattern PatTuple ann x y <- ConstPat ann "(,)" [x, y]
-  where PatTuple ann x y = ConstPat ann "(,)" [x, y]
 
 -- pattern synomyms to work with epxressions without the overhead of annotations
 pattern Var :: Id -> Expr a
@@ -195,12 +253,12 @@ pattern Error :: Expr a
 pattern Error <- ConstAnn _ "error" []
 
 
-pattern PatWildcard :: XExprAnn a -> Pattern a
-pattern PatWildcard ann <- WildcardPat ann
-  where PatWildcard ann = WildcardPat ann
-pattern PatAlias :: XExprAnn a -> Id -> Pattern a
-pattern PatAlias ann id <- Alias ann id
-  where PatAlias ann id = Alias ann id
+-- pattern PatWildcard :: XExprAnn a -> Pattern a
+-- pattern PatWildcard ann <- WildcardPat ann
+--   where PatWildcard ann = WildcardPat ann
+-- pattern PatAlias :: XExprAnn a -> Id -> Pattern a
+-- pattern PatAlias ann id <- Alias ann id
+--   where PatAlias ann id = Alias ann id
 
 pattern MatchArm :: Pattern a -> Expr a -> MatchArm a
 pattern MatchArm p e <- MatchArmAnn _ p e
@@ -208,7 +266,7 @@ pattern MatchArm p e <- MatchArmAnn _ p e
 pattern Fn :: Id -> [Id] -> Expr a -> FunDef a
 pattern Fn id args e <- FunDef _ id args e
 
-containsFn :: Text -> Module a -> Bool
+containsFn :: Text -> Program a -> Bool
 containsFn fn = any matches . fns
   where matches (FunDef _ id _ _) = id == fn
 
@@ -222,14 +280,10 @@ printExprHead (Let id e1 e2) = "let " ++ T.unpack id ++ " = " ++ printExprHead e
 printExprHead (Tick _ _) = "tick"
 printExprHead (Coin _) = "coin"
 
-printPatVar :: PatternVar a -> String
-printPatVar (Id _ id) = T.unpack id
-printPatVar (WildcardVar _) = "_"
-
 printPat :: Pattern a -> String
-printPat (ConstPat _ id vars) = T.unpack id ++ " " ++(unwords . map printPatVar $ vars)
-printPat (Alias _ id) = T.unpack id
-printPat (WildcardPat _) = "_"
+printPat (PConst _ id ps) = T.unpack id ++ " " ++(unwords . map printPat $ ps)
+printPat (PVar _ id) = T.unpack id
+printPat (PWildcard _) = "_"
 
 printMatchArm :: (XExprAnn a -> String) -> Int -> MatchArm a -> String
 printMatchArm printAnn ident (MatchArmAnn _ pat e) = "| " ++ printPat pat ++ " -> " ++ printExpr printAnn ident e 
@@ -264,13 +318,13 @@ printFun :: (XExprAnn a -> String) -> FunDef a -> String
 printFun printExprAnn (Fn id args body) = T.unpack id ++ " " ++ printedArgs ++ " = " ++ printExpr printExprAnn 0 body
   where printedArgs = unwords . map T.unpack $ args
 
-printFuns :: (XExprAnn a -> String) -> Module a -> String
+printFuns :: (XExprAnn a -> String) -> Program a -> String
 printFuns printExprAnn mod = intercalate "\n\n" (map (printFun printExprAnn) (fns mod)) ++ "\n"
 
-printProg :: Module a -> String
+printProg :: Program a -> String
 printProg = printFuns (const "")
 
-printProgPositioned :: PositionedModule -> String
+printProgPositioned :: PositionedProgram -> String
 printProgPositioned = printFuns printCtx
   where printCtx (PositionedExprAnn {..}) = " " ++ paren (intercalate "," (map show (S.toList peCtx)))
 
@@ -303,19 +357,13 @@ instance Annotated MatchArm a where
   
 
 instance Annotated Pattern a where
-  mapAnn f (ConstPat ann id vars) = ConstPat (f ann) id (map (mapAnn f) vars)
-  mapAnn f (Alias ann id) = Alias (f ann) id
-  mapAnn f (WildcardPat ann) = WildcardPat (f ann)
+  mapAnn f (PConst ann id vars) = PConst (f ann) id (map (mapAnn f) vars)
+  mapAnn f (PVar ann id) = PVar (f ann) id
+  mapAnn f (PWildcard ann) = PWildcard (f ann)
 
-  getAnn (ConstPat ann _ _) = ann
-  getAnn (Alias ann _) = ann
-  getAnn (WildcardPat ann) = ann
-
-instance Annotated PatternVar a where
-  mapAnn f (Id ann id) = Id (f ann) id
-  mapAnn f (WildcardVar ann) = WildcardVar (f ann)
-  getAnn (Id ann _) = ann
-  getAnn (WildcardVar ann) = ann
+  getAnn (PConst ann _ _) = ann
+  getAnn (PVar ann _) = ann
+  getAnn (PWildcard ann) = ann
 
 instance Annotated Syntax a where
   mapAnn f (SynExpr e) = SynExpr $ mapAnn f e
@@ -325,31 +373,37 @@ instance Annotated Syntax a where
   getAnn (SynArm arm) = getAnn arm
   getAnn (SynPat p) = getAnn p
 
--- parsed
+--------------------------------------------------------------------------------
+-- Parsed Programs
+--------------------------------------------------------------------------------
+
+data ParsedCostSig = ParsedCostSig {
+  pcsFrom :: ([Id], ParsedExpr), 
+  pcsTo :: ([Id], ParsedExpr)
+} deriving Show
+
+data ParsedFunSig = ParsedFunSig {
+  typeSig :: Scheme,
+  costSig :: ParsedCostSig
+} deriving Show
+
 type ParsedSyntax = Syntax Parsed
-type ParsedModule = Module Parsed
+type ParsedProgram = Program Parsed
 type ParsedFunDef = FunDef Parsed
 type ParsedExpr = Expr Parsed
 type ParsedMatchArm = MatchArm Parsed
 type ParsedPattern = Pattern Parsed
-type ParsedPatternVar = PatternVar Parsed
 
-
-deriving instance Show ParsedPatternVar
 deriving instance Show ParsedPattern
 deriving instance Show ParsedMatchArm
 deriving instance Show ParsedExpr
 deriving instance Show ParsedFunDef
 
-data ParsedFunAnn = ParsedFunAnn {
-  pfLoc :: SourcePos,
-  pfFqn :: Fqn,
-  pfType :: Maybe Scheme,
-  pfCostAnn :: Maybe CostAnnotation,
-  pfFnConfig :: FnConfig}
+newtype ParsedFunAnn = ParsedFunAnn {
+  pfLoc :: SourcePos}
   deriving (Eq, Show)
 
-data Parsed
+
 type instance XExprAnn Parsed = SourcePos
 type instance XFunAnn Parsed = ParsedFunAnn
 
@@ -358,15 +412,12 @@ pattern FnParsed ann id args body = FunDef ann id args body
 
 
 -- typed
-type TypedModule = Module Typed
+type TypedProgram = Program Typed
 type TypedFunDef = FunDef Typed
 type TypedExpr = Expr Typed
 type TypedMatchArm = MatchArm Typed
 type TypedPattern = Pattern Typed
-type TypedPatternVar = PatternVar Typed
 
-deriving instance Show TypedPatternVar
-deriving instance Eq TypedPatternVar
 deriving instance Show TypedPattern
 deriving instance Eq TypedPattern
 deriving instance Show TypedMatchArm
@@ -377,10 +428,7 @@ deriving instance Show TypedFunDef
 
 data TypedFunAnn = TypedFunAnn {
   tfLoc :: SourcePos,
-  tfFqn :: Fqn,
-  tfType :: Scheme,
-  tfCostAnn :: Maybe CostAnnotation,
-  tfFnConfig :: FnConfig}
+  tfType :: Scheme}
   deriving (Eq, Show)
 
 data ExprSrc = Loc SourcePos | DerivedFrom SourcePos
@@ -391,7 +439,7 @@ data TypedExprAnn = TypedExprAnn {
   teType :: Type}
   deriving (Eq, Show)
   
-data Typed
+
 type instance XExprAnn Typed = TypedExprAnn
 type instance XFunAnn Typed = TypedFunAnn
 
@@ -414,29 +462,29 @@ instance HasType TypedExprAnn where
 extendWithType :: Type -> XExprAnn Parsed -> XExprAnn Typed
 extendWithType t pos = TypedExprAnn (Loc pos) t
 
-ctxFromFn :: FunDef Positioned -> ([(Id, Type)], [(Id, Type)])
-ctxFromFn (FunDef ann _ args _) =
-  let (tFrom, tTo) = splitFnType . toType . tfType $ ann
-      tsFrom = splitProdType tFrom
-      ctxFrom = zip args tsFrom 
-      ctxTo = ctxFromType tTo in
-    (ctxFrom, ctxTo)
+-- ctxFromFn :: FunDef Positioned -> ([(Id, Type)], [(Id, Type)])
+-- ctxFromFn (FunDef ann _ args _) =
+--   let (tFrom, tTo) = splitFnType . toType . tfType $ ann
+--       tsFrom = splitProdType tFrom
+--       ctxFrom = zip args tsFrom 
+--       ctxTo = ctxFromType tTo in
+--     (ctxFrom, ctxTo)
 
     
-ctxFromType :: Type -> [(Id, Type)]
-ctxFromType t = let ts = splitProdType t in 
-  zip [T.pack $ "e" ++ show n
-      |n <- [1..]] ts 
+-- ctxFromType :: Type -> [(Id, Type)]
+-- ctxFromType t = let ts = splitProdType t in 
+--   zip [T.pack $ "e" ++ show n
+--       |n <- [1..]] ts 
 
-returnTypeToArgs :: Type -> [Id]
-returnTypeToArgs t = map fst (ctxFromType t)
+-- returnTypeToArgs :: Type -> [Id]
+-- returnTypeToArgs t = map fst (ctxFromType t)
 
 
-fnArgsByType :: FunDef Positioned -> (Map Type [Id], Map Type [Id])
-fnArgsByType fn = let (from, to) = ctxFromFn fn in
-                    (toMap from, toMap to)
-  where toMap = M.fromList . groupSort . map swap
-          --M.fromListWith (++) $ map (\(x, t) -> (t, [x])) args
+-- fnArgsByType :: FunDef Positioned -> (Map Type [Id], Map Type [Id])
+-- fnArgsByType fn = let (from, to) = ctxFromFn fn in
+--                     (toMap from, toMap to)
+--   where toMap = M.fromList . groupSort . map swap
+--           --M.fromListWith (++) $ map (\(x, t) -> (t, [x])) args
         
 
 instance Types TypedExpr where
@@ -444,15 +492,12 @@ instance Types TypedExpr where
   tv e = tv (getType e)
 
 -- context
-type PositionedModule = Module Positioned
+type PositionedProgram = Program Positioned
 type PositionedFunDef = FunDef Positioned
 type PositionedExpr = Expr Positioned
 type PositionedMatchArm = MatchArm Positioned
 type PositionedPattern = Pattern Positioned
-type PositionedPatternVar = PatternVar Positioned
 
-deriving instance Show PositionedPatternVar
-deriving instance Eq PositionedPatternVar
 deriving instance Show PositionedPattern
 deriving instance Eq PositionedPattern
 deriving instance Show PositionedMatchArm
@@ -460,7 +505,7 @@ deriving instance Eq PositionedMatchArm
 deriving instance Show PositionedExpr
 deriving instance Eq PositionedExpr
 deriving instance Show PositionedFunDef
-deriving instance Show PositionedModule
+deriving instance Show PositionedProgram
 
 data ExprCtx = PseudoLeaf
   | RecCall 
@@ -482,23 +527,23 @@ data PositionedExprAnn = PositionedExprAnn {
 instance HasType PositionedExprAnn where
   type_ = peType
 
-data Positioned
+
 type instance XFunAnn Positioned = TypedFunAnn
 type instance XExprAnn Positioned = PositionedExprAnn
 
 extendWithCtx :: Set ExprCtx -> XExprAnn Typed -> XExprAnn Positioned
 extendWithCtx ctx (TypedExprAnn {..}) = PositionedExprAnn teSrc teType ctx
 
-data Val = ConstVal !Id ![Val] | NumVal Int
-  deriving (Eq)
+-- data Val = ConstVal !Id ![Val] | NumVal Int
+--   deriving (Eq)
 
 paren :: String -> String
 paren s = "(" ++ s ++ ")"
 
-instance Show Val where
-  show (ConstVal id []) = T.unpack id
-  show (ConstVal id args) = paren $ T.unpack id ++ " " ++ unwords (map show args)
-  show (NumVal n) = show n
+-- instance Show Val where
+--   show (ConstVal id []) = T.unpack id
+--   show (ConstVal id args) = paren $ T.unpack id ++ " " ++ unwords (map show args)
+--   show (NumVal n) = show n
 
 printPos :: SourcePos -> String
 printPos pos = show (unPos . sourceLine $ pos) ++ ","  ++ show (unPos $ sourceColumn pos)
@@ -506,3 +551,6 @@ printPos pos = show (unPos . sourceLine $ pos) ++ ","  ++ show (unPos $ sourceCo
 toVar :: Expr a -> Maybe Id
 toVar (Var x) = Just x
 toVar _ = Nothing
+
+
+

@@ -2,7 +2,8 @@ module Typing.Scheme where
 
 import qualified Data.Map as M
 
-import Typing.Type(Type(TGen), Tyvar)
+import Primitive(Id)
+import Typing.Type(Type(TGen))
 import Typing.Subst(Types(apply, tv))
 
 
@@ -22,8 +23,10 @@ toScheme = Forall 0
 toType :: Scheme -> Type
 toType (Forall _ t) = t
 
-quantify :: [Tyvar] -> Type -> Scheme
+quantify :: [Id] -> Type -> Scheme
 quantify vs t = Forall (length vs) (apply s t)
   where vs' = [v | v <- tv t, v `elem` vs]
         s = M.fromList $ zip vs' (map TGen [0..])
         
+quantifyAll :: Type -> Scheme
+quantifyAll t = quantify (tv t) t

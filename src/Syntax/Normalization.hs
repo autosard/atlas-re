@@ -1,6 +1,6 @@
-module Normalization where
+module Syntax.Normalization where
 
-import Ast
+import Syntax.Ast
 import Control.Monad.State (State, get, put, evalState)
 import Typing.Type
 import Primitive(Id, enumId)
@@ -8,7 +8,7 @@ import Control.Monad (foldM)
 
 type Norm = State Int
 
-normalizeMod :: TypedModule -> TypedModule
+normalizeMod :: TypedProgram -> TypedProgram
 normalizeMod m = runNorm $ nmModule m
 
 normalizeExpr :: TypedExpr -> TypedExpr
@@ -23,8 +23,8 @@ newVar = do
   put (i + 1)
   return (enumId i)
 
-nmModule :: TypedModule -> Norm TypedModule
-nmModule = modMapM nmFunDef
+nmModule :: TypedProgram -> Norm TypedProgram
+nmModule = programMapM nmFunDef
 
 nmFunDef :: TypedFunDef -> Norm TypedFunDef
 nmFunDef (FunDef ann id args body) = do

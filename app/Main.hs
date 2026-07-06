@@ -24,17 +24,9 @@ import System.Directory
 import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
-import CostAnalysis.Annotation
-import CostAnalysis.Potential
-import Ast(Module(..),
-           ModConfig(..),
-           TypedModule,
-           TypedExpr,
-           Fqn, defs,
-           printProg,
-           PositionedModule, funAnn, TypedFunAnn (tfFnConfig), FnConfig (costMode))
+import Syntax.Ast
 import CostAnalysis.Coeff
-import CostAnalysis.PrettyProof(renderProof, css, js)
+-- import CostAnalysis.PrettyProof(renderProof, css, js)
 
 
 import Colog (cmap, fmtMessage, logTextStdout, logWarning,
@@ -43,16 +35,11 @@ import Colog (cmap, fmtMessage, logTextStdout, logWarning,
 
 import System.Environment(lookupEnv)
 
-import Typing.Inference(inferExpr, inferModule)
-import Normalization(normalizeMod, normalizeExpr)
+import Typing.Inference(inferExpr, inferProgram)
+--import Normalization(normalizeMod, normalizeExpr)
 import Parsing.Program(parseExpr)
-import Parsing.Tactic
-import Eval(evalWithModule)
+-- import Parsing.Tactic
 import Primitive(Id)
-import CostAnalysis.Tactic 
-import CostAnalysis.ProveMonad
-import CostAnalysis.Rules
-import CostAnalysis.Analysis
 
 import Cli(Options(..),
            AnalyzeOptions(..),
@@ -61,170 +48,168 @@ import Cli(Options(..),
            Command(..), cliP)
 
 import System.Random (getStdGen)
-import Module (load)
+import Loading (loadProgram)
 import SourceError (printSrcError)
-import CostAnalysis.Constraint (Constraint)
+--import CostAnalysis.Constraint (Constraint)
 import Control.Monad (when)
-import AstContext (contextualizeMod)
-import Benchmark(sort, genBenchmark, median)
+--import AstContext (contextualizeMod)
+-- import Benchmark(sort, genBenchmark, median)
 import Control.Concurrent (yield)
 
-type App a = LoggerT (Msg Severity) IO a
+-- type App a = LoggerT (Msg Severity) IO a
 
-app :: Options -> App ()
+app :: Options -> IO ()
 app options = do
   case optCommand options of
     Analyze runOptions -> run options runOptions
-    Eval evalOptions -> eval options evalOptions
-    Bench benchOptions -> bench options benchOptions
+    -- Eval evalOptions -> eval options evalOptions
+    -- Bench benchOptions -> bench options benchOptions
 
-run :: Options -> AnalyzeOptions -> App ()
+run :: Options -> AnalyzeOptions -> IO ()
 run Options{..} AnalyzeOptions{..} = do
-  liftIO $ createDirectoryIfMissing True "out"
+  createDirectoryIfMissing True "out"
   let (modName, _) = case target of
         (Left mod) -> (mod, Nothing)
         (Right (mod, fn)) -> (mod, Just fn)
-  (normalizedProg, contents) <- liftIO $ loadMod searchPath target
-  let positionedProg = contextualizeMod normalizedProg
-  when switchPrintProg $ liftIO $ putStrLn (printProg positionedProg)
-  when (null . mutRecGroups $ positionedProg) $ do
-    logError $ "Module does not define the requested function."
-    liftIO exitFailure
-  liftIO $ printAnalysisInfo positionedProg
-  tactics <- case tacticsPath of
-    Just path -> loadTactics (T.unpack modName) (M.keys (defs normalizedProg)) path
-    Nothing -> return M.empty
-  let env = ProofEnv {
-        _tactics=tactics,
-        _analysisMode=analysisMode,
-        _incremental=switchIncremental,
-        _rhsTerms=(modRhsTerms . config) positionedProg}
-  result <- liftIO $ analyzeModule env positionedProg
+  loadMod searchPath modName
+
+  -- let positionedProg = contextualizeMod normalizedProg
+  -- when switchPrintProg $ liftIO $ putStrLn (printProg positionedProg)
+  -- when (null . mutRecGroups $ positionedProg) $ do
+  --   fail $ "Module does not define the requested function."
+  -- printAnalysisInfo positionedProg
+  -- tactics <- case tacticsPath of
+  --   Just path -> loadTactics (T.unpack modName) (M.keys (defs normalizedProg)) path
+  --   Nothing -> return M.empty
+  -- let env = ProofEnv {
+  --       _tactics=tactics,
+  --       _analysisMode=analysisMode,
+  --       _incremental=switchIncremental,
+  --       _rhsTerms=(modRhsTerms . config) positionedProg}
+  -- result <- liftIO $ analyzeModule env positionedProg
   
-  case result of
-    Left srcErr -> liftIO $ die $ printSrcError srcErr contents
-    Right solverResult -> case solverResult of
-      (AnalysisResult deriv sigCs _ (Left unsatCore)) ->
-        let core' = S.fromList unsatCore in do
-          logError "solver returned unsat. See unsat-core for details."
-          liftIO $ writeHtmlProof "./out" (renderProof (Just core') deriv sigCs) 
-      (AnalysisResult deriv sigCs sig (Right ((solution, objective), pots))) -> do
-        liftIO $ putStr "Done. "
-        liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv sigCs)
-        liftIO $ printSolution switchDumpCoeffs sig pots solution
-        liftIO $ when switchPrintObjective (do
-                                               putStrLn ""
-                                               putStrLn ("objective: " ++ objective))
+  -- case result of
+  --   Left srcErr -> liftIO $ die $ printSrcError srcErr contents
+  --   Right solverResult -> case solverResult of
+  --     (AnalysisResult deriv sigCs _ (Left unsatCore)) ->
+  --       let core' = S.fromList unsatCore in do
+  --         logError "solver returned unsat. See unsat-core for details."
+  --         liftIO $ writeHtmlProof "./out" (renderProof (Just core') deriv sigCs) 
+  --     (AnalysisResult deriv sigCs sig (Right ((solution, objective), pots))) -> do
+  --       liftIO $ putStr "Done. "
+  --       liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv sigCs)
+  --       liftIO $ printSolution switchDumpCoeffs sig pots solution
+  --       liftIO $ when switchPrintObjective (do
+  --                                              putStrLn ""
+  --                                              putStrLn ("objective: " ++ objective))
 
-printAnalysisInfo :: PositionedModule -> IO ()
-printAnalysisInfo (Module {..}) = putStrLn $
-  "Analyzing module " ++ T.unpack name ++ "("
-  ++ T.unpack (T.intercalate ", " (concat mutRecGroups))
-  ++ ") ..."
+-- printAnalysisInfo :: PositionedModule -> IO ()
+-- printAnalysisInfo (Module {..}) = putStrLn $
+--   "Analyzing module " ++ T.unpack name ++ "("
+--   ++ T.unpack (T.intercalate ", " (concat mutRecGroups))
+--   ++ ") ..."
 
-printSolution :: Bool -> FreeSignature -> PotFnMap -> Map Coeff Rational -> IO ()
-printSolution dumpCoeffs sig potFns solution = do
-  when dumpCoeffs (do
-                      mapM_ (\(q, v) -> putStrLn $ show q ++ " = " ++ show v) (M.assocs solution)
-                      putStrLn "")
-  putStrLn ""
-  putStrLn "potential functions:"
-  mapM_ printPotFn (M.assocs potFns)
-  putStrLn ""
-  mapM_ printFnBound (M.keys sig)
-  putStrLn ""
-  putStrLn "where (e1,...,en) := f x1 ... xm"
-  where printFnBound fn = do
-          let fnSig = sig M.! fn
-          putStrLn $ T.unpack fn ++ ":"
-          let CostSig s1 s2 = withCost fnSig
-          putStrLn $ "\t" ++ printBound potFns s1 solution
-          case s2 of
-            Just s -> putStrLn $ "\t" ++ printBound potFns s solution ++ " (worst case)"
-            Nothing -> putStr ""
-        printPotFn (kind, (pot, rhs)) = do
-          putStrLn $ "\t" ++ show kind ++ ": " ++ printRHS pot rhs solution 
+-- printSolution :: Bool -> FreeSignature -> PotFnMap -> Map Coeff Rational -> IO ()
+-- printSolution dumpCoeffs sig potFns solution = do
+--   when dumpCoeffs (do
+--                       mapM_ (\(q, v) -> putStrLn $ show q ++ " = " ++ show v) (M.assocs solution)
+--                       putStrLn "")
+--   putStrLn ""
+--   putStrLn "potential functions:"
+--   mapM_ printPotFn (M.assocs potFns)
+--   putStrLn ""
+--   mapM_ printFnBound (M.keys sig)
+--   putStrLn ""
+--   putStrLn "where (e1,...,en) := f x1 ... xm"
+--   where printFnBound fn = do
+--           let fnSig = sig M.! fn
+--           putStrLn $ T.unpack fn ++ ":"
+--           let CostSig s1 s2 = withCost fnSig
+--           putStrLn $ "\t" ++ printBound potFns s1 solution
+--           case s2 of
+--             Just s -> putStrLn $ "\t" ++ printBound potFns s solution ++ " (worst case)"
+--             Nothing -> putStr ""
+--         printPotFn (kind, (pot, rhs)) = do
+--           putStrLn $ "\t" ++ show kind ++ ": " ++ printRHS pot rhs solution 
           
 
-writeHtmlProof :: FilePath -> LT.Text -> IO ()
-writeHtmlProof path html = do
-  path <- liftIO $ makeAbsolute path
-  liftIO $ createDirectoryIfMissing False path
-  liftIO $ TextLazyIO.writeFile (path </> "index.html") html
-  liftIO $ TextLazyIO.writeFile (path </> "style.css") css
-  liftIO $ TextLazyIO.writeFile (path </> "proof.js") js
-  liftIO $ putStrLn $ "Saved proof to \"file://" ++ path </> "index.html" ++ "\""
+-- writeHtmlProof :: FilePath -> LT.Text -> IO ()
+-- writeHtmlProof path html = do
+--   path <- liftIO $ makeAbsolute path
+--   liftIO $ createDirectoryIfMissing False path
+--   liftIO $ TextLazyIO.writeFile (path </> "index.html") html
+--   liftIO $ TextLazyIO.writeFile (path </> "style.css") css
+--   liftIO $ TextLazyIO.writeFile (path </> "proof.js") js
+--   liftIO $ putStrLn $ "Saved proof to \"file://" ++ path </> "index.html" ++ "\""
 
-printDeriv :: Bool -> Maybe (Set Constraint) -> Derivation -> IO ()
-printDeriv showCs unsatCore deriv = putStr (drawTree deriv')
-  where integrateCore = case unsatCore of
-                          Just core -> Just (core, red)
-                          Nothing -> Nothing 
-        deriv' = fmap (printRuleApp showCs integrateCore) deriv
+-- printDeriv :: Bool -> Maybe (Set Constraint) -> Derivation -> IO ()
+-- printDeriv showCs unsatCore deriv = putStr (drawTree deriv')
+--   where integrateCore = case unsatCore of
+--                           Just core -> Just (core, red)
+--                           Nothing -> Nothing 
+--         deriv' = fmap (printRuleApp showCs integrateCore) deriv
 
-red :: String -> String
-red s = setSGRCode [SetColor Foreground Vivid Red] ++ s ++ setSGRCode [Reset]
+-- red :: String -> String
+-- red s = setSGRCode [SetColor Foreground Vivid Red] ++ s ++ setSGRCode [Reset]
 
-eval :: Options -> EvalOptions -> App ()
-eval Options{..} EvalOptions{..} = do
-  (mod, _) <- liftIO $ loadMod searchPath (Left modName)
-  --expr' <- liftIO $ loadExpr expr mod
-  rng <- liftIO getStdGen
-  -- let val = evalWithModule mod expr' rng
-  --e <- liftIO $ genBenchmark "gtree" ["4"] mod
-  e <- liftIO $ genBenchmark "golden_delmin" ["4"] mod
-  let val = snd $ evalWithModule mod e rng
-  liftIO $ print val
+-- eval :: Options -> EvalOptions -> App ()
+-- eval Options{..} EvalOptions{..} = do
+--   (mod, _) <- liftIO $ loadMod searchPath (Left modName)
+--   --expr' <- liftIO $ loadExpr expr mod
+--   rng <- liftIO getStdGen
+--   -- let val = evalWithModule mod expr' rng
+--   --e <- liftIO $ genBenchmark "gtree" ["4"] mod
+--   e <- liftIO $ genBenchmark "golden_delmin" ["4"] mod
+--   let val = snd $ evalWithModule mod e rng
+--   liftIO $ print val
 
-bench :: Options -> BenchOptions -> App ()
-bench Options{..} BenchOptions{..} = do
-  (mod, _) <- liftIO $ loadMod searchPath (Left benchMod)
-  let args = words $ T.unpack benchmark
-  expr <- liftIO $ genBenchmark (head args) (tail args) mod 
-  rng <- liftIO getStdGen
-  let (_, vs) = foldr (eval mod expr) (rng, []) [1..samples] 
-  let val = median vs
-  liftIO $ print val
-  where eval mod expr _ (rng, vs) = let (rng', v) = evalWithModule mod expr rng in
-          (rng', fst v : vs)
+-- bench :: Options -> BenchOptions -> App ()
+-- bench Options{..} BenchOptions{..} = do
+--   (mod, _) <- liftIO $ loadMod searchPath (Left benchMod)
+--   let args = words $ T.unpack benchmark
+--   expr <- liftIO $ genBenchmark (head args) (tail args) mod 
+--   rng <- liftIO getStdGen
+--   let (_, vs) = foldr (eval mod expr) (rng, []) [1..samples] 
+--   let val = median vs
+--   liftIO $ print val
+--   where eval mod expr _ (rng, vs) = let (rng', v) = evalWithModule mod expr rng in
+--           (rng', fst v : vs)
 
 
-loadExpr :: Text -> TypedModule -> IO TypedExpr
-loadExpr contents ctx = do
-  let parsed = parseExpr contents
-  typed <- case inferExpr ctx parsed of
-        Left srcErr -> die $ printSrcError srcErr contents
-        Right expr -> return expr
-  return $ normalizeExpr typed
+-- loadExpr :: Text -> TypedModule -> IO TypedExpr
+-- loadExpr contents ctx = do
+--   let parsed = parseExpr contents
+--   typed <- case inferExpr ctx parsed of
+--         Left srcErr -> die $ printSrcError srcErr contents
+--         Right expr -> return expr
+--   return $ normalizeExpr typed
 
-loadTactics :: String -> [Id] -> FilePath -> App (Map Id Tactic)
-loadTactics modName fns path = M.fromList . catMaybes <$> mapM loadOne fns
-  where loadOne :: Id -> App (Maybe (Id, Tactic))
-        loadOne fn = do
-          let fileName = path </> modName </> T.unpack fn <.> "txt"
-          exists <- liftIO $ doesFileExist fileName
-          if exists then do
-            contents <- liftIO $ TextIO.readFile fileName
-            return $ Just (fn, parseTactic fileName contents)
-          else do
-            logWarning $ "No tactic file for function '" `T.append` fn `T.append` "' found."
-            return Nothing
+-- loadTactics :: String -> [Id] -> FilePath -> App (Map Id Tactic)
+-- loadTactics modName fns path = M.fromList . catMaybes <$> mapM loadOne fns
+--   where loadOne :: Id -> App (Maybe (Id, Tactic))
+--         loadOne fn = do
+--           let fileName = path </> modName </> T.unpack fn <.> "txt"
+--           exists <- liftIO $ doesFileExist fileName
+--           if exists then do
+--             contents <- liftIO $ TextIO.readFile fileName
+--             return $ Just (fn, parseTactic fileName contents)
+--           else do
+--             logWarning $ "No tactic file for function '" `T.append` fn `T.append` "' found."
+--             return Nothing
 
-loadMod :: Maybe FilePath -> Either Text Fqn -> IO (TypedModule, Text)
-loadMod pathSearch modOrFqn = do
+loadMod :: Maybe FilePath -> Text -> IO ()
+loadMod pathSearch modName = do
   searchPathfromEnv <- lookupEnv "ATLAS_SEARCH"
   let path = (`fromMaybe` pathSearch) . (`fromMaybe` searchPathfromEnv) $ "."
-  (parsedMod, contents) <- case modOrFqn of
-    Left moduleName -> load path moduleName Nothing
-    Right (mod, fn) -> load path mod (Just fn)
-  typedMod <- case inferModule parsedMod of
-        Left srcErr -> die $ printSrcError srcErr contents
-        Right mod -> return mod
-  return (normalizeMod typedMod, contents)
+  surfaceProg <- loadProgram path modName
+  print surfaceProg
+  -- typedMod <- case inferProgram parsedMod of
+  --       Left srcErr -> die $ printSrcError srcErr contents
+  --       Right mod -> return mod
+  -- return (normalizeMod typedMod, contents)
 
 main :: IO ()
 main = do
-  let logAction = cmap fmtMessage logTextStdout
   options <- execParser cliP
-  usingLoggerT logAction $ app options
+  app options
 

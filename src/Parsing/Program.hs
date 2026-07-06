@@ -1,466 +1,440 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections #-}
-{-# LANGUAGE TemplateHaskell #-}
 
-module Parsing.Program(parseExpr, parseModule, initialPos, SourcePos) where
+module Parsing.Program(parseExpr, parseProgram, initialPos, SourcePos) where
 
 import Control.Monad 
 import Control.Applicative hiding (many, some)
 
-import Data.List(singleton, nub)
+import Data.List(singleton)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Void ( Void )
 import Control.Monad.Combinators.Expr
 import Data.Char (isAlphaNum)
 import qualified Data.Map as M
-import Data.Map(Map)
 import qualified Data.Set as S
-import Data.Set(Set)
+
 import Data.Ratio((%))
-import Data.Maybe(isJust, fromMaybe)
+import Data.Maybe(fromMaybe)
 import Data.Functor(($>))
-import Lens.Micro.Platform
 
 import Prelude hiding (LT, EQ, GT, LE)
 
 import Text.Megaparsec
-import Text.Megaparsec.Char ( letterChar, space1 )
+import Text.Megaparsec.Char ( space1, upperChar, lowerChar, hspace1, char, printChar )
 import qualified Text.Megaparsec.Char.Lexer as L
 
-import Ast
+import Syntax.Ast
 import Typing.Type
 import Typing.Scheme
-import Control.Monad.RWS
-import Primitive(Id, traceShow)
-import qualified CostAnalysis.Coeff as Coeff
-import CostAnalysis.Annotation (FunAnn(..),
-                                BoundAnn,
-                                split, FunSig(..), CostSig (CostSig))
-import CostAnalysis.Template (BoundTemplate(..))
-import CostAnalysis.Coeff (coeffArgs)
-
-defaultCoinPropability :: Rational
-defaultCoinPropability = 1 % 2
-
-newtype ParserContext = ParserContext { ctxModuleName :: Text }
-data ParserState = ParserState { _varIdGen :: Int,
-                                 _typeVarMapping :: Map Id Type,
-                                 _varIdentifiers :: Set Id}
-
-makeLenses ''ParserState
-
-quantifyTypeVar :: Id -> Parser Type
-quantifyTypeVar id = do
-  state <- get
-  varMap <- use typeVarMapping
-  lastId <- use varIdGen
-  let nextId = lastId + 1
-  case M.lookup id varMap of
-    Nothing -> do
-      let var = TGen lastId
-      put state{
-        _varIdGen = nextId,
-        _typeVarMapping = M.insert id var varMap
-        }
-      return var
-    Just var -> return var
-
-type Parser = ParsecT Void Text (RWS ParserContext () ParserState)
+import Primitive(Id)
+import CostAnalysis.TemplateLanguage
+import Syntax.Measure (Measure(Size, Potential))
 
 
-data ModPragmas = ModPragmas {
-  potMapping :: Maybe (Map Type PotentialKind),
-  rhsTerms :: Bool}
-  deriving (Show)
 
-defaultModPragmas = ModPragmas Nothing False
+--------------------------------------------------------------------------------
+-- Parser Interface
+--------------------------------------------------------------------------------
 
+type Parser = Parsec Void Text
 
-pModule :: Parser (ModConfig, [ParsedFunDef])
-pModule = sc *> do
-  ModPragmas{..} <- pModPragmas
-  let config = ModConfig
-        (fromMaybe M.empty potMapping)
-        rhsTerms
-  (config,) <$> manyTill pFunc eof
-
-pPragma :: Text -> Parser a -> Parser a
-pPragma word p = try $ between (symbol "{-#") (symbol "#-}") $ symbol word *> p
-
-pPotMappingPragma :: Parser (ModPragmas -> ModPragmas)
-pPotMappingPragma = do
-  p <- pPragma "POTENTIAL" pPotentialMapping
-  return $ \ps -> ps {potMapping = Just p}
-
-pRhsTermsPragma :: Parser (ModPragmas -> ModPragmas)
-pRhsTermsPragma = do
-  p <- pPragma "VALUE_VARS" (return True)
-  return $ \ps -> ps {rhsTerms = p}
-
-pModPragma :: Parser (ModPragmas -> ModPragmas)
-pModPragma = choice [pPotMappingPragma,
-                     pRhsTermsPragma]
-
-pModPragmas :: Parser ModPragmas
-pModPragmas = do
-  updates <- many pModPragma
-  return $ foldr (\f ps -> f ps) defaultModPragmas updates
-                     
-
-pPotentialMapping :: Parser (Map Type PotentialKind)
-pPotentialMapping = M.fromList <$> pParens (sepBy (do
-  t <- pType
-  symbol ":"
-  pot <- pPotentialMode
-  return (t, pot)) (symbol ","))
-
-pPotentialMode :: Parser PotentialKind
-pPotentialMode =
-  try (symbol "loglrx_weight_biased") $> LogLRXWB
-  <|> try (symbol "loglrx") $> LogLRX
-  <|> symbol "loglr" $> LogLR
-  <|> symbol "polynomial" $> Polynomial
-  <|> symbol "linlog" $> LinLog
-  <|> symbol "logr" $> LogR
-  <|> symbol "logl" $> LogL
-  <|> symbol "log_golden" $> LogGolden
-  <|> symbol "rank" $> Rank
-  <|> symbol "right_heavy" $> RightHeavy
   
-   
+parseProgram :: String -> Text -> Text -> (SurfaceProgram, [Id])
+parseProgram fileName moduleName contents = case runParser pProgram fileName contents of 
+  Left errs -> error $ errorBundlePretty errs
+  Right prog -> prog
 
-data Signature = Signature
-  Id
-  Scheme
-  (Maybe CostAnnotation)
+parseExpr contents = case runParser (pExpr sc) (T.unpack name) contents of
+  Left errs -> error $ errorBundlePretty errs
+  Right prog -> prog
+  where name = "<interactive>"
 
-pNumSig :: Parser Int
-pNumSig = do
-  n <- pInt
-  if n > 0 then return n else
-    fail "Number of signatures must at least one."
+--------------------------------------------------------------------------------
+-- Pragmas and Config
+--------------------------------------------------------------------------------
 
-    
+pPragma :: Text -> Parser a -> Parser (Maybe a)
+pPragma word p = optional $ between (symbol "{-#") (symbol "#-}") $ symbol word *> p
 
-data FunPragmas = FunPragmas {
-  costModePrag :: CostMode,
-  numCfSigs :: Maybe Int,
-  strongCfPrag :: Bool
-} deriving (Show)
+pAtomicLang :: Parser AtomicLang
+pAtomicLang =
+  symbol "size" *> pParens sc (SizeLang <$> pInt <* symbol "," <*> pInt)
+  <|> symbol "log" *> pParens sc (LogLang <$> pInt <* symbol "," <*> pInt)
+  <|> BinomLang <$ symbol "binom" <*> pParens sc pInt
+  <|> RankLang <$ symbol "rank"
 
-defaultFunPragmas = FunPragmas AmortizedCost Nothing False
+pTemplateLanguageConfig :: Parser (Maybe TemplateLanguageConfig)
+pTemplateLanguageConfig = pPragma "TEMPLATE" (pSqParens (sepBy pAtomicLang (symbol ",")))
 
-pCostModePragma :: Parser (FunPragmas -> FunPragmas)
-pCostModePragma = do
-  mode <- choice [
-    pPragma "MODE" (AmortizedCost <$ symbol "amortized"),
-    pPragma "MODE" (WorstCaseCost <$ symbol "worst_case"),
-    pPragma "MODE" (HybridCost <$ symbol "hybrid")]
-  return $ \ps -> ps {costModePrag = mode}
+--------------------------------------------------------------------------------
+-- Programs and Top Level Definitions
+--------------------------------------------------------------------------------
 
-pNumCfSigsPragma :: Parser (FunPragmas -> FunPragmas)
-pNumCfSigsPragma = do
-  n <- pPragma "NUM_CF_SIGS" pNumSig
-  return $ \ps -> ps {numCfSigs = Just n}
+data TopLevel
+  = TLClause (Id, SurfaceClause)
+  | TLSig (Id, ParsedFunSig)
+  | TLData DataDecl
+  | TLMeasure MeasureDef
+  deriving Show
 
-pStrongCfPragma :: Parser (FunPragmas -> FunPragmas)
-pStrongCfPragma = do
-  strong <- pPragma "STRONG_CF" (return True)
-  return $ \ps -> ps {strongCfPrag = strong}  
+pTopLevel :: Parser TopLevel
+pTopLevel = 
+  TLData    <$> pDataDef
+  <|> TLMeasure <$> pMeasureDef
+  <|> TLSig     <$> try pFunSig
+  <|> TLClause     <$> pSurfaceClause
 
-pFunPragma :: Parser (FunPragmas -> FunPragmas)
-pFunPragma = choice [pCostModePragma,
-                     pNumCfSigsPragma,
-                     pStrongCfPragma]
+pImport :: Parser Id
+pImport = symbol "import" *> pUpperIdentifier
 
-pFunPragmas :: Parser FunPragmas
-pFunPragmas = do
-  updates <- many pFunPragma
-  return $ foldr (\f ps -> f ps) defaultFunPragmas updates
-   
+buildFunDefs ::
+  M.Map Id ParsedFunSig
+  -> M.Map Id [SurfaceClause]
+  -> Parser (M.Map Id SurfaceFunDef)
+buildFunDefs sigs clauses =
+  traverse build allNames
+  where
+    allNames =
+      M.fromSet id $ M.keysSet sigs `S.union` M.keysSet clauses
+    build name =
+      case (M.lookup name sigs, M.lookup name clauses) of
+        (Just sig, Just cls) ->
+          return (SurfaceFunDef name cls)
+        (Nothing, Just cls) ->
+          -- inferred function
+          return (SurfaceFunDef name cls)
+        (Just _, Nothing) ->
+          fail $ "Signature without definition: " ++ show name
+        (Nothing, Nothing) ->
+          fail "impossible"
 
-pFunc :: Parser ParsedFunDef
-pFunc = do
+pProgram :: Parser (SurfaceProgram, [Id])
+pProgram = scn *> do
+  templLangConfig <- pTemplateLanguageConfig
+  
+  let config = ProgConfig (fromMaybe defaultLangConfig templLangConfig)
+
+  imports <- many pImport
+
+  tops <- L.nonIndented sc (manyTill pTopLevel eof)
+
+  let sigs = M.fromList [(fn, s) | TLSig (fn,s) <- tops]
+      clauses :: [(Id, SurfaceClause)]
+      clauses = [c | TLClause c <- tops]
+      groupedClauses = M.fromListWith (++) (map (\(i, c) -> (i, [c])) clauses)
+      
+  funDefs <- buildFunDefs sigs groupedClauses
+      
+  return (SurfaceProgram
+    { sfConfig   = config
+    , sfSig     = sigs
+    , sfFunDefs     = funDefs 
+    , sfDataDefs    = [d | TLData d <- tops]
+    , sfMeasureDefs = [m | TLMeasure m <- tops]
+    }, imports)
+  
+--------------------------------------------------------------------------------
+-- Data Definitions
+--------------------------------------------------------------------------------
+
+pDataDef :: Parser DataDecl
+pDataDef = do
   pos <- getSourcePos
-  FunPragmas{..} <- pFunPragmas
-  sig <- optional pSignature
-  funName <- pIdentifier
-  (_type, cost) <- case sig of
-    Just (Signature name _type costAnn) -> do
-      when (funName /= name ) (fail $ "Signature for function '" ++ T.unpack name ++ "' must be followod by defining equation.")
-      return (Just _type, costAnn)
-    Nothing -> return (Nothing, Nothing)
-  modName <- asks ctxModuleName
-  let funFqn = (modName, funName)
-  args <- manyTill pIdentifier (symbol "=")
-  varIdentifiers %= (\s -> foldr S.insert s args)
-  let cfg = FnConfig costModePrag numCfSigs strongCfPrag
-  FunDef (ParsedFunAnn pos funFqn _type cost cfg) funName args <$> pExpr
+  symbol "data"
+  name <- pUpperIdentifier
+  params <- many pIdentifier
+  symbol "="
+  ctors <- sepBy pConstructorDecl (symbol "|")
+  return $ DataDecl pos name params ctors
 
-pSignature :: Parser Signature
-pSignature = do
-  name <- try pIdentifier <?> "function name"
-  void pDoubleColon2
-  constraints <- optional ((pConstraints <* pDoubleArrow) <?> "type constraint(s)")
-  _type <- pFunctionType <?> "function type"
-  costAnn <- optional $ pCoeffAnn <|> pCostAnn
-  return $ Signature name _type costAnn
+pConstructorDecl :: Parser CtorDecl
+pConstructorDecl = do
+  name <- pUpperIdentifier
+  args <- many (pParens scn pType <|> try pType)
+  return $ CtorDecl name args
 
-pCoeffAnn :: Parser CostAnnotation
-pCoeffAnn = do
-  symbol "|" 
-  withCostPrimary <- pFunResourceAnn
-  withCostSecondary <- optional $ do
-    symbol ";"
-    pFunResourceAnn
-  costFree <- optional $ pCurlyParens $ sepBy pFunResourceAnn (symbol ";")
-  return $ Coeffs (FunAnn
-                   (CostSig withCostPrimary withCostSecondary)
-                   (fromMaybe [] costFree)
-                   M.empty)
-
-pCostAnn :: Parser CostAnnotation
-pCostAnn = do
-  symbol "@"
-  worstCase <- isJust <$> optional (symbol ">")
-  Cost <$> pTypedResourceAnn
   
-pConstraints :: Parser ()
-pConstraints = void (try $ pParens (some pConstraint))
-  <|> pConstraint
+--------------------------------------------------------------------------------
+-- Measure Definitions
+--------------------------------------------------------------------------------
 
-pConstraint :: Parser ()
-pConstraint =  pTypeClass <* pIdentifier
+buildMeasure :: Type -> Measure -> [(Id, SurfaceClause)] -> Parser MeasureDef
+buildMeasure t measure namedClauses = do
+  let (name, _) = head namedClauses
+  let clauses = map snd namedClauses
+  return $ MeasureDef t measure name clauses
 
-pTypeClass :: Parser ()
-pTypeClass
-  = symbol "Eq"
-  <|> symbol "Ord"
+pMeasureDef :: Parser MeasureDef
+pMeasureDef = L.indentBlock sc $ do
+  symbol "measure"
+  measure <-   (symbol "Size" $> Size)
+           <|> (symbol "Potential" $> Potential)
+  ty <- pType
+  hSymbol "where"
+  return $ L.IndentSome Nothing (buildMeasure ty measure) pSurfaceClause
 
-pFunctionType :: Parser Scheme
-pFunctionType = do
-  modify (\s@ParserState{..} -> s{
-             _varIdGen = 0,
-             _typeVarMapping = M.empty
-             })
-  tArgs <- pArgsType
+--------------------------------------------------------------------------------
+-- Function Signatures
+--------------------------------------------------------------------------------
+
+pBind :: Parser [(Id, Type)]
+pBind = try (pParens sc pBindInner)
+  <|> pBindInner
+
+pBindInner :: Parser [(Id, Type)]
+pBindInner = sepBy ((,) <$> pIdentifier <* symbol ":" <*> pType) (symbol ",")
+
+pFunSig :: Parser (Id, ParsedFunSig)
+pFunSig = do
+  name <- try pIdentifier <?> "function name"
+  symbol ":"
+  argBindings <- pBind
+  let tArgs = prod (map snd argBindings)
+  symbol "|"
+  costFrom <- pExpr sc
   pArrow
-  tResult <- pType
-  len <- use varIdGen
-  return $ Forall len (TAp Arrow [tArgs, tResult])
+  resultBindings <- pBind
+  let tResult = prod (map snd resultBindings)
+  symbol "|"
+  costTo <- pExpr sc
+  return (name, ParsedFunSig
+    (quantifyAll (TFun tArgs tResult))
+    ParsedCostSig {
+        pcsFrom = (map fst argBindings, costFrom),
+        pcsTo = (map fst resultBindings, costFrom)})
 
-pArgsType :: Parser Type
-pArgsType = do
-  args <- pParens (sepBy1 pType pCross)
-    <|> (singleton <$> pType)
-  return $ TAp Prod args
+
+--------------------------------------------------------------------------------
+-- Function Definitions
+--------------------------------------------------------------------------------
+
+pClauseHead :: Parser (Text, [ParsedPattern])
+pClauseHead = do
+  name <- pIdentifier
+  args <- manyTill pPattern (symbol "=")
+  return $ (name, args)
+
+pSurfaceClause :: Parser (Id, SurfaceClause)
+pSurfaceClause = L.lineFold scn $ \sc' -> do
+  pos <- getSourcePos
+  (name, args) <- pClauseHead
+  body <- pExpr sc'
+  scn
+  return (name, SurfaceClause pos args body)
+
+--------------------------------------------------------------------------------
+-- Types
+--------------------------------------------------------------------------------
 
 pType :: Parser Type
-pType = pTypeConst
-  <|> (quantifyTypeVar =<< pIdentifier)
+pType = do
+  TVar <$> pIdentifier
+  <|> pProdType
+  <|> pTypeApp
 
-pTypeConst :: Parser Type  
-pTypeConst
-  = (`TAp` []) <$> (Bool <$ symbol "Bool")
-  <|> (`TAp` []) <$> (Num <$ symbol "Num")
-  <|> (`TAp` []) <$> (Base <$ symbol "Base")
-  <|> TAp <$> (Tree <$ symbol "Tree") <*> (singleton <$> pType)
-  <|> TAp <$> (List <$ symbol "List") <*> (singleton <$> pType)
-  <|> TAp Prod <$> pParens (sepBy1 pType pCross)
+pTypeApp :: Parser Type
+pTypeApp = do
+  c <- pUpperIdentifier
+  args <- many pType
+  return (TAp c args)
 
+pProdType :: Parser Type
+pProdType = do
+  ts <- pParens sc (sepBy1 pType pCross)
+  return (prod ts)
 
-pFunResourceAnn :: Parser (FunSig BoundTemplate)
-pFunResourceAnn = do
-  from <- pTypedResourceAnn
-  pArrow
-  to <- pTypedResourceAnn
-  let (from', fromRef) = split from to
-  return (FunSig (from', fromRef) to)
-  --return (FunSig (from, M.empty) to)
+--------------------------------------------------------------------------------
+-- Patterns
+--------------------------------------------------------------------------------
 
-pTypedResourceAnn :: Parser BoundAnn
-pTypedResourceAnn = M.fromList <$> sepBy pResourceAnn (symbol ",")
-
-pResourceAnn :: Parser (Type, BoundTemplate)
-pResourceAnn = do
-  t <- pType
-  coeffs <- M.fromList <$> pSqParens pCoefficients
-  let args = nub $ foldr (\i ids -> ids ++ coeffArgs i) [] (M.keys coeffs)
-  return (t, BoundTemplate args [] coeffs)
-
-pCoefficients :: Parser [(Coeff.CoeffIdx, Rational)]
-pCoefficients =  sepBy pCoefficient (symbol ",")
-
-pCoefficient :: Parser (Coeff.CoeffIdx, Rational)
-pCoefficient = do
-  index <- pCoeffIdx
-  void pMapsTo
-  coefficient <- try pRational <|> toRational <$> pInt
-  return (index, coefficient)
-
-pCoeffIdx :: Parser Coeff.CoeffIdx
-pCoeffIdx = Coeff.Pure <$> pIdentifier
-  <|> Coeff.mixed . S.fromList <$> pParens (sepBy pFactor (symbol ","))
-
-pFactor :: Parser Coeff.Factor
-pFactor = Coeff.Const <$> pInt
-  <|> try (do id <- pIdentifierInternal
-              symbol "^"
-              arg <- pInt
-              return $ Coeff.Arg id [arg])
-  <|> (do id <- pIdentifierInternal 
-          symbol "^"
-          Coeff.Arg id <$> pListInt)
-
-pParenExpr :: Parser ParsedExpr
-pParenExpr = pParens pExpr
-
-pExpr :: Parser ParsedExpr
-pExpr = try pParenExpr
-  <|> pKeywordExpr
-  <|> pInfixExpr 
-  <?> "expression"
-
-pKeywordExpr :: Parser ParsedExpr
-pKeywordExpr
-  = (do
-        vars <- use varIdentifiers
-        pos <- getSourcePos
-        symbol "if"
-        e1 <- pExpr
-        symbol "then"
-        e2 <- pExpr
-        symbol "else"
-        varIdentifiers %= const vars
-        e3 <- pExpr
-        return $ IteAnn pos e1 e2 e3)
-  <|> MatchAnn <$> getSourcePos <* symbol "match" <*> (try pUndefVar <|> pExpr) <* symbol "with" <* symbol "|" <*> sepBy1 pMatchArm (symbol "|")
-  <|> LetAnn <$> getSourcePos <* symbol "let" <*> pDefIdentifier <* symbol "=" <*> pExpr <* symbol "in" <*> pExpr
-  <|> TickAnn <$> getSourcePos <* symbol "~" <*> optional pRational <*> pExpr
-  <|> CoinAnn <$> getSourcePos <* symbol "coin" <*> ((pRational <?> "coin probability") <|> pure defaultCoinPropability)
-
-
-pConst :: Parser ParsedExpr
-pConst = do
-  pos <- getSourcePos
-  (name, args) <- (,) <$> symbol' "true" <*> pure []
-    <|> (,) <$> symbol' "false" <*> pure []
-    <|> (,) <$> symbol' "node" <*> count 3 pArg
-    <|> (,) <$> symbol' "leaf" <*> pure []
-    <|> (,) <$> symbol' "cons" <*> count 2 pArg
-    <|> (,) <$> symbol' "error" <*> pure []
-    <|> (,) <$> symbol' "weight" <*> count 1 pArg
-    <|> (,) <$> symbol' "rank" <*> count 1 pArg
-    <|> (do
-            n <- pNumber
-            return (T.append "num#" (T.pack (show n)), []))
-    <|> ("nil",) <$ symbol "[]" <*> pure []
-    <|> ("(,)",) <$> try (pParens ((\x y -> [x, y]) <$> pArg <* symbol "," <*> pArg))
-  return $ ConstAnn pos name args
-  
-pMatchArm :: Parser ParsedMatchArm
-pMatchArm = MatchArmAnn <$> getSourcePos <*> pPattern <* pArrow <*> pExpr 
+pConstPattern :: SourcePos -> Parser ParsedPattern
+pConstPattern pos = do
+  name <- pUpperIdentifier
+  args <- many pPattern
+  return $ PConst pos name args
 
 pPattern :: Parser ParsedPattern
 pPattern = do
   pos <- getSourcePos
-  pConstPattern pos 
-    <|> WildcardPat pos <$ symbol "_"
-    <|> (do
-            iden <- pIdentifier
-            varIdentifiers %= (iden `S.insert`)
-            return $ Alias pos iden)
+  pConstPattern pos
+    <|> PWildcard pos <$ symbol "_"
+    <|> PVar pos <$> pIdentifier
+    <|> pParens sc pPattern
 
-pConstPattern :: SourcePos -> Parser ParsedPattern
-pConstPattern pos = do
-  (name, args) <- (,) <$> symbol' "node" <*> count 3 pPatternVar
-    <|> (,) <$> symbol' "leaf" <*> pure []
-    <|> ("nil",) <$ symbol "[]" <*> pure []
-    <|> (,) <$> symbol' "cons" <*> count 2 pPatternVar
-    <|> ("(,)",) <$> try (pParens ((\x y -> [x, y]) <$> pPatternVar <* symbol "," <*> pPatternVar))
-  return $ ConstPat pos name args
+--------------------------------------------------------------------------------
+-- Expressions
+--------------------------------------------------------------------------------
 
-pPatternVar :: Parser ParsedPatternVar
-pPatternVar = do
+pIfThenElse :: Parser () -> Parser ParsedExpr
+pIfThenElse sc' = do
   pos <- getSourcePos
-  WildcardVar pos <$ symbol "_"
-    <|> (do
-            iden <- pIdentifier
-            varIdentifiers %= (iden `S.insert`)
-            return $ Id pos iden)
+  symbol "if"
+  e1 <- pExpr sc'
+  symbol "then"
+  e2 <- pExpr sc'
+  symbol "else"
+  e3 <- pExpr sc'
+  return $ IteAnn pos e1 e2 e3
 
-pApplication :: Parser ParsedExpr
-pApplication = AppAnn <$> getSourcePos <*> pIdentifier <*> some pArg
+pMatchArm :: Parser () -> Parser ParsedMatchArm
+pMatchArm sc' = MatchArmAnn <$> getSourcePos <* L.symbol sc' "|" <*> pPattern <* pArrow <*> (pExpr sc')
 
-pArg :: Parser ParsedExpr
-pArg = 
-  pConst
-  <|> pParenExpr
-  <|> try (pVar <* notFollowedBy (symbol "= " <|> pDoubleColon2))
-  <|> try pApplication
-  <?> "function argument"
-
-pVar :: Parser ParsedExpr
-pVar = do
-  vars <- use varIdentifiers
+pMatch :: Parser () -> Parser ParsedExpr
+pMatch sc' = do
   pos <- getSourcePos
-  iden <- pIdentifier
-  unless (iden `S.member` vars) (fail $ "Unknown variable " ++ T.unpack iden)
-  return $ VarAnn pos iden 
+  L.symbol sc' "match"
+  arg <- pExpr sc' 
+  L.symbol sc' "with"
+  arms <- some (pMatchArm sc')
+  return $ MatchAnn pos arg arms
 
-pInfixExpr :: Parser ParsedExpr
-pInfixExpr = makeExprParser pArg operatorTable 
+defaultCoinPropability :: Rational
+defaultCoinPropability = 1 % 2
 
-binaryApp :: Parser Text -> Id -> Operator Parser ParsedExpr
-binaryApp parser id = InfixL curryConst
-  where curryConst :: Parser (ParsedExpr -> ParsedExpr -> ParsedExpr)
-        curryConst = do
-          f <- const
-          return (\a1 a2 -> f [a1, a2])
-        const :: Parser ([ParsedExpr] -> ParsedExpr)
-        const = ConstAnn <$> getSourcePos <* parser <*> pure id
+pKeywordExpr :: Parser () -> Parser ParsedExpr
+pKeywordExpr sc'
+  = pIfThenElse sc'
+  <|> pMatch sc'
+  <|> LetAnn <$> getSourcePos <* symbol "let" <*> pIdentifier <* symbol "=" <*> pExpr sc' <* symbol "in" <*> pExpr sc'
+  <|> TickAnn <$> getSourcePos <* symbol "~" <*> optional pRational <*> pExpr sc'
+  <|> CoinAnn <$> getSourcePos <* symbol "coin" <*> ((pRational <?> "coin probability") <|> pure defaultCoinPropability)
 
-operatorTable :: [[Operator Parser ParsedExpr]]
-operatorTable =
-  [
-    [
-      binaryApp (symbol' "<=") "LE",
-      binaryApp (symbol' ">=") "GE",
-      binaryApp (symbol' "<") "LT",
-      binaryApp (symbol' "==" <|> symbol' "⩵") "EQ",
-      binaryApp (symbol' ">") "GT",
-      binaryApp (symbol' "+") "+",
-      binaryApp (symbol' "-") "-"
+pParenExpr :: Parser () -> Parser ParsedExpr
+pParenExpr sc' = pParens sc (pExpr sc')
+
+pZeroAryConst :: Parser () -> Parser ParsedExpr
+pZeroAryConst sc' = ConstAnn <$> getSourcePos <*> pUpperIdentifier <*> pure []
+
+pAtom :: Parser () -> Parser ParsedExpr
+pAtom sc = 
+  pParenExpr sc
+  <|> pZeroAryConst sc
+  <|> pVar sc
+  <|> pLiteral
+  <?> "atomic expression"
+
+pApplication :: Parser () -> Parser ParsedExpr
+pApplication sc' = 
+  AppAnn <$> getSourcePos <*> pIdentifier' sc' <*> sepEndBy (pAtom sc) (try sc')
+  <|> (do 
+          pos <- getSourcePos
+          args <- singleton <$> between (symbol "|") (symbol "|")  (pAtom sc)
+          return $ AppAnn pos "size" args
+  )
+
+pConst :: Parser () -> Parser ParsedExpr
+pConst sc' = do
+  pos <- getSourcePos
+  (name, args) <- (,)
+    <$> pUpperIdentifier' sc <*> sepEndBy (pAtom sc) (try sc')
+    <|> ("(,)",) <$> try (pParens sc' ((\x y -> [x, y]) <$> pAtom sc' <* symbol "," <*> pAtom sc'))
+  return $ ConstAnn pos name args
+
+pVar :: Parser () -> Parser ParsedExpr
+pVar sc = VarAnn <$> getSourcePos <*> pIdentifier' sc
+
+pLiteral :: Parser ParsedExpr
+pLiteral = do
+  pos <- getSourcePos
+  LitAnn pos <$> (
+        LRat <$> try pRational
+    <|> LNat <$> pNumber
+    <|> LString <$> pString
+    )
+
+-- | Parses either a constructor application or a function application
+pJuxtaposition :: Parser () -> Parser ParsedExpr
+pJuxtaposition sc' = 
+  try (pApplication sc')
+  <|> pConst sc'
+  <|> pVar sc
+  <|> pLiteral
+
+binaryL :: Parser () -> Text -> Operator Parser ParsedExpr
+binaryL sc op = InfixL (mk sc op)
+
+binaryR :: Parser () -> Text -> Operator Parser ParsedExpr
+binaryR sc op = InfixR (mk sc op)
+
+binaryN :: Parser () -> Text -> Operator Parser ParsedExpr
+binaryN sc op = InfixN (mk sc op)
+
+mk :: Parser () -> Text -> Parser (ParsedExpr -> ParsedExpr -> ParsedExpr)
+mk sc op = do
+  pos <- getSourcePos
+  L.symbol sc op
+  pure $ \a b -> AppAnn pos op [a, b]  
+
+operatorTable :: Parser () -> [[Operator Parser ParsedExpr]]
+operatorTable sc =
+  [ -- comparison (lowest precedence)
+    [ binaryN sc "<=" 
+    , binaryN sc ">=" 
+    , binaryN sc "<"  
+    , binaryN sc ">"  
+    , binaryN sc "==" 
     ]
+
+    -- arithmetic (higher precedence)
+  , [ binaryL sc "+" 
+    , binaryL sc "-" 
+    ]
+
+  , [ binaryL sc "*"]
   ]
 
-keywords = [ "if", "then", "else", "match", "with", "let", "in"]
+pInfixExpr :: Parser () -> Parser ParsedExpr
+pInfixExpr sc = makeExprParser (pJuxtaposition sc) (operatorTable sc)
 
-pDefIdentifier :: Parser Text
-pDefIdentifier = do
-  iden <- pIdentifier
-  varIdentifiers %= (iden `S.insert`)
-  return iden
+pExpr :: Parser () -> Parser ParsedExpr
+pExpr sc = try (pParenExpr sc)
+  <|> pKeywordExpr sc
+  <|> pInfixExpr sc
+  <?> "expression"
 
-pUndefVar :: Parser (Expr Parsed)
-pUndefVar = do
-  v@(VarAnn _ iden) <- pVar
-  varIdentifiers %= (iden `S.delete`)
-  return v
+--------------------------------------------------------------------------------
+-- Identifiers
+--------------------------------------------------------------------------------
 
-pIdentifier :: Parser Text
-pIdentifier = do
-  ident <- lexeme (T.cons <$> letterChar <*>
-                   takeWhileP Nothing (\x -> isAlphaNum x || (x == '_') || (x == '\'') || (x == '.')) <?> "identifier")
-           
+keywords = [ "data", "measure", "import", "if", "then", "else", "match", "with", "let", "in"]
+  
+pIdentifierLike :: Parser () -> Parser Char -> Parser Text
+pIdentifierLike sc firstChar = try $ do
+  ident <- L.lexeme sc (
+    T.cons <$> firstChar
+           <*> takeWhileP Nothing identChar
+           <?> "identifier")
   if ident `elem` keywords
     then fail $ "Use of reserved keyword " ++ T.unpack ident
     else return ident
+  where
+    identChar x =
+         isAlphaNum x
+      || x == '_'
+      || x == '\''
+      || x == '.'
 
-pIdentifierInternal = lexeme (takeWhileP Nothing (\x -> isAlphaNum x || x == '!' ||(x == '_') || (x == '\'') || (x == '.')) <?> "identifier+")
+pIdentifier :: Parser Text
+pIdentifier = pIdentifierLike scn lowerChar
+
+pIdentifier' :: Parser () -> Parser Text
+pIdentifier' sc = pIdentifierLike sc lowerChar
+
+pUpperIdentifier :: Parser Text
+pUpperIdentifier = pIdentifierLike scn upperChar
+
+pUpperIdentifier' :: Parser () -> Parser Text
+pUpperIdentifier' sc = pIdentifierLike sc upperChar
+
+--------------------------------------------------------------------------------
+-- Literals
+--------------------------------------------------------------------------------
+
+pString :: Parser Text
+pString = T.pack <$ char '"' <*> manyTill printChar (char '"')
 
 pInt :: Parser Int
 pInt = do
@@ -468,10 +442,7 @@ pInt = do
   num <- lexeme L.decimal
   return $ sign * num
 
-pListInt :: Parser [Int]
-pListInt = pParens $ sepBy pInt (symbol ",")
-
-pNumber = NumVal <$> lexeme L.decimal
+pNumber = lexeme L.decimal
 
 pInteger :: Parser Integer
 pInteger = do
@@ -486,45 +457,38 @@ pRational = do
   den <- pInteger
   return $ num % den
 
-pParens = between (symbol "(") (symbol ")")
+--------------------------------------------------------------------------------
+-- Delimiters
+--------------------------------------------------------------------------------
+
+pParens sc = between (symbol "(") (L.symbol sc ")")
 pSqParens = between (symbol "[") (symbol "]")
-pCurlyParens = between (symbol "{") (symbol "}")
 pArrow = symbol "->" <|> symbol "→"
-pDoubleArrow = symbol "=>" <|> symbol "⇒"
-pDoubleColon2 = symbol "::" <|> symbol "∷"
+
 pCross = symbol "⨯" <|> symbol "*"
-pMapsTo = symbol "↦" <|> symbol "|->"
 
 symbol :: Text -> Parser ()
-symbol = void . L.symbol sc
+symbol = void . L.symbol scn
 
-symbol' :: Text -> Parser Text
-symbol' = L.symbol sc
+hSymbol :: Text -> Parser ()
+hSymbol = void . L.symbol sc
 
 lexeme :: Parser a -> Parser a
-lexeme = L.lexeme sc
+lexeme = L.lexeme scn
+
+--------------------------------------------------------------------------------
+-- Whitespace
+--------------------------------------------------------------------------------
 
 sc :: Parser ()
 sc = L.space
-  space1                        
+  hspace1
   (L.skipLineComment "(*)")       
   (L.skipBlockComment "(*" "*)")
 
-initState = ParserState 0 M.empty S.empty
-
-
-parseModule :: String -> Text -> Text -> (ModConfig, [ParsedFunDef])
-parseModule fileName moduleName contents = case fst $ evalRWS rws initEnv initState of
-  Left errs -> error $ errorBundlePretty errs
-  Right prog -> prog
-  where initEnv = ParserContext moduleName
-        rws = runParserT pModule fileName contents
-
-parseExpr contents = case fst $ evalRWS rws initEnv initState of
-  Left errs -> error $ errorBundlePretty errs
-  Right prog -> prog
-  where name = "<interactive>"
-        initEnv = ParserContext name
-        rws = runParserT pExpr (T.unpack name) contents
-
+scn :: Parser ()
+scn = L.space
+  space1                        
+  (L.skipLineComment "(*)")       
+  (L.skipBlockComment "(*" "*)")
 

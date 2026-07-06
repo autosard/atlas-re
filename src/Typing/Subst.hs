@@ -4,25 +4,27 @@ import Data.Map(Map)
 import qualified Data.Map.Strict as M
 import Data.List(union)
 
+import Primitive(Id)
 import Typing.Type
 
-type Subst = Map Tyvar Type
+type Subst = Map Id Type
 
 nullSubst = M.empty
 
 infix 4 +->
-(+->) :: Tyvar -> Type -> Subst
+(+->) :: Id -> Type -> Subst
 u +-> t = M.singleton u t
 
 class Types t where
   apply :: Subst -> t -> t
-  tv :: t -> [Tyvar]
+  tv :: t -> [Id]
 
 instance Types Type where
   apply s (TVar u)  = case M.lookup u s of
                        Just t  -> t
                        Nothing -> TVar u
   apply s (TAp c ts) = TAp c (apply s ts)
+  apply s (TFun t1 t2) = TFun (apply s t1) (apply s t2)
   apply s t = t
   tv (TVar u)  = [u]
   tv (TAp c ts) = tv ts
