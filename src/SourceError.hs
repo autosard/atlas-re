@@ -4,15 +4,28 @@ module SourceError where
 
 import qualified Data.Text as T
 import Text.Megaparsec.Pos
-import Data.Text
+import qualified Data.Text.IO as TextIO(readFile)
+import System.Exit
 
-data SourceError = SourceError !SourcePos !String
+data SourceError e = SourceError !SourcePos e
 
-printSrcError :: SourceError -> Text -> String
-printSrcError (SourceError pos@SourcePos {..} error) contents = 
-  let msg = "Error: " ++ sourcePosPretty pos ++ ": "
-      lines = T.lines contents
-      lineNum = unPos sourceLine
-      errorLine = T.unpack (lines !! (lineNum - 1))
-  in msg ++ "\n\n" ++ show lineNum ++ " |" ++ errorLine ++ "\n\n" ++ error
+printSrcError :: (Show a) => SourceError a -> IO b
+printSrcError (SourceError pos@SourcePos {..} error) = do
+  contents <- TextIO.readFile sourceName
+  die (buildMessage contents)
+  where buildMessage contents =
+          let msg = "Error: " ++ sourcePosPretty pos ++ ": "
+              lines = T.lines contents
+              lineNum = unPos sourceLine
+              errorLine = T.unpack (lines !! (lineNum - 1))
+              col = unPos sourceColumn
+              gutter = show lineNum ++ " |"
+              marker = replicate (length gutter + col - 1) ' ' ++ "^"
+          in msg ++ "\n\n"
+             ++ gutter
+             ++ errorLine
+             ++ "\n"
+             ++ marker
+             ++ "\n"
+             ++ show error
   

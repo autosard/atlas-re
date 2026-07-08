@@ -12,10 +12,10 @@ instance Types Scheme where
   tv (Forall _ t) = tv t
 
 data Scheme = Forall !Int !Type
-  deriving (Eq)
+  deriving (Eq, Ord, Show)
 
-instance Show Scheme where
-  show (Forall _ t) = show t
+-- instance Show Scheme where
+--   show (Forall _ t) = show t
 
 toScheme :: Type -> Scheme
 toScheme = Forall 0

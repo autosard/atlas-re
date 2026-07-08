@@ -28,6 +28,7 @@ instance Types Type where
   apply s t = t
   tv (TVar u)  = [u]
   tv (TAp c ts) = tv ts
+  tv (TFun t1 t2) = tv t1 `union` tv t2
   tv t = []
 
 instance Types a => Types [a] where

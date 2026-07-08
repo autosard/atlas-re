@@ -8,15 +8,11 @@ import StaticAnalysis(calledFunctions')
 import Syntax.Ast
 import Syntax.Constants (isBasicConst)
 
-
-contextualizeProg :: TypedProgram -> PositionedProgram 
-contextualizeProg = programMap contextualizeFun
-
-contextualizeFun :: TypedFunDef -> PositionedFunDef
-contextualizeFun (FunDef ann id args body) = FunDef ann id args (contextualizeExpr id body)
+contextualizeProg :: Program Typed -> Program Positioned
+contextualizeProg = pMapFn contextualizeExpr
 
 contextualizeExpr :: Id -> TypedExpr -> PositionedExpr
-contextualizeExpr fn = contextualizeExpr' fn $ S.fromList [PseudoLeaf, OutermostLet, ConstEmptyTree]
+contextualizeExpr fn = contextualizeExpr' fn $ S.fromList [PseudoLeaf, OutermostLet]
 
 contextualizeExpr' :: Id -> Set ExprCtx -> TypedExpr -> PositionedExpr
 contextualizeExpr' fn ctx (VarAnn ann id) = VarAnn (extendWithCtx (S.delete OutermostLet ctx) ann) id
@@ -46,7 +42,6 @@ contextualizeExpr' fn ctx (LetAnn ann id e1 e2) = LetAnn (extendWithCtx letCtx a
         childCtx = ctx S.\\ S.fromList (FirstAfterMatch:[OutermostLet | nestedConst e1 e2]
                                         ++ [FirstAfterApp | S.member FirstAfterMatch ctx])
         bodyCtx | appOrTick e1 = S.insert FirstAfterApp childCtx 
-                | constLeaf e1 = S.insert ConstEmptyTree childCtx 
                 | otherwise = childCtx
         e1' = contextualizeExpr' fn (S.delete PseudoLeaf childCtx) e1
         e2' = contextualizeExpr' fn bodyCtx e2
@@ -70,10 +65,6 @@ appOrTick :: Expr a -> Bool
 appOrTick (Tick {}) = True
 appOrTick (App {}) = True
 appOrTick _ = False
-
-constLeaf :: Expr a -> Bool
-constLeaf Leaf = True
-constLeaf _ = False
 
 contextualizeArm :: Id -> Set ExprCtx -> TypedMatchArm -> PositionedMatchArm
 contextualizeArm fn ctx (MatchArmAnn ann pat e) = MatchArmAnn (extendWithCtx S.empty ann) pat' e'

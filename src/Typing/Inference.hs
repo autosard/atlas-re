@@ -4,6 +4,7 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Typing.Inference where
 
@@ -15,10 +16,11 @@ import Data.Array(Array)
 import qualified Data.Array as A
 import Control.Monad.Extra(mapAndUnzipM, foldM)
 import Data.List(uncons)
+import Lens.Micro.Platform
 
 import qualified Data.List as L
   
-import Typing.Type(Type(..),fn)
+import Typing.Type(Type(..),fn, unprod)
 import Typing.Subst
 import Typing.Scheme
 import Syntax.Ast
@@ -28,27 +30,28 @@ import Text.Megaparsec.Pos(unPos)
 import SourceError
 import Syntax.Constants
 
+
 data TiState = TiState {
   idGen :: Int,
   subst :: Subst,
-  traceStack :: [ParsedSyntax]}
+  traceStack :: [Syntax Elaborated]}
 
 class Traceable a where
   trace :: a -> TI ()
 
-instance Traceable ParsedExpr where
+instance Traceable (Expr Elaborated) where
   trace e = pushSyn $ SynExpr e
 
-instance Traceable ParsedMatchArm where
+instance Traceable (MatchArm Elaborated) where
   trace arm = pushSyn $ SynArm arm
 
-instance Traceable ParsedPattern where
+instance Traceable (Pattern Elaborated) where
   trace p = pushSyn $ SynPat p
 
 untrace :: a -> TI ()
 untrace _ = popSyn
 
-pushSyn :: ParsedSyntax -> TI ()
+pushSyn :: Syntax Elaborated -> TI ()
 pushSyn e = do
   s <- get
   put s{traceStack = e:traceStack s}
@@ -154,7 +157,7 @@ instScheme (Forall len t) = do
 
 type Infer e t = Context -> CtorEnv -> e -> TI t
 
-tiPattern :: Infer ParsedPattern (Context, TypedPattern)
+tiPattern :: Infer (Pattern Elaborated) (Context, Pattern Typed)
 tiPattern ctx cEnv (PConst ann id ps) = do
   tp <- newTVar
   constT <- instScheme =<< lookupCtor id cEnv
@@ -172,7 +175,7 @@ tiPattern ctx _ (PWildcard ann) = do
   let ann' = extendWithType v ann
   return (ctx, PWildcard ann')
 
-tiMatchArm :: Infer ParsedMatchArm TypedMatchArm
+tiMatchArm :: Infer (MatchArm Elaborated) (MatchArm Typed)
 tiMatchArm ctx cEnv arm@(MatchArmAnn ann pat e) = do
   trace arm
   (ctx', pat') <- tiPattern ctx cEnv pat
@@ -181,7 +184,7 @@ tiMatchArm ctx cEnv arm@(MatchArmAnn ann pat e) = do
   let ann' = extendWithType (getType e') ann 
   return $ MatchArmAnn ann' pat' e'
 
-tiExpr :: Infer ParsedExpr TypedExpr
+tiExpr :: Infer (Expr Elaborated) (Expr Typed)
 tiExpr ctx cEnv e = do
   trace e
   e' <- tiExpr' ctx cEnv e
@@ -189,7 +192,7 @@ tiExpr ctx cEnv e = do
   return e'
 
 
-tiExpr' :: Infer ParsedExpr TypedExpr
+tiExpr' :: Infer (Expr Elaborated) (Expr Typed)
 tiExpr' ctx _ (VarAnn ann id) = do
   sc <- find id ctx
   t <- instScheme sc
@@ -274,57 +277,92 @@ tiExpr' ctx cEnv (CoinAnn ann p) = do
 -- funArgTypes (TFun t _]) = ts
 -- funArgTypes _ = error "cannot extract arg types from non-function type."
 
-tiFun :: Infer ParsedFunDef (Type, TypedExpr)
-tiFun ctx cEnv (FunDef ann id args exp) = do
-  (tsFrom, tTo) <- case toType <$> ctx M.!? id of
-    Just (TFun (TAp "(,)" from) to) -> return (from, to)
-    Just _ -> do
-      from <- mapM (const newTVar) args
+data TypedFunResult = TypedFunResult
+  { _tfrId   :: Id
+  , _tfrArgs  :: [Id]
+  , _tfrType :: Type
+  , _tfrBody :: Expr Typed
+  }
+
+makeLenses ''TypedFunResult  
+
+instance Types TypedFunResult where
+  apply s =
+    over tfrType (apply s)
+    . over tfrBody (apply s)
+  tv tfr = tv (tfr^.tfrType) ++ tv (tfr^.tfrBody)
+
+tiFun :: Infer (FunDef Elaborated) TypedFunResult
+tiFun ctx cEnv fun = do
+  (tsFrom, tTo) <- case toType <$> ctx M.!? (fun^.funName) of
+    Just (TFun from to) -> return (unprod from, to)
+    Just (TVar _) -> do
+      from <- mapM (const newTVar) (fun^.funArgs)
       to <- newTVar
       return (from, to)
     Nothing -> error "function not in context"
   let argSchemes = map toScheme tsFrom
-  let ctx' = M.fromList $ zip args argSchemes
+  let ctx' = M.fromList $ zip (fun^.funArgs) argSchemes
   let ctx'' = ctx' `M.union` ctx
-  trace exp
-  exp' <- tiExpr ctx'' cEnv exp
+  trace (fun^.funBody)
+  exp' <- tiExpr ctx'' cEnv (fun^.funBody)
   unify (getType exp') tTo
-  untrace exp
+  untrace (fun^.funBody)
   let te = tsFrom `fn` getType exp'
-  return (te, exp')
+  return $ TypedFunResult (fun^.funName) (fun^.funArgs) te exp'
+
+  
 
 tiApply :: Infer TypedExpr TypedExpr
 tiApply ctx _ e = do
   s <- gets subst
   return $ apply s e
 
-tiProg :: Infer ParsedProgram TypedProgram
+data QuantifiedFunResult = QuantifiedFunResult
+  { qfrId   :: Id
+  , qfrArgs :: [Id]
+  , qfrType :: Scheme
+  , qfrBody :: Expr Typed}
+
+generalizeFunResult :: [Id] -> TypedFunResult -> QuantifiedFunResult
+generalizeFunResult fs tfr = 
+  QuantifiedFunResult
+    { qfrId   = tfr ^. tfrId
+    , qfrArgs   = tfr ^. tfrArgs
+    , qfrType = quantify gs (tfr ^. tfrType)
+    , qfrBody = tfr ^. tfrBody
+    }
+  where
+    gs = tv (tfr ^. tfrType) L.\\ fs
+
+  
+tiProg :: Infer (Program Elaborated) (Program Typed)
 tiProg ctx tEnv prog = do
   ctx' <- initCtx prog
-  
-  (ts, bodies) <- mapAndUnzipM (tiFun ctx' tEnv) (fns prog)
+  results <- mapM (tiFun ctx' tEnv) (fns prog)
   s <- gets subst
-  let ts' = apply s ts
-  let bodies' = apply s bodies
   let fs = tv (apply s ctx')
-  let gss = map (\t -> tv t L.\\ fs) ts'
-  let qts = zipWith quantify gss ts'
-  return $ progReplaceDefs prog (map extendDef (zip3 (fns prog) qts bodies'))
-  where extendAnn t ann = TypedFunAnn{
-          tfType = t,
-          tfLoc = pfLoc ann}
-        extendDef :: (ParsedFunDef, Scheme, TypedExpr) -> TypedFunDef
-        extendDef (FunDef ann id args e, t, e')
-          = FunDef (extendAnn t ann) id args e'
+  let results' = map (generalizeFunResult fs) . apply s $ results
+  let funDefs = M.fromList $
+        [ (qfrId r, FunDef (qfrId r) (qfrArgs r) (qfrBody r))
+        | r <- results']
+  let sigs = M.fromList
+        [ let cost = case (prog^.pSig) M.!? qfrId r of
+                Just sig -> sig^.costSig
+                Nothing -> Nothing
+          in (qfrId r, FunSig (qfrType r) cost)
+        | r <- results' ]
+  return $ prog
+      & pFunDefs .~ funDefs
+      & pSig     .~ sigs
 
-
-initCtx :: ParsedProgram -> TI Context
-initCtx prog = M.fromList <$> mapM assumeType (M.elems (pFunDefs prog))
-  where assumeType (FnParsed ann id args _) 
-          = case pSig prog M.!? id of
-              Just sig -> let sc = typeSig sig in
-                (id,) . toScheme <$> instScheme sc
-              Nothing -> (id,) . toScheme <$> newTVar
+initCtx :: Program Elaborated -> TI Context
+initCtx prog = traverse assumeType (prog^.pFunDefs)
+  where assumeType fun
+          = case (prog^.pSig) M.!? (fun^.funName) of
+              Just sig -> let sc = sig^.typeSig in
+                toScheme <$> instScheme sc
+              Nothing -> toScheme <$> newTVar
 
 showSrcPos :: SourcePos -> String
 showSrcPos pos = let name = sourceName pos
@@ -346,21 +384,21 @@ evalTI :: TiState -> TI a -> Either TypeError a
 evalTI s = fst . runTI s
 
 
-infer :: TI a -> Either SourceError a
+infer :: TI a -> Either (SourceError TypeError) a
 infer ti = case runTI initState ti of
-  (Left e, s) -> Left $ SourceError (currentExpLoc s) (show e)
+  (Left e, s) -> Left $ SourceError (currentExpLoc s) e
   (Right x, _) -> Right x
   where initState = TiState 0 nullSubst []
 
-inferProgram :: ParsedProgram -> Either SourceError TypedProgram
+inferProgram :: Program Elaborated -> Either (SourceError TypeError) (Program Typed)
 inferProgram p = (infer . tiProg M.empty (cTorEnvForProg p)) p
-  -- left-biased union (does not overide builtins)
 
+-- | left-biased union (does not overide builtins)
 cTorEnvForProg :: Program a -> CtorEnv
-cTorEnvForProg p = buildCtorEnv $ M.union builtInDataDefs (pDataEnv p)
+cTorEnvForProg p = buildCtorEnv $ M.union builtInDataDefs (p^.pDataEnv)
 
-inferExpr :: TypedProgram -> ParsedExpr -> Either SourceError TypedExpr
-inferExpr p expr = infer $ tiApply M.empty cEnv =<< tiExpr initCtx cEnv expr
-  where initCtx = M.fromList $ map getScheme (fns p)
-        getScheme (FunDef funAnn id _ _) = (id, tfType funAnn)
-        cEnv = cTorEnvForProg p
+-- inferExpr :: TypedProgram -> ParsedExpr -> Either SourceError TypedExpr
+-- inferExpr p expr = infer $ tiApply M.empty cEnv =<< tiExpr initCtx cEnv expr
+--   where initCtx = M.fromList $ map getScheme (fns p)
+--         getScheme fun = (id, tfType funAnn)
+--         cEnv = cTorEnvForProg p

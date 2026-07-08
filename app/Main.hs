@@ -35,7 +35,7 @@ import Colog (cmap, fmtMessage, logTextStdout, logWarning,
 
 import System.Environment(lookupEnv)
 
-import Typing.Inference(inferExpr, inferProgram)
+import Typing.Inference(inferProgram)
 --import Normalization(normalizeMod, normalizeExpr)
 import Parsing.Program(parseExpr)
 -- import Parsing.Tactic
@@ -55,6 +55,7 @@ import Control.Monad (when)
 --import AstContext (contextualizeMod)
 -- import Benchmark(sort, genBenchmark, median)
 import Control.Concurrent (yield)
+import Syntax.Elaboration (elabProg, elabProgram)
 
 -- type App a = LoggerT (Msg Severity) IO a
 
@@ -202,10 +203,13 @@ loadMod pathSearch modName = do
   searchPathfromEnv <- lookupEnv "ATLAS_SEARCH"
   let path = (`fromMaybe` pathSearch) . (`fromMaybe` searchPathfromEnv) $ "."
   surfaceProg <- loadProgram path modName
-  print surfaceProg
-  -- typedMod <- case inferProgram parsedMod of
-  --       Left srcErr -> die $ printSrcError srcErr contents
-  --       Right mod -> return mod
+  elaboratedProg <- case elabProgram surfaceProg of
+    Left srcErr -> printSrcError srcErr 
+    Right prog -> return prog
+  typedProg <- case inferProgram elaboratedProg of
+    Left srcErr -> printSrcError srcErr 
+    Right prog -> return prog
+  print typedProg  
   -- return (normalizeMod typedMod, contents)
 
 main :: IO ()

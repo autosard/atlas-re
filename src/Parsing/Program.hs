@@ -75,7 +75,7 @@ pTemplateLanguageConfig = pPragma "TEMPLATE" (pSqParens (sepBy pAtomicLang (symb
 
 data TopLevel
   = TLClause (Id, SurfaceClause)
-  | TLSig (Id, ParsedFunSig)
+  | TLSig (Id, SurfaceFunSig)
   | TLData DataDecl
   | TLMeasure MeasureDef
   deriving Show
@@ -91,7 +91,7 @@ pImport :: Parser Id
 pImport = symbol "import" *> pUpperIdentifier
 
 buildFunDefs ::
-  M.Map Id ParsedFunSig
+  M.Map Id SurfaceFunSig
   -> M.Map Id [SurfaceClause]
   -> Parser (M.Map Id SurfaceFunDef)
 buildFunDefs sigs clauses =
@@ -187,7 +187,7 @@ pBind = try (pParens sc pBindInner)
 pBindInner :: Parser [(Id, Type)]
 pBindInner = sepBy ((,) <$> pIdentifier <* symbol ":" <*> pType) (symbol ",")
 
-pFunSig :: Parser (Id, ParsedFunSig)
+pFunSig :: Parser (Id, SurfaceFunSig)
 pFunSig = do
   name <- try pIdentifier <?> "function name"
   symbol ":"
@@ -200,22 +200,22 @@ pFunSig = do
   let tResult = prod (map snd resultBindings)
   symbol "|"
   costTo <- pExpr sc
-  return (name, ParsedFunSig
+  return (name, SurfaceFunSig
     (quantifyAll (TFun tArgs tResult))
-    ParsedCostSig {
-        pcsFrom = (map fst argBindings, costFrom),
-        pcsTo = (map fst resultBindings, costFrom)})
+    SurfaceCostSig {
+        scsFrom = (map fst argBindings, costFrom),
+        scsTo = (map fst resultBindings, costTo)})
 
 
 --------------------------------------------------------------------------------
 -- Function Definitions
 --------------------------------------------------------------------------------
 
-pClauseHead :: Parser (Text, [ParsedPattern])
+pClauseHead :: Parser (Text, [Pattern Parsed])
 pClauseHead = do
   name <- pIdentifier
   args <- manyTill pPattern (symbol "=")
-  return $ (name, args)
+  return (name, args)
 
 pSurfaceClause :: Parser (Id, SurfaceClause)
 pSurfaceClause = L.lineFold scn $ \sc' -> do
@@ -250,16 +250,22 @@ pProdType = do
 -- Patterns
 --------------------------------------------------------------------------------
 
-pConstPattern :: SourcePos -> Parser ParsedPattern
+pConstPattern :: SourcePos -> Parser (Pattern Parsed)
 pConstPattern pos = do
   name <- pUpperIdentifier
   args <- many pPattern
   return $ PConst pos name args
 
-pPattern :: Parser ParsedPattern
+pZeroAryConstPattern :: SourcePos -> Parser (Pattern Parsed)
+pZeroAryConstPattern pos = do
+  name <- pUpperIdentifier
+  return $ PConst pos name []
+
+pPattern :: Parser (Pattern Parsed)
 pPattern = do
   pos <- getSourcePos
-  pConstPattern pos
+  pZeroAryConstPattern pos
+    <|> pParens sc (pConstPattern pos)
     <|> PWildcard pos <$ symbol "_"
     <|> PVar pos <$> pIdentifier
     <|> pParens sc pPattern
@@ -268,7 +274,7 @@ pPattern = do
 -- Expressions
 --------------------------------------------------------------------------------
 
-pIfThenElse :: Parser () -> Parser ParsedExpr
+pIfThenElse :: Parser () -> Parser (Expr Parsed)
 pIfThenElse sc' = do
   pos <- getSourcePos
   symbol "if"
@@ -279,10 +285,10 @@ pIfThenElse sc' = do
   e3 <- pExpr sc'
   return $ IteAnn pos e1 e2 e3
 
-pMatchArm :: Parser () -> Parser ParsedMatchArm
+pMatchArm :: Parser () -> Parser (MatchArm Parsed)
 pMatchArm sc' = MatchArmAnn <$> getSourcePos <* L.symbol sc' "|" <*> pPattern <* pArrow <*> (pExpr sc')
 
-pMatch :: Parser () -> Parser ParsedExpr
+pMatch :: Parser () -> Parser (Expr Parsed)
 pMatch sc' = do
   pos <- getSourcePos
   L.symbol sc' "match"
@@ -294,7 +300,7 @@ pMatch sc' = do
 defaultCoinPropability :: Rational
 defaultCoinPropability = 1 % 2
 
-pKeywordExpr :: Parser () -> Parser ParsedExpr
+pKeywordExpr :: Parser () -> Parser (Expr Parsed)
 pKeywordExpr sc'
   = pIfThenElse sc'
   <|> pMatch sc'
@@ -302,13 +308,13 @@ pKeywordExpr sc'
   <|> TickAnn <$> getSourcePos <* symbol "~" <*> optional pRational <*> pExpr sc'
   <|> CoinAnn <$> getSourcePos <* symbol "coin" <*> ((pRational <?> "coin probability") <|> pure defaultCoinPropability)
 
-pParenExpr :: Parser () -> Parser ParsedExpr
+pParenExpr :: Parser () -> Parser (Expr Parsed)
 pParenExpr sc' = pParens sc (pExpr sc')
 
-pZeroAryConst :: Parser () -> Parser ParsedExpr
+pZeroAryConst :: Parser () -> Parser (Expr Parsed)
 pZeroAryConst sc' = ConstAnn <$> getSourcePos <*> pUpperIdentifier <*> pure []
 
-pAtom :: Parser () -> Parser ParsedExpr
+pAtom :: Parser () -> Parser (Expr Parsed)
 pAtom sc = 
   pParenExpr sc
   <|> pZeroAryConst sc
@@ -316,7 +322,7 @@ pAtom sc =
   <|> pLiteral
   <?> "atomic expression"
 
-pApplication :: Parser () -> Parser ParsedExpr
+pApplication :: Parser () -> Parser (Expr Parsed)
 pApplication sc' = 
   AppAnn <$> getSourcePos <*> pIdentifier' sc' <*> sepEndBy (pAtom sc) (try sc')
   <|> (do 
@@ -325,7 +331,7 @@ pApplication sc' =
           return $ AppAnn pos "size" args
   )
 
-pConst :: Parser () -> Parser ParsedExpr
+pConst :: Parser () -> Parser (Expr Parsed)
 pConst sc' = do
   pos <- getSourcePos
   (name, args) <- (,)
@@ -333,10 +339,10 @@ pConst sc' = do
     <|> ("(,)",) <$> try (pParens sc' ((\x y -> [x, y]) <$> pAtom sc' <* symbol "," <*> pAtom sc'))
   return $ ConstAnn pos name args
 
-pVar :: Parser () -> Parser ParsedExpr
+pVar :: Parser () -> Parser (Expr Parsed)
 pVar sc = VarAnn <$> getSourcePos <*> pIdentifier' sc
 
-pLiteral :: Parser ParsedExpr
+pLiteral :: Parser (Expr Parsed)
 pLiteral = do
   pos <- getSourcePos
   LitAnn pos <$> (
@@ -346,50 +352,57 @@ pLiteral = do
     )
 
 -- | Parses either a constructor application or a function application
-pJuxtaposition :: Parser () -> Parser ParsedExpr
+pJuxtaposition :: Parser () -> Parser (Expr Parsed)
 pJuxtaposition sc' = 
   try (pApplication sc')
   <|> pConst sc'
   <|> pVar sc
   <|> pLiteral
 
-binaryL :: Parser () -> Text -> Operator Parser ParsedExpr
+binaryL :: Parser () -> Text -> Operator Parser (Expr Parsed)
 binaryL sc op = InfixL (mk sc op)
 
-binaryR :: Parser () -> Text -> Operator Parser ParsedExpr
+binaryR :: Parser () -> Text -> Operator Parser (Expr Parsed)
 binaryR sc op = InfixR (mk sc op)
 
-binaryN :: Parser () -> Text -> Operator Parser ParsedExpr
+binaryN :: Parser () -> Text -> Operator Parser (Expr Parsed)
 binaryN sc op = InfixN (mk sc op)
 
-mk :: Parser () -> Text -> Parser (ParsedExpr -> ParsedExpr -> ParsedExpr)
+prefix :: Parser () -> Text -> Operator Parser (Expr Parsed)
+prefix sc op = Prefix $ do
+  pos <- getSourcePos
+  L.symbol sc op
+  pure $ \a -> AppAnn pos op [a]
+
+mk :: Parser () -> Text -> Parser (Expr Parsed -> Expr Parsed -> Expr Parsed)
 mk sc op = do
   pos <- getSourcePos
   L.symbol sc op
   pure $ \a b -> AppAnn pos op [a, b]  
 
-operatorTable :: Parser () -> [[Operator Parser ParsedExpr]]
+operatorTable :: Parser () -> [[Operator Parser (Expr Parsed)]]
 operatorTable sc =
-  [ -- comparison (lowest precedence)
+  [
+    [prefix sc "negate"]
+  ,
+    [ binaryL sc "*"]
+
+  , [ binaryL sc "+" 
+    , binaryL sc "-" 
+    ]
+  ,
     [ binaryN sc "<=" 
     , binaryN sc ">=" 
     , binaryN sc "<"  
     , binaryN sc ">"  
     , binaryN sc "==" 
     ]
-
-    -- arithmetic (higher precedence)
-  , [ binaryL sc "+" 
-    , binaryL sc "-" 
-    ]
-
-  , [ binaryL sc "*"]
   ]
 
-pInfixExpr :: Parser () -> Parser ParsedExpr
+pInfixExpr :: Parser () -> Parser (Expr Parsed)
 pInfixExpr sc = makeExprParser (pJuxtaposition sc) (operatorTable sc)
 
-pExpr :: Parser () -> Parser ParsedExpr
+pExpr :: Parser () -> Parser (Expr Parsed)
 pExpr sc = try (pParenExpr sc)
   <|> pKeywordExpr sc
   <|> pInfixExpr sc
@@ -445,10 +458,10 @@ pInt = do
 pNumber = lexeme L.decimal
 
 pInteger :: Parser Integer
-pInteger = do
-  sign <- maybe 1 (const (-1)) <$> optional (symbol "-")
-  num <- lexeme L.decimal
-  return $ sign * num
+pInteger = lexeme L.decimal
+  -- sign <- maybe 1 (const (-1)) <$> optional (symbol "-")
+  --num <- lexeme L.decimal
+  --return $ num
 
 pRational :: Parser Rational
 pRational = do

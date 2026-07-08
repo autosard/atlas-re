@@ -10,9 +10,9 @@ data SizeTerm
 
 data ResourceTerm
   = RTSize SizeTerm
-  | Binoms [(SizeTerm, Int)]
-  | Log [SizeTerm]
-  | Phi Id
+  | RTBinoms [(SizeTerm, Int)]
+  | RTLog [SizeTerm]
+  | RTPhi Id
   | RTId 
   -- special form for specifing potential functions
   -- this is normalized aways in templates

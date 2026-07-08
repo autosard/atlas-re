@@ -6,6 +6,8 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveFunctor #-}
 
 module Syntax.Ast where
 
@@ -18,16 +20,17 @@ import qualified Data.Set as S
 import Text.Megaparsec(SourcePos, unPos, sourceLine, sourceColumn)
 import Data.List(intercalate)
 import Prelude hiding (break)
-
 import Primitive(Id, printRat)
 import Typing.Type (Type)
 import Typing.Subst(Types(apply, tv))
-import Typing.Scheme (Scheme, toType)
+import Typing.Scheme (Scheme)
 import Data.Tuple (swap)
 import Data.List.Extra (groupSort)
 import Syntax.Measure(Measure, MeasureEnv)
+import Syntax.ResourceExpression(ResourceTerm)
 import CostAnalysis.TemplateLanguage
-import Syntax.ResourceExpression
+import CostAnalysis.Template(BoundTemplate)
+import Lens.Micro.Platform
     
 type Fqn = (Text, Text)
 
@@ -35,12 +38,73 @@ printFqn (mod, fn) = T.unpack mod ++ "." ++ T.unpack fn
 
 type Number = Int
 
+--------------------------------------------------------------------------------
+-- Stages
+--------------------------------------------------------------------------------
+
+-- We use extensible AST types to model the different stages (parsed, typed, etc.) (see https://www.microsoft.com/en-us/research/uploads/prod/2016/11/trees-that-grow.pdf)
 data Parsed
+data Elaborated
 data Typed
 data Positioned
 
 --------------------------------------------------------------------------------
--- Surface Programs
+-- Expressions
+--------------------------------------------------------------------------------
+
+type family XExprAnn a
+
+data Pattern a
+  = PVar (XExprAnn a) Id
+  | PConst (XExprAnn a) Id [Pattern a]
+  | PWildcard (XExprAnn a)
+
+data Literal
+  = LNat Int
+  | LRat Rational
+  | LString Text
+  deriving (Eq, Show)
+
+data MatchArm a = MatchArmAnn (XExprAnn a) (Pattern a) (Expr a)
+
+data Expr a
+  = LitAnn (XExprAnn a) Literal
+  | VarAnn (XExprAnn a) Id
+  | ConstAnn (XExprAnn a) Id [Expr a]
+  | IteAnn (XExprAnn a) (Expr a) (Expr a) (Expr a)
+  | MatchAnn (XExprAnn a) (Expr a) [MatchArm a]
+  | AppAnn (XExprAnn a) Id [Expr a]
+  | LetAnn (XExprAnn a) Id (Expr a) (Expr a)
+  | TickAnn (XExprAnn a) (Maybe Rational) (Expr a)
+  | CoinAnn (XExprAnn a) Rational
+
+--------------------------------------------------------------------------------
+-- Function Definitions & Signatures
+--------------------------------------------------------------------------------
+
+data CostSig = CostSig {
+  csFrom :: BoundTemplate, 
+  csTo :: BoundTemplate
+} deriving (Eq, Show)
+
+
+data FunSig = FunSig {
+  _typeSig :: Scheme,
+  _costSig :: Maybe CostSig
+} deriving (Eq, Show)
+
+makeLenses ''FunSig
+
+data FunDef a = FunDef
+  { _funName :: Id
+  , _funArgs :: [Id]
+  , _funBody :: Expr a
+  }
+
+makeLenses ''FunDef
+
+--------------------------------------------------------------------------------
+-- Core Programs
 --------------------------------------------------------------------------------
 
 type TemplateLanguageConfig = [AtomicLang]
@@ -48,9 +112,59 @@ type TemplateLanguageConfig = [AtomicLang]
 newtype ProgramConfig = ProgConfig {
   templateConfig :: TemplateLanguageConfig
   }
-  deriving (Show)
+  deriving (Eq, Show)
 
-type family ProgramSig a
+type DataEnv = Map Id DataInfo
+
+data DataInfo = DataInfo
+  { diParams :: [Id]
+  , diCtors  :: [CtorInfo]
+  } deriving (Eq, Show)
+
+data CtorInfo = CtorInfo
+  { ciName :: Id
+  , ciType :: Scheme
+  } deriving (Eq, Show)
+
+
+data Program a = Program {
+  _pSig :: Map Id FunSig,
+  _pConfig :: ProgramConfig,
+  _pMutRecGroups :: [[Id]],
+  _pFunDefs :: Map Id (FunDef a),
+  _pDataEnv :: DataEnv,
+  _pMeasureSig :: Map Scheme MeasureEnv
+}
+
+makeLenses ''Program
+
+fns :: Program a -> [FunDef a]
+fns = M.elems . _pFunDefs
+
+pMap :: (Expr a -> Expr b) -> Program a -> Program b
+pMap f = pFunDefs . traversed . funBody %~ f
+
+pMapFn :: (Id -> Expr a -> Expr b) -> Program a -> Program b
+pMapFn f = pFunDefs . traversed %~ mapFun
+  where mapFun fun = fun & funBody .~ f (fun ^. funName) (fun ^. funBody)
+
+pMapM :: (Monad m) => (Expr a -> m (Expr b)) -> Program a -> m (Program b)
+pMapM = traverseOf (pFunDefs . traversed . funBody)
+
+--------------------------------------------------------------------------------
+-- Surface Programs
+--------------------------------------------------------------------------------
+
+data SurfaceFunSig = SurfaceFunSig {
+  sfsType :: Scheme,
+  sfsCostSig :: SurfaceCostSig
+} deriving (Eq, Show)
+
+data SurfaceCostSig = SurfaceCostSig {
+  scsFrom :: ([Id], Expr Parsed), 
+  scsTo :: ([Id], Expr Parsed)
+} deriving (Eq, Show)
+
 
 data SurfaceFunDef
   = SurfaceFunDef
@@ -58,15 +172,15 @@ data SurfaceFunDef
       [SurfaceClause]
   deriving Show
       
-data SurfaceClause
-  = SurfaceClause
-    (XExprAnn Parsed)
-    [Pattern Parsed]
-    (Expr Parsed)
+data SurfaceClause = SurfaceClause {
+  scAnn :: XExprAnn Parsed
+  , scArgs :: [Pattern Parsed]
+  , scBody :: Expr Parsed
+  }
   deriving Show
 
 data SurfaceProgram = SurfaceProgram {
-  sfSig :: Map Id ParsedFunSig,
+  sfSig :: Map Id SurfaceFunSig,
   sfConfig :: ProgramConfig,
   sfFunDefs :: Map Id SurfaceFunDef,
   sfDataDefs :: [DataDecl],
@@ -92,130 +206,22 @@ data MeasureDef = MeasureDef {
   mClauses :: [SurfaceClause]
 } deriving Show
 
+
 --------------------------------------------------------------------------------
--- Core Programs
+-- Helpers
 --------------------------------------------------------------------------------
-  
-data Program a = Program {
-  pSig :: Map Id ParsedFunSig,
-  pConfig :: ProgramConfig,
-  pMutRecGroups :: [[Id]],
-  pFunDefs :: Map Id (FunDef a),
-  pDataEnv :: DataEnv,
-  pMeasureSig :: Map Scheme MeasureEnv
-}
-
-type DataEnv = Map Id DataInfo
-
-data DataInfo = DataInfo
-  { diParams :: [Id]
-  , diCtors  :: [CtorInfo]
-  } deriving Show
-
-data CtorInfo = CtorInfo
-  { ciName :: Id
-  , ciType :: Scheme
-  } deriving Show
-
-data FnConfig = FnConfig {
-  costMode :: CostMode,
-  numCf :: Maybe Int,
-  strongCf :: Bool}
-  deriving (Eq, Show)
-
-data PotentialKind
-  = LogLR
-  | LogR
-  | LogL
-  | LogLRX
-  | Polynomial
-  | LinLog
-  | LogGolden
-  | Rank
-  | Weight
-  | RightHeavy
-  | LogLRXWB
-  deriving (Eq, Ord, Show)
-
-
-fns :: Program a -> [FunDef a]
-fns = M.elems . pFunDefs
-
-programMap :: (FunDef a -> FunDef b) -> Program a -> Program b
-programMap f (Program {..}) = Program {pFunDefs = M.map f pFunDefs, ..} 
-
-programMapM :: Monad m => (FunDef a -> m (FunDef b)) -> Program a -> m (Program b)
-programMapM f (Program {..}) = do
-  defs' <- mapM f pFunDefs
-  return Program {pFunDefs = defs', ..}
-
-progReplaceDefs :: Program b -> [FunDef a] -> Program a
-progReplaceDefs (Program {..}) newDefs = Program {pFunDefs = withIds, ..}
-  where fnId (Fn id _ _) = id
-        withIds = M.fromList $ zip (map fnId newDefs) newDefs
-
-
-data FunDef a = FunDef (XFunAnn a) Id [Id] (Expr a)
-
-data CostMode = AmortizedCost | WorstCaseCost | HybridCost
-  deriving (Eq, Show)
-
--- hasPotential :: FunDef Positioned -> [Bool]
--- hasPotential fn = let n = fromMaybe 1 (numSigs (tfFnConfig (funAnn fn))) in
---   case tfCostAnn (funAnn fn) of
---     Just (Cost True _) -> [False]
---     Just (Coeffs target) ->
---       let anns = map to (withCost target) 
---           annsPot = map (any ((not . null) . idxs) . M.elems) anns in
---         if length anns < n
---         then annsPot ++ replicate (n - length anns) True
---         else annsPot
---     Nothing -> replicate n True
-
-data Op = LT | EQ | GT
-  deriving (Eq, Show)
 
 data Syntax a
    = SynExpr (Expr a)
    | SynArm (MatchArm a)
    | SynPat (Pattern a)
 
-data MatchArm a = MatchArmAnn (XExprAnn a) (Pattern a) (Expr a)
-
 armExpr :: MatchArm a -> Expr a
 armExpr (MatchArmAnn _ _ e) = e
-  
-data Pattern a
-  = PVar (XExprAnn a) Id
-  | PConst (XExprAnn a) Id [Pattern a]
-  | PWildcard (XExprAnn a)
-
-data Literal
-  = LNat Integer
-  | LRat Rational
-  | LString Text
-  deriving (Eq, Show)
-
--- We use extensible AST types to model the different stages (parsed, typed, etc.) (see https://www.microsoft.com/en-us/research/uploads/prod/2016/11/trees-that-grow.pdf)
-data Expr a
-  = LitAnn (XExprAnn a) Literal
-  | VarAnn (XExprAnn a) Id
-  | ConstAnn (XExprAnn a) Id [Expr a]
-  | IteAnn (XExprAnn a) (Expr a) (Expr a) (Expr a)
-  | MatchAnn (XExprAnn a) (Expr a) [MatchArm a]
-  | AppAnn (XExprAnn a) Id [Expr a]
-  | LetAnn (XExprAnn a) Id (Expr a) (Expr a)
-  | TickAnn (XExprAnn a) (Maybe Rational) (Expr a)
-  | CoinAnn (XExprAnn a) Rational
-
-type family XExprAnn a
-type family XFunAnn a
-
-
-funAnn :: FunDef a -> XFunAnn a
-funAnn (FunDef ann _ _ _) = ann
 
 -- pattern synomyms to work with epxressions without the overhead of annotations
+pattern Lit :: Literal -> Expr a
+pattern Lit lit <- LitAnn _ lit
 pattern Var :: Id -> Expr a
 pattern Var id <- VarAnn _ id
 pattern Const :: Id -> [Expr a] -> Expr a
@@ -233,42 +239,12 @@ pattern Tick c e <- TickAnn _ c e
 pattern Coin :: Rational -> Expr a
 pattern Coin p <- CoinAnn _ p
 
--- special patterns for constructor expressions
-pattern Leaf :: Expr a
-pattern Leaf <- ConstAnn _ "leaf" []
-
-pattern Node :: Expr a -> Expr a -> Expr a -> Expr a 
-pattern Node l v r <- ConstAnn _ "node" [l, v, r]
-
-pattern Nil :: Expr a
-pattern Nil <- ConstAnn _ "nil" []
-
-pattern Cons :: Expr a -> Expr a -> Expr a
-pattern Cons x l <- ConstAnn _ "cons" [x, l]
-
-pattern Tuple :: Expr a -> Expr a -> Expr a
-pattern Tuple x1 x2 <- ConstAnn _ "(,)" [x1, x2]
-
-pattern Error :: Expr a
-pattern Error <- ConstAnn _ "error" []
-
-
--- pattern PatWildcard :: XExprAnn a -> Pattern a
--- pattern PatWildcard ann <- WildcardPat ann
---   where PatWildcard ann = WildcardPat ann
--- pattern PatAlias :: XExprAnn a -> Id -> Pattern a
--- pattern PatAlias ann id <- Alias ann id
---   where PatAlias ann id = Alias ann id
-
 pattern MatchArm :: Pattern a -> Expr a -> MatchArm a
 pattern MatchArm p e <- MatchArmAnn _ p e
 
-pattern Fn :: Id -> [Id] -> Expr a -> FunDef a
-pattern Fn id args e <- FunDef _ id args e
-
 containsFn :: Text -> Program a -> Bool
-containsFn fn = any matches . fns
-  where matches (FunDef _ id _ _) = id == fn
+containsFn fn prog = M.member fn (prog^.pFunDefs)
+  
 
 printExprHead :: Expr a -> String
 printExprHead (Var id) = T.unpack id 
@@ -295,6 +271,7 @@ printExprPlain :: Expr a -> String
 printExprPlain = printExpr (const "") 0 
 
 printExpr :: (XExprAnn a -> String) -> Int -> Expr a -> String
+printExpr printAnn _ (LitAnn ann l) = show l ++ printAnn ann
 printExpr printAnn _ (VarAnn ann id) = T.unpack id ++ printAnn ann
 printExpr printAnn ident (ConstAnn ann "(,)" [x1, x2]) = "(" ++ printExpr printAnn ident x1 ++ ", " ++ printExpr printAnn ident x2 ++ ")" ++ printAnn ann
 printExpr printAnn ident (ConstAnn ann id args) = paren $ T.unpack id ++ " " ++ unwords (map (printExpr printAnn ident) args) ++ printAnn ann
@@ -315,8 +292,8 @@ printExpr printAnn ident (TickAnn ann c e) = "~" ++  frac c ++ printExpr printAn
 printExpr printAnn ident (CoinAnn ann p) = "coin " ++ printRat p ++ printAnn ann
 
 printFun :: (XExprAnn a -> String) -> FunDef a -> String
-printFun printExprAnn (Fn id args body) = T.unpack id ++ " " ++ printedArgs ++ " = " ++ printExpr printExprAnn 0 body
-  where printedArgs = unwords . map T.unpack $ args
+printFun printExprAnn fun = T.unpack (fun^.funName) ++ " " ++ printedArgs ++ " = " ++ printExpr printExprAnn 0 (fun^.funBody)
+  where printedArgs = unwords . map T.unpack $ (fun^.funArgs)
 
 printFuns :: (XExprAnn a -> String) -> Program a -> String
 printFuns printExprAnn mod = intercalate "\n\n" (map (printFun printExprAnn) (fns mod)) ++ "\n"
@@ -324,15 +301,19 @@ printFuns printExprAnn mod = intercalate "\n\n" (map (printFun printExprAnn) (fn
 printProg :: Program a -> String
 printProg = printFuns (const "")
 
-printProgPositioned :: PositionedProgram -> String
+printProgPositioned :: Program Positioned -> String
 printProgPositioned = printFuns printCtx
   where printCtx (PositionedExprAnn {..}) = " " ++ paren (intercalate "," (map show (S.toList peCtx)))
 
-class Annotated a b where
+class HasAnnotation a b where
   getAnn :: a b -> XExprAnn b
-  mapAnn :: (XExprAnn b -> XExprAnn b) -> a b -> a b
+  
+class MapAnnotation a b c where
+  mapAnn :: (XExprAnn b -> XExprAnn c) -> a b -> a c
+  
 
-instance Annotated Expr a where
+instance MapAnnotation Expr a b where
+  mapAnn f (LitAnn ann lit) = LitAnn (f ann) lit
   mapAnn f (VarAnn ann id) = VarAnn (f ann) id
   mapAnn f (ConstAnn ann id args) = ConstAnn (f ann) id $ map (mapAnn f) args
   mapAnn f (IteAnn ann e1 e2 e3) = IteAnn (f ann) (mapAnn f e1) (mapAnn f e2) (mapAnn f e3)
@@ -341,7 +322,9 @@ instance Annotated Expr a where
   mapAnn f (LetAnn ann id e1 e2) = LetAnn (f ann) id (mapAnn f e1) (mapAnn f e2)
   mapAnn f (TickAnn ann c e) = TickAnn (f ann) c (mapAnn f e)
   mapAnn f (CoinAnn ann p) = CoinAnn (f ann) p
-
+  
+instance HasAnnotation Expr a where
+  getAnn (LitAnn ann _) = ann
   getAnn (VarAnn ann _) = ann
   getAnn (ConstAnn ann _ _) = ann
   getAnn (IteAnn ann _ _ _) = ann
@@ -351,67 +334,74 @@ instance Annotated Expr a where
   getAnn (TickAnn ann _ _) = ann
   getAnn (CoinAnn ann _) = ann
 
-instance Annotated MatchArm a where
+instance MapAnnotation MatchArm a b where
   mapAnn f (MatchArmAnn ann p e) = MatchArmAnn (f ann) (mapAnn f p) (mapAnn f e)
+
+instance HasAnnotation MatchArm a where  
   getAnn (MatchArmAnn ann _ _) = ann
   
 
-instance Annotated Pattern a where
+instance MapAnnotation Pattern a b where
   mapAnn f (PConst ann id vars) = PConst (f ann) id (map (mapAnn f) vars)
   mapAnn f (PVar ann id) = PVar (f ann) id
   mapAnn f (PWildcard ann) = PWildcard (f ann)
 
+instance HasAnnotation Pattern a where
   getAnn (PConst ann _ _) = ann
   getAnn (PVar ann _) = ann
   getAnn (PWildcard ann) = ann
 
-instance Annotated Syntax a where
+instance MapAnnotation Syntax a b where
   mapAnn f (SynExpr e) = SynExpr $ mapAnn f e
   mapAnn f (SynArm arm) = SynArm $ mapAnn f arm
   mapAnn f (SynPat p) = SynPat $ mapAnn f p
+  
+instance HasAnnotation Syntax a  where
   getAnn (SynExpr e) = getAnn e
   getAnn (SynArm arm) = getAnn arm
   getAnn (SynPat p) = getAnn p
 
 --------------------------------------------------------------------------------
--- Parsed Programs
+-- Parsed 
 --------------------------------------------------------------------------------
 
-data ParsedCostSig = ParsedCostSig {
-  pcsFrom :: ([Id], ParsedExpr), 
-  pcsTo :: ([Id], ParsedExpr)
-} deriving Show
+deriving instance Show (Pattern Parsed)
+deriving instance Eq (Pattern Parsed)
 
-data ParsedFunSig = ParsedFunSig {
-  typeSig :: Scheme,
-  costSig :: ParsedCostSig
-} deriving Show
+deriving instance Show (MatchArm Parsed)
+deriving instance Eq (MatchArm Parsed)
 
-type ParsedSyntax = Syntax Parsed
-type ParsedProgram = Program Parsed
-type ParsedFunDef = FunDef Parsed
-type ParsedExpr = Expr Parsed
-type ParsedMatchArm = MatchArm Parsed
-type ParsedPattern = Pattern Parsed
+deriving instance Show (Expr Parsed)
+deriving instance Eq (Expr Parsed)
 
-deriving instance Show ParsedPattern
-deriving instance Show ParsedMatchArm
-deriving instance Show ParsedExpr
-deriving instance Show ParsedFunDef
+deriving instance Show (FunDef Parsed)
 
 newtype ParsedFunAnn = ParsedFunAnn {
   pfLoc :: SourcePos}
   deriving (Eq, Show)
 
-
 type instance XExprAnn Parsed = SourcePos
-type instance XFunAnn Parsed = ParsedFunAnn
 
-pattern FnParsed :: ParsedFunAnn -> Id -> [Id] -> ParsedExpr -> ParsedFunDef
-pattern FnParsed ann id args body = FunDef ann id args body
+--------------------------------------------------------------------------------
+-- Elaborated 
+--------------------------------------------------------------------------------
 
+data ElaboratedCostSig = ElaboratedCostSig {
+  ecsFrom :: ([Id], [(ResourceTerm, Rational)]), 
+  ecsTo :: ([Id], [(ResourceTerm, Rational)])
+} deriving (Eq, Show)
 
--- typed
+deriving instance Show (Pattern Elaborated)
+deriving instance Show (MatchArm Elaborated)
+deriving instance Show (Expr Elaborated)
+deriving instance Show (FunDef Elaborated)
+
+type instance XExprAnn Elaborated = SourcePos
+
+--------------------------------------------------------------------------------
+-- Typed
+--------------------------------------------------------------------------------
+
 type TypedProgram = Program Typed
 type TypedFunDef = FunDef Typed
 type TypedExpr = Expr Typed
@@ -424,7 +414,12 @@ deriving instance Show TypedMatchArm
 deriving instance Eq TypedMatchArm
 deriving instance Show TypedExpr
 deriving instance Eq TypedExpr
-deriving instance Show TypedFunDef
+
+deriving instance Eq (FunDef Typed)
+deriving instance Show (FunDef Typed)
+
+deriving instance Eq (Program Typed)
+deriving instance Show (Program Typed)
 
 data TypedFunAnn = TypedFunAnn {
   tfLoc :: SourcePos,
@@ -441,12 +436,11 @@ data TypedExprAnn = TypedExprAnn {
   
 
 type instance XExprAnn Typed = TypedExprAnn
-type instance XFunAnn Typed = TypedFunAnn
 
 class HasType a where
   type_ :: a -> Type
 
-getType :: (HasType (XExprAnn b), Annotated a b) => a b -> Type
+getType :: (HasType (XExprAnn b), HasAnnotation a b) => a b -> Type
 getType = type_ . getAnn
 
 varWithType :: (HasType (XExprAnn a)) => Expr a -> (Id, Type)
@@ -491,21 +485,29 @@ instance Types TypedExpr where
   apply s = mapAnn (\ann -> ann{teType = apply s (teType ann) })
   tv e = tv (getType e)
 
--- context
-type PositionedProgram = Program Positioned
+--------------------------------------------------------------------------------
+-- Positioned
+--------------------------------------------------------------------------------
+
 type PositionedFunDef = FunDef Positioned
 type PositionedExpr = Expr Positioned
 type PositionedMatchArm = MatchArm Positioned
 type PositionedPattern = Pattern Positioned
 
-deriving instance Show PositionedPattern
-deriving instance Eq PositionedPattern
+deriving instance Show (Pattern Positioned)
+deriving instance Eq (Pattern Positioned)
+
+deriving instance Show (FunDef Positioned)
+deriving instance Eq (FunDef Positioned)
+
+deriving instance Show (Program Positioned)
+deriving instance Eq (Program Positioned)
+
 deriving instance Show PositionedMatchArm
 deriving instance Eq PositionedMatchArm
 deriving instance Show PositionedExpr
 deriving instance Eq PositionedExpr
-deriving instance Show PositionedFunDef
-deriving instance Show PositionedProgram
+
 
 data ExprCtx = PseudoLeaf
   | RecCall 
@@ -515,7 +517,6 @@ data ExprCtx = PseudoLeaf
   | OutermostLet
   | FirstAfterMatch
   | IteCoin
-  | ConstEmptyTree
   deriving (Eq, Ord, Show)
 
 data PositionedExprAnn = PositionedExprAnn {
@@ -527,23 +528,15 @@ data PositionedExprAnn = PositionedExprAnn {
 instance HasType PositionedExprAnn where
   type_ = peType
 
-
-type instance XFunAnn Positioned = TypedFunAnn
 type instance XExprAnn Positioned = PositionedExprAnn
 
 extendWithCtx :: Set ExprCtx -> XExprAnn Typed -> XExprAnn Positioned
 extendWithCtx ctx (TypedExprAnn {..}) = PositionedExprAnn teSrc teType ctx
 
--- data Val = ConstVal !Id ![Val] | NumVal Int
---   deriving (Eq)
+-- 
 
 paren :: String -> String
 paren s = "(" ++ s ++ ")"
-
--- instance Show Val where
---   show (ConstVal id []) = T.unpack id
---   show (ConstVal id args) = paren $ T.unpack id ++ " " ++ unwords (map show args)
---   show (NumVal n) = show n
 
 printPos :: SourcePos -> String
 printPos pos = show (unPos . sourceLine $ pos) ++ ","  ++ show (unPos $ sourceColumn pos)

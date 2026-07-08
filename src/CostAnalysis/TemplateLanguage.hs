@@ -13,7 +13,7 @@ data AtomicLang
   | LogLang Int Int
   | BinomLang Int
   | RankLang
-  deriving Show
+  deriving (Eq, Show)
 
 type TemplateLanguage = [Id] -> Set ResourceTerm
 

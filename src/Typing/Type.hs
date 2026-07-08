@@ -13,19 +13,27 @@ data Type
   | TAp Id [Type]
   | TFun Type Type
   | TGen Int
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Show)
 
-instance Show Type where
-  show (TVar var) = T.unpack var
-  show (TFun l r) = show l ++ " " ++ "->" ++ " " ++ show r
-  show (TAp const []) = show const
-  show (TAp const ts) = show const ++ " " ++ unwords (map show ts)
-  show (TGen i) = "a" ++ show i
+-- instance Show Type where
+--   show (TVar var) = T.unpack var
+--   show (TFun l r) = show l ++ " " ++ "->" ++ " " ++ show r
+--   show (TAp const []) = show const
+--   show (TAp const ts) = show const ++ " " ++ unwords (map show ts)
+--   show (TGen i) = "a" ++ show i
 
 prod :: [Type] -> Type
+prod [] = error "empty product"
 prod [t] = t
 prod [t1,t2] = TAp "(,)" [t1, t2]
 prod (t:ts) = TAp "(,)" [t, prod ts]
+
+unprod :: Type -> [Type]
+unprod (TAp "(,)" [t1, t2]) = t1 : unprod t2
+unprod t = [t]
+
+tCurry :: [Type] -> Type -> Type
+tCurry args result = foldr TFun result args
 
 fn :: [Type] -> Type -> Type
 fn [] to = to

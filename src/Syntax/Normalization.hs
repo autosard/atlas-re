@@ -8,8 +8,8 @@ import Control.Monad (foldM)
 
 type Norm = State Int
 
-normalizeMod :: TypedProgram -> TypedProgram
-normalizeMod m = runNorm $ nmModule m
+normalizeProg :: TypedProgram -> TypedProgram
+normalizeProg m = runNorm $ nmProgram m
 
 normalizeExpr :: TypedExpr -> TypedExpr
 normalizeExpr e = runNorm $ nmExpr e
@@ -23,13 +23,8 @@ newVar = do
   put (i + 1)
   return (enumId i)
 
-nmModule :: TypedProgram -> Norm TypedProgram
-nmModule = programMapM nmFunDef
-
-nmFunDef :: TypedFunDef -> Norm TypedFunDef
-nmFunDef (FunDef ann id args body) = do
-  body' <- nmExpr body
-  return $ FunDef ann id args body'
+nmProgram :: Program Typed -> Norm (Program Typed)
+nmProgram = pMapM nmExpr
 
 nmExpr :: TypedExpr -> Norm TypedExpr
 nmExpr e = do

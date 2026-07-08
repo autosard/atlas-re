@@ -8,6 +8,7 @@ import Data.Text(Text)
 import qualified Data.Text as T
 import Data.Set(Set)
 import qualified Data.Set as S
+import Lens.Micro.Platform
 
 resolveFunId :: Text -> Id -> Fqn
 resolveFunId currentModule identifier = case suffix of
@@ -16,8 +17,8 @@ resolveFunId currentModule identifier = case suffix of
   where (prefix, suffix) = T.break (== '.') identifier
 
 calledFunctions :: FunDef a -> Text -> Set Fqn
-calledFunctions (Fn _ _ body) moduleName =
-  S.map (resolveFunId moduleName) $ calledFunctions' body
+calledFunctions fun moduleName =
+  S.map (resolveFunId moduleName) $ calledFunctions' (fun^.funBody)
 
 unionMap :: (Ord b) => (a -> Set b) -> [a] -> Set b
 unionMap f xs = S.unions $ map f xs

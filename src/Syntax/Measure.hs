@@ -4,18 +4,17 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE StrictData #-}
 
 module Syntax.Measure where
 
 import qualified Data.Kind (Type)
-import Data.List (find)
 
 import Primitive(Id)
 import Syntax.ResourceExpression
-import Typing.Type
 
 data ConstPat = ConstPat Id [Id]
-  deriving Show
+  deriving (Eq, Show)
 data ConstValue a = ConstValue Id [a]
   deriving Show
 
@@ -30,12 +29,17 @@ type family Carrier (m :: Measure) :: Data.Kind.Type where
 newtype MeasureAlgebra (m :: Measure) = Equations [(ConstPat, Carrier m)]
 
 deriving instance Show (Carrier m) => Show (MeasureAlgebra m)
+deriving instance Eq (Carrier m) => Eq (MeasureAlgebra m)
+
+data SMeasure (m :: Measure) where
+  SSize      :: SMeasure 'Size
+  SPotential :: SMeasure 'Potential
 
 
 data MeasureEnv = MeasureEnv {
   sizeMeasure :: MeasureAlgebra Size,
-  potentialMeasure :: MeasureAlgebra Potential
-} deriving Show
+  potentialMeasure :: Maybe (MeasureAlgebra Potential)
+} deriving (Eq, Show)
 
 -- apply :: MeasureAlgebra a -> ConstValue a -> a
 -- apply (Equations eq) cv = case find (match cv . fst) eqs of
