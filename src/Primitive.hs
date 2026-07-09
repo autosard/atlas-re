@@ -8,6 +8,9 @@ import Data.Ratio
 import Debug.Trace hiding (traceShow)
 import Data.Maybe
 
+dbg :: String -> (a -> String) -> a -> a
+dbg label f x = trace (label ++ ": " ++ f x) x
+
 type Id = Text
 
 enumId :: Int -> Id

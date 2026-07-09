@@ -15,12 +15,27 @@ data Type
   | TGen Int
   deriving (Eq, Ord, Show)
 
--- instance Show Type where
---   show (TVar var) = T.unpack var
---   show (TFun l r) = show l ++ " " ++ "->" ++ " " ++ show r
---   show (TAp const []) = show const
---   show (TAp const ts) = show const ++ " " ++ unwords (map show ts)
---   show (TGen i) = "a" ++ show i
+prettyPrint :: Type -> String
+prettyPrint t = runPrec 0 t
+  where
+    -- d represents the current precedence depth
+    runPrec :: Int -> Type -> String
+    runPrec _ (TVar x)  = T.unpack x
+    runPrec _ (TGen n)  = "?" ++ show n
+    
+    -- Type application (e.g., Tree a) has higher precedence (tier 1)
+    runPrec d (TAp c [])   = T.unpack c
+    runPrec d (TAp c args) = parensIf (d > 0) $ 
+      T.unpack c ++ " " ++ unwords (map (runPrec 1) args)
+    
+    -- Function arrow is right-associative and has lower precedence (tier 0)
+    runPrec d (TFun arg res) = parensIf (d > 0) $
+      runPrec 1 arg ++ " -> " ++ runPrec 0 res
+
+    -- Helper to conditionally wrap strings in parentheses
+    parensIf :: Bool -> String -> String
+    parensIf True  s = "(" ++ s ++ ")"
+    parensIf False s = s
 
 prod :: [Type] -> Type
 prod [] = error "empty product"

@@ -377,15 +377,16 @@ prefix sc op = Prefix $ do
 mk :: Parser () -> Text -> Parser (Expr Parsed -> Expr Parsed -> Expr Parsed)
 mk sc op = do
   pos <- getSourcePos
-  L.symbol sc op
+  try $ do L.symbol sc op
+           notFollowedBy (L.symbol sc ">")
   pure $ \a b -> AppAnn pos op [a, b]  
 
 operatorTable :: Parser () -> [[Operator Parser (Expr Parsed)]]
 operatorTable sc =
   [
-    [prefix sc "negate"]
+    [ prefix sc "negate" ]
   ,
-    [ binaryL sc "*"]
+    [ binaryL sc "*" ]
 
   , [ binaryL sc "+" 
     , binaryL sc "-" 

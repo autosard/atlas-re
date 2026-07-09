@@ -8,7 +8,6 @@ import Typing.Scheme
 import Typing.Type
 import Syntax.Ast
 import qualified Data.Text as T
-import Data.Text.Read(decimal)
 import Data.Maybe (isJust)
 import Data.Map as M
 
@@ -63,23 +62,22 @@ builtInDataDefs = M.fromList
        }
    )]
 
--- algebraicConsts :: [T.Text]
--- algebraicConsts = [
---   "node",
---   "leaf",
---   "nil",
---   "cons",
---   "(,)",
---   "true",
---   "false",
---   "num",
---   "error"]
+tNat = TAp "Nat" []
 
--- treeT = TAp Tree [TGen 0]
--- tupleT = TAp "(,)" [TGen 0, TGen 1]
--- boolT = TAp Bool []
--- numT = TAp Num []
--- listT = TAp List [TGen 0]
+builtInFunTypes :: Map Id Scheme
+builtInFunTypes = M.fromList
+  [
+    ("error", Forall 1 $ [TAp "String" []] `fn` TGen 0)
+  , ("+", Forall 0 $ [tNat, tNat] `fn` tNat)
+  , ("*", Forall 0 $ [tNat, tNat] `fn` tNat)
+  , ("<=", Forall 1 $ [TGen 0, TGen 0] `fn` TAp "Bool" [])
+  , (">=", Forall 1 $ [TGen 0, TGen 0] `fn` TAp "Bool" [])
+  , ("<", Forall 1 $ [TGen 0, TGen 0] `fn` TAp "Bool" [])
+  , (">", Forall 1 $ [TGen 0, TGen 0] `fn` TAp "Bool" [])
+  , ("==", Forall 1 $ [TGen 0, TGen 0] `fn` TAp "Bool" [])
+  ]
+
+
 
 --pattern TupleT :: Type -> Type -> Type
 --pattern TupleT x y <- TAp Prod [x, y]

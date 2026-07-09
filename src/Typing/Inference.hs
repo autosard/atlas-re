@@ -19,8 +19,9 @@ import Data.List(uncons)
 import Lens.Micro.Platform
 
 import qualified Data.List as L
+import qualified Data.Text as T
   
-import Typing.Type(Type(..),fn, unprod)
+import Typing.Type(Type(..),fn, unprod, tCurry, prettyPrint)
 import Typing.Subst
 import Typing.Scheme
 import Syntax.Ast
@@ -71,13 +72,13 @@ data TypeError
   deriving Eq
 
 instance Show TypeError where
-  show (TypeMismatch expected actual) = "Couldn't match type '" ++ show expected ++ "' with '" ++ show actual ++ "'\n"
-    ++ "\tExpected: " ++ show expected
+  show (TypeMismatch expected actual) = "Couldn't match type '" ++ prettyPrint expected ++ "' with '" ++ prettyPrint actual ++ "'\n"
+    ++ "\tExpected: " ++ prettyPrint expected
     ++ "\n"
-    ++ "\tActual: " ++ show actual
-  show (OccursCheck var t) = "Occurs check failed for '" ++ show var ++ "' in '" ++ show t ++ "'."
-  show (UnboundIdentifier id) = "Unbound identifier: '" ++ show id ++ "'"
-  show (UnknownDataConstructor id) = "Unknown data constructor: '" ++ show id ++ "'"
+    ++ "\tActual: " ++ prettyPrint actual
+  show (OccursCheck var t) = "Occurs check failed for '" ++ T.unpack var ++ "' in '" ++ show t ++ "'."
+  show (UnboundIdentifier id) = "Unbound identifier: '" ++ T.unpack id ++ "'"
+  show (UnknownDataConstructor id) = "Unknown data constructor: '" ++ T.unpack id ++ "'"
   
 type TI = ExceptT TypeError (State TiState)
 
@@ -88,6 +89,10 @@ mgu (TAp c1 tsl) (TAp c2 tsr)
   where mgu' s (l, r) = do
           s' <- mgu (apply  s l) (apply s r)
           return (s' @@ s)
+mgu (TFun l1 r1) (TFun l2 r2) = do
+  s1 <- mgu l1 l2
+  s2 <- mgu (apply s1 r1) (apply s1 r2)
+  return $ s2 @@ s1
 mgu (TVar u) t = varBind u t
 mgu t (TVar u) = varBind u t
 mgu t1 t2 = throwError $ TypeMismatch t1 t2
@@ -146,6 +151,7 @@ instance Instantiate a => Instantiate [a] where
 instance Instantiate Type where
   inst ts (TAp c args) = TAp c (inst ts args)
   inst ts (TGen i) = ts A.! i
+  inst ts (TFun t1 t2) = TFun (inst ts t1) (inst ts t2)
   inst ts t = t
 
 instScheme :: Scheme -> TI Type
@@ -163,7 +169,7 @@ tiPattern ctx cEnv (PConst ann id ps) = do
   constT <- instScheme =<< lookupCtor id cEnv
   (ctxs, ps') <- mapAndUnzipM (tiPattern ctx cEnv) ps
   let psTs = map getType ps'
-  unify constT (psTs `fn` tp)
+  unify constT (psTs `tCurry` tp)
   let ann' = extendWithType tp ann
   return (M.unions (ctxs ++ [ctx]), PConst ann' id ps')
 tiPattern ctx _ (PVar ann id) = do
@@ -193,6 +199,13 @@ tiExpr ctx cEnv e = do
 
 
 tiExpr' :: Infer (Expr Elaborated) (Expr Typed)
+tiExpr' ctx _ (LitAnn ann lit) = do
+  let t = case lit of
+            LNat _ -> TAp "Nat" []
+            LRat _ -> TAp "Rat" []
+            LString _ -> TAp "String" []
+  let ann' = extendWithType t ann
+  return $ LitAnn ann' lit
 tiExpr' ctx _ (VarAnn ann id) = do
   sc <- find id ctx
   t <- instScheme sc
@@ -204,7 +217,7 @@ tiExpr' ctx cEnv (ConstAnn ann id args) = do
   tConst <- instScheme sc
   args' <- mapM (tiExpr ctx cEnv) args
   let tArgs = map getType args'
-  unify tConst (tArgs `fn` to)
+  unify tConst (tArgs `tCurry` to)
   let ann' = extendWithType to ann 
   return $ ConstAnn ann' id args'
 tiExpr' ctx cEnv (IteAnn ann e1 e2 e3) = do
@@ -338,7 +351,7 @@ generalizeFunResult fs tfr =
   
 tiProg :: Infer (Program Elaborated) (Program Typed)
 tiProg ctx tEnv prog = do
-  ctx' <- initCtx prog
+  ctx' <- M.union <$> initCtx prog <*> return builtInFunTypes
   results <- mapM (tiFun ctx' tEnv) (fns prog)
   s <- gets subst
   let fs = tv (apply s ctx')

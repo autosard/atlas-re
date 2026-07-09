@@ -17,24 +17,19 @@ import Syntax.Measure
 import SourceError
 import CostAnalysis.Template (BoundTemplate(..))
 import Syntax.ResourceExpression
+import StaticAnalysis ( groupFuns )
 
 import Control.Monad.Except
 import Control.Monad.State
 import Control.Monad.Trans.Maybe
 import Control.Applicative
 import Control.Monad
-
-import qualified Data.Text as T
-import qualified Data.List as L
-import qualified Data.Set as S
-
-
-import Debug.Trace (trace)
 import Text.Megaparsec (SourcePos(SourcePos), pos1)
 import Data.Tuple (swap)
 
-dbg :: (a -> String) -> a -> a
-dbg f x = trace (f x) x
+import qualified Data.Text as T
+import qualified Data.List as L
+
 
 newtype ElabState = ElabState {
   idGen :: Int
@@ -87,7 +82,6 @@ elabProg sp = do
   funDefs <- mapM elabFunDef $ sfFunDefs sp
   dataEnv <- elabDataDefs (sfDataDefs sp)
   measureSig <- elabMeasureSig (sfMeasureDefs sp)
-  error $ show (dbg show measureSig)
   return $ Program {
     _pSig = sig
     , _pConfig = sfConfig sp
@@ -302,7 +296,7 @@ elabClause mKind (SurfaceClause _ [PConst _ cPat pVars] body) = do
   terms <- case mKind of
     SSize -> elabSizeSum body
     SPotential -> do
-      ts <- elabScalarComb (dbg show body)
+      ts <- elabScalarComb body
       return $ map (uncurry RTScale . swap) ts
   return (ConstPat cPat varNames, terms)    
 elabClause _ (SurfaceClause pos _ _) = 
@@ -331,9 +325,3 @@ elabMeasureSig = foldM insertMeasure M.empty
           
       return $ M.insert schemeKey updatedEnv envMap
   
---------------------------------------------------------------------------------
--- Mutually Recursive Groups
---------------------------------------------------------------------------------
-
-groupFuns :: [FunDef Elaborated] -> [[Id]]
-groupFuns = error "TODO"

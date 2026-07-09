@@ -69,10 +69,10 @@ app options = do
 run :: Options -> AnalyzeOptions -> IO ()
 run Options{..} AnalyzeOptions{..} = do
   createDirectoryIfMissing True "out"
-  let (modName, _) = case target of
+  let (modName, fn) = case target of
         (Left mod) -> (mod, Nothing)
         (Right (mod, fn)) -> (mod, Just fn)
-  loadMod searchPath modName
+  loadProg searchPath modName fn
 
   -- let positionedProg = contextualizeMod normalizedProg
   -- when switchPrintProg $ liftIO $ putStrLn (printProg positionedProg)
@@ -198,19 +198,19 @@ run Options{..} AnalyzeOptions{..} = do
 --             logWarning $ "No tactic file for function '" `T.append` fn `T.append` "' found."
 --             return Nothing
 
-loadMod :: Maybe FilePath -> Text -> IO ()
-loadMod pathSearch modName = do
+loadProg :: Maybe FilePath -> Text -> Maybe Id -> IO ()
+loadProg pathSearch modName fn = do
   searchPathfromEnv <- lookupEnv "ATLAS_SEARCH"
   let path = (`fromMaybe` pathSearch) . (`fromMaybe` searchPathfromEnv) $ "."
   surfaceProg <- loadProgram path modName
-  elaboratedProg <- case elabProgram surfaceProg of
-    Left srcErr -> printSrcError srcErr 
-    Right prog -> return prog
-  typedProg <- case inferProgram elaboratedProg of
-    Left srcErr -> printSrcError srcErr 
-    Right prog -> return prog
+
+  let run step = either printSrcError return . step
+  
+  typedProg <-
+    run inferProgram
+    =<< run elabProgram surfaceProg
+
   print typedProg  
-  -- return (normalizeMod typedMod, contents)
 
 main :: IO ()
 main = do
