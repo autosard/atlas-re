@@ -23,7 +23,6 @@ import Primitive(Id)
 import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
-import Control.Monad.Extra (whenJust)
 import Data.Maybe (isNothing, isJust)
 
 
@@ -36,7 +35,7 @@ instance Encodeable Coeff where
 instance Encodeable Rational where
   toZ3 r = mkReal (fromIntegral (numerator r)) (fromIntegral (denominator r))
 
-instance Encodeable Term where
+instance Encodeable ArithExpr where
   toZ3 (VarTerm id) = mkRealVar =<< mkStringSymbol ("k_" ++ show id)
   toZ3 (CoeffTerm q) = toZ3 q
   toZ3 (Sum terms) = mkAdd =<< mapM toZ3 terms
@@ -51,7 +50,7 @@ bind2 f g h = do
   y <- h
   f x y
 
-instance Encodeable Constraint where
+instance Encodeable Formula where
   toZ3 (Eq t1 t2) = bind2 mkEq (toZ3 t1) (toZ3 t2)
   toZ3 (Le t1 t2) = bind2 mkLe (toZ3 t1) (toZ3 t2)
   toZ3 (Ge t1 t2) = bind2 mkGe (toZ3 t1) (toZ3 t2)
@@ -73,9 +72,9 @@ evalCoeffs m qs = do
             Just r -> return (q, r)
             Nothing -> error $ "Evaluation of coefficient " ++ show q ++ " in z3 model failed."
 
-assertConstraints :: MonadOptimize z3 => Bool -> [Constraint] -> z3 (Map String Constraint)
+assertConstraints :: MonadOptimize z3 => Bool -> [Formula] -> z3 (Map String Formula)
 assertConstraints track = foldrM (go track) M.empty 
-  where go :: Bool -> MonadOptimize z3 => Constraint -> Map String Constraint -> z3 (Map String Constraint)
+  where go :: Bool -> MonadOptimize z3 => Formula -> Map String Formula -> z3 (Map String Formula)
         go False c tracker = do
           optimizeAssert =<< toZ3 c
           return tracker
@@ -113,7 +112,7 @@ solve fns = do
   constraints .= []
   return solution
 
-createSolverZ3 :: MonadOptimize z3 => [Coeff] -> [Constraint] -> [Constraint] -> Maybe Term -> z3 (Map String Constraint)
+createSolverZ3 :: MonadOptimize z3 => [Coeff] -> [Formula] -> [Formula] -> Maybe ArithExpr -> z3 (Map String Formula)
 createSolverZ3 coeffs typingCs extCs optiTarget = do
   tracker <- assertConstraints (isNothing optiTarget) $ typingCs ++ extCs
   case optiTarget of
@@ -123,7 +122,7 @@ createSolverZ3 coeffs typingCs extCs optiTarget = do
       return tracker
     Nothing -> return tracker
 
-solveZ3 :: MonadOptimize z3 => Map String Constraint -> [Coeff] -> Bool -> z3 (Either [Constraint] Solution)
+solveZ3 :: MonadOptimize z3 => Map String Formula -> [Coeff] -> Bool -> z3 (Either [Formula] Solution)
 solveZ3 tracker coeffs opti = do
   result <- optimizeCheck []
   case result of

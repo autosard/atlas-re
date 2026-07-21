@@ -50,7 +50,8 @@ contextualizeExpr' fn ctx (AppAnn ann id args) =
         AppAnn (extendWithCtx ctx' ann) id args'  where args' = map (contextualizeExpr' fn ctx) args
 contextualizeExpr' fn ctx (TickAnn ann c e) = TickAnn (extendWithCtx S.empty ann) c e'
   where e' = contextualizeExpr' fn ctx e
-contextualizeExpr' fn ctx (CoinAnn ann p) = CoinAnn (extendWithCtx S.empty ann) p 
+contextualizeExpr' fn ctx (CoinAnn ann p) = CoinAnn (extendWithCtx S.empty ann) p
+contextualizeExpr' fn ctx (LitAnn ann l) = LitAnn (extendWithCtx S.empty ann) l
 
 isCoin :: Expr a -> Bool
 isCoin (Coin _) = True

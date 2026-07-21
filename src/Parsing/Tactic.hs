@@ -23,7 +23,6 @@ pRule = pAtomic <|> pParens pNonAtomic
 
 pAtomic :: Parser Tactic
 pAtomic = Rule Const [] <$ symbol "const" 
-  <|> Rule ConstBase [] <$ symbol "const:base"
   <|> Rule Var [] <$ symbol "var"
   <|> Rule App [] <$ symbol "app"
   <|> Hole <$ symbol "?"
@@ -33,22 +32,19 @@ pAtomic = Rule Const [] <$ symbol "const"
 pNonAtomic :: Parser Tactic
 pNonAtomic = Rule Ite <$ symbol "ite" <*> count 2 pRule 
   <|> Rule Match <$ symbol "match" <*> many pRule
-  <|> (do rule <- Let <$ symbol "let" <*> pRuleArgs pLetArg
+  <|> (do rule <- Let <$ symbol "let" -- <*> pRuleArgs pLetArg
           Rule rule <$> count 2 pRule)
-  <|> Rule TickNow <$ symbol "tick:now" <*> count 1 pRule
-  <|> Rule TickDefer <$ symbol "tick:defer" <*> count 1 pRule
-  <|> Rule WeakenVar <$ symbol "w:var" <*> count 1 pRule
-  <|> (do rule <- Weaken <$ symbol "w" <*> pRuleArgs pWeakenArg
+  <|> Rule Tick <$ symbol "tick" <*> count 1 pRule
+  <|> (do rule <- Sub <$ symbol "w" <*> pRuleArgs pSubArg
           Rule rule <$> count 1 pRule)
-  <|> Rule ShiftConst <$ try (symbol "shift") <*> count 1 pRule
-  <|> Rule ShiftTerm <$ symbol "shift:term" <*> count 1 pRule
+  <|> Rule Shift <$ try (symbol "shift") <*> count 1 pRule
   <?> "rule"
 
-pLetArg :: Parser LetArg
-pLetArg = NegE <$ symbol "nege"
+-- pLetArg :: Parser LetArg
+-- pLetArg = NegE <$ symbol "nege"
 
-pWeakenArg :: Parser WeakenArg
-pWeakenArg = Mono <$ symbol "mono"
+pSubArg :: Parser SubArg
+pSubArg = Mono <$ symbol "mono"
   <|> L2xy <$ symbol "l2xy"
 
 pRuleArgs :: Parser a -> Parser [a]

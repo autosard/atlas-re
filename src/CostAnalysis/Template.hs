@@ -2,6 +2,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module CostAnalysis.Template where
 
@@ -11,18 +13,18 @@ import Data.Map(Map)
 import qualified Data.Map as M
 import Data.Set(Set)
 import qualified Data.Set as S
-import qualified Data.List as L
-import qualified Data.Text as T
-import Data.Text(Text)
 import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
+import Data.Bifunctor (first)
 
-import Primitive(Id, Substitution)
+import Primitive(Id, freeVars, Substitutable(..), substVar, toIntegerExact)
 import CostAnalysis.Coeff
 import Control.Monad.State
-import CostAnalysis.Constraint(ArithExpr, Formula, ArithExpr(..))
 import qualified CostAnalysis.Constraint as C
 import Syntax.ResourceExpression
+import Syntax.ResourceExpression.Size
+import Syntax.Measure
+import CostAnalysis.Constraint hiding (ConstTerm, VarTerm)
 
 --------------------------------------------------------------------------------
 -- General Templates
@@ -37,6 +39,12 @@ class (Show a) => Template a where
   args :: a -> [Id]
   empty :: a -> Bool
   merge :: a -> a -> a
+  amortisedCost :: a -> a
+
+costTerms :: Set ResourceTerm -> Set ResourceTerm
+costTerms = S.filter (not . isPotential) 
+  where isPotential (RTPhi _) = True
+        isPotential _ = False
 
 --------------------------------------------------------------------------------
 -- FreeTemplate
@@ -44,31 +52,33 @@ class (Show a) => Template a where
 
 data FreeTemplate = FreeTemplate {
   _ftId :: Int,
-  _ftArgs :: [Id],
   _ftTerms :: Set ResourceTerm
-} deriving Show
+} deriving (Eq, Show)
 
 makeLenses ''FreeTemplate
 
 emptyTempl :: Int -> [Id] -> FreeTemplate
 emptyTempl id args = FreeTemplate {
   _ftId=id,
-  _ftArgs=args,
   _ftTerms=S.empty}
 
 instance Template FreeTemplate where
   terms q = q^.ftTerms
   empty = S.null . _ftTerms
+  args q = S.toList $ freeVars (q^.ftTerms)
   (!) templ term = case coeffForTerm templ term of
     Just q -> CoeffTerm q
     Nothing -> error $ "Invalid index '" ++ show term ++ "' for template '" ++ show templ ++ "'."
   (!?) templ term = case coeffForTerm templ term of
     Just q -> CoeffTerm q
-    Nothing -> ConstTerm 0
+    Nothing -> C.ConstTerm 0
   merge q p = FreeTemplate {
     _ftId = q^.ftId,
-    _ftArgs = (q^.ftArgs) `L.union` (p^.ftArgs),
     _ftTerms = (q^.ftTerms) `S.union` (p^.ftTerms)}
+  amortisedCost q = q & ftTerms %~ costTerms
+
+instance Substitutable FreeTemplate where
+  subst env t = t & ftTerms %~ S.map (subst env)
 
 coeffForTerm :: FreeTemplate -> ResourceTerm -> Maybe Coeff
 coeffForTerm templ term =
@@ -85,90 +95,189 @@ instance HasCoeffs FreeTemplate where
 defineFrom :: Int -> FreeTemplate -> FreeTemplate
 defineFrom id templ = templ { _ftId=id }
 
--- substArg :: Id -> Id -> FreeTemplate -> FreeTemplate
--- substArg x y q = q
---   & ftArgs .~ args'
---   & ftTerms %~ S.map (substitute (q ^. ftArgs) args') 
---   where args' = map (\z -> if z == x then y else z) $ q ^. ftArgs
+--------------------------------------------------------------------------------
+-- Free Signatures
+--------------------------------------------------------------------------------
+
+data FreeSig = FreeSig {
+  _fsFrom :: FreeTemplate
+  , _fsTo :: FreeTemplate
+  , _fsBinder :: Id
+  , _fsFormArgs :: [Id]
+  } deriving Show
+
+makeLenses ''FreeSig
 
 --------------------------------------------------------------------------------
 -- BoundTemplate
 --------------------------------------------------------------------------------
 
-data BoundTemplate = BoundTemplate {
-  btArgs :: [Id],
+newtype BoundTemplate = BoundTemplate {
   btCoeffs :: Map ResourceTerm Rational}
   deriving (Eq, Show)
 
 instance Template BoundTemplate where
-  args = btArgs
+  args = S.toList . freeVars . M.keys . btCoeffs
   terms t = M.keysSet (btCoeffs t)
   empty t = M.null (btCoeffs t)
-  (!) t term = ConstTerm $ btCoeffs t M.! term
-  (!?) t term = ConstTerm $ fromMaybe 0 (btCoeffs t M.!? term)
+  (!) t term = C.ConstTerm $ btCoeffs t M.! term
+  (!?) t term = C.ConstTerm $ fromMaybe 0 (btCoeffs t M.!? term)
   merge q p = BoundTemplate {
-    btArgs = btArgs q `L.union` btArgs p,
     btCoeffs = btCoeffs q `M.union` btCoeffs p}
+  amortisedCost q = let keys' = costTerms (M.keysSet (btCoeffs q)) in
+    BoundTemplate (M.restrictKeys (btCoeffs q) keys')
+  
 
 bindTemplate :: FreeTemplate -> Map Coeff Rational -> BoundTemplate
 bindTemplate q values = BoundTemplate
-  (args q)
   (M.fromList [(i, v)
               | c@(Coeff _ i) <- getCoeffs q,
                 let v = fromMaybe 0 (values M.!? c)])
 
--- split :: BoundTemplate -> [Id] -> (BoundTemplate, BoundTemplate)
--- split (BoundTemplate args coeffs) argsY =
---   let argsX = (args L.\\ (filter (not . (T.isPrefixOf "!g")) argsY))
---       x = BoundTemplate argsX 
---         (M.filterWithKey (\idx _ -> hasArgsOrConst argsX idx) coeffs)
---       y = BoundTemplate argsY 
---         (M.filterWithKey (\idx _ -> hasArgs argsY idx && (not . idxNull) idx) coeffs) in
---     (x,y)
-                                    
-
-addValues :: BoundTemplate -> BoundTemplate -> BoundTemplate
-addValues q@(BoundTemplate argsQ qIs) p@(BoundTemplate argsP pIs)
-  = BoundTemplate (argsQ `L.union` argsP) 
-    (M.fromList [(idx, fromMaybe 0 (qIs M.!? idx)
-                       + fromMaybe 0 (pIs M.!? idx))
-                | idx <- S.toList $ terms q `S.union` terms p])
+sizeTransformFromTempl :: [Id] -> BoundTemplate -> SizeTransform
+sizeTransformFromTempl args templ = let rhs = foldr go emptySizeSum $ M.toList (btCoeffs templ) in
+  SizeTransform args rhs
+  where go :: (ResourceTerm, Rational) -> SizeSum -> SizeSum
+        go (RTSize x, k) = addSizeTerm (VarTerm x (fromRat k)) 
+        go (RTId, k) = addSizeTerm (ConstTerm (fromRat k)) 
+        go _ = \_ -> error $ "given template contains non size term: " ++ show templ
+        
+        fromRat k = case toIntegerExact k of
+          Just n -> fromIntegral n
+          Nothing -> error "encountered rational coeffient in size transform."
 
 --------------------------------------------------------------------------------
 -- TermTemplate
 --------------------------------------------------------------------------------
 
-data TermTemplate = TermTemplate {
-  ttArgs :: [Id],
+newtype ArithTemplate = ArithTemplate {
   ttTerms :: Map ResourceTerm ArithExpr}  
   deriving(Show)
 
-instance Template TermTemplate where
-  args = ttArgs
+instance Template ArithTemplate where
   terms templ =  M.keysSet $ ttTerms templ
+  args = S.toList . freeVars . M.keys . ttTerms 
   empty = M.null . ttTerms
   (!) templ term = ttTerms templ M.! term
-  (!?) templ term = fromMaybe (ConstTerm 0) $ ttTerms templ M.!? term
-  merge q p = TermTemplate {
-    ttArgs = ttArgs q `L.union` ttArgs p,
+  (!?) templ term = fromMaybe (C.ConstTerm 0) $ ttTerms templ M.!? term
+  merge q p = ArithTemplate {
     ttTerms = ttTerms q `M.union` ttTerms p}
 
 
-zeroTemplate = TermTemplate [] M.empty
+zeroTemplate = ArithTemplate M.empty
 
 
 --------------------------------------------------------------------------------
--- Term Operations
+-- Measure Templates
 --------------------------------------------------------------------------------
 
--- scale :: (Template a) => a -> Term -> TermTemplate
--- scale q k = TermTemplate (args q) (ghosts q) $
+type instance  Carrier 'TemplPotential = FreeTemplate
+
+data EnrichedMeasureEnv = EnrichedMeasureEnv {
+  emSizeMeasure :: MeasureAlgebra Size, 
+  emPotentialMeasure :: Either (MeasureAlgebra Potential) (MeasureAlgebra TemplPotential)
+} deriving (Eq, Show)
+
+--------------------------------------------------------------------------------
+-- Template Equality
+--------------------------------------------------------------------------------
+
+data SubstValue =
+  ExpandCtor ConstPat EnrichedMeasureEnv
+  | TransformApp [Id] SizeTransform
+  deriving Show
+
+-- | Assert that the template 'q' subject to a substitution 'subst', equals template 'p' after normalization. 
+--
+-- Formula: q[x -> v] -^-> q' = p
+--
+assertEqSubst :: (Id, SubstValue) -> FreeTemplate -> FreeTemplate -> (Set ResourceTerm, [Formula])
+assertEqSubst subst q p = (rhsTerms, map constrain reducts)
+  where constrain (tgt, srcs) = Eq
+          (CoeffTerm (Coeff (p^.ftId) tgt))
+          (sum (map termFromSrc srcs))
+        termFromSrc (1, t) = q!t
+        termFromSrc (k, t) = prod2 (C.ConstTerm k) (q!t)
+        rhsTerms = S.fromList $ map fst reducts
+        reducts = mergeTerms
+                  . reduceTerms subst $ S.toList (terms q)
+
+-- dont forget that the flips the templates
+mergeTerms :: [(ResourceTerm, ResourceTerm)] -> [(ResourceTerm, [(Rational, ResourceTerm)])]
+mergeTerms xs = M.toList
+  $ M.fromListWith (++) [origin (src, tgt) | (src, tgt) <- xs]
+  where origin (src, RTScale k tgt) = (tgt, [(k, src)])
+        origin (src, tgt) = (tgt, [(1, src)])
+
+reduceTerms :: (Id, SubstValue) -> [ResourceTerm] -> [(ResourceTerm, ResourceTerm)]
+reduceTerms subst = concatMap go
+  where 
+    go t = [(t, t') | t' <- concatMap normTerm (reduceTerm subst t)]
+
+reduceTerm :: (Id, SubstValue) -> ResourceTerm -> [ResourceTerm]
+reduceTerm subst (RTSize x) = let sizes = reduceSizeSum subst (sizeVar x) in
+  RTScale (fromIntegral $ _ssConstant sizes) RTId :
+  [if k > 1
+   then RTScale (toRational k) (RTSize x)
+   else RTSize x
+  | (x, k) <- M.toList (_ssCoeffs sizes) ]
+reduceTerm subst (RTLog ss) = [RTLog $ reduceSizeSum subst ss]
+reduceTerm (x,  ExpandCtor pat mEnv) t@(RTPhi y)
+  | x == y = case emPotentialMeasure mEnv of
+      Left potAlg -> apply potAlg pat
+      Right _ -> error "not implemented"
+  | otherwise = [t]
+reduceTerm (x,  _) t@(RTPhi _) = [t]
+reduceTerm subst t@(RTBinoms ss)
+  = [RTBinoms $ map (first (reduceSizeSum subst)) ss]
+reduceTerm _ RTId = [RTId]
+reduceTerm subst t = error $ "subst: " ++ show subst ++ ", term: " ++ show t
+
+
+reduceSizeSum :: (Id, SubstValue) -> SizeSum -> SizeSum
+reduceSizeSum (x, ExpandCtor pat mEnv) sum =
+  let sizeAlg = emSizeMeasure mEnv in
+    sizeSubst (x, apply sizeAlg pat) sum
+reduceSizeSum (x, TransformApp args st) sum =
+  sizeSubst (x, applyST st args) sum
+
+
+normTerm :: ResourceTerm -> [ResourceTerm]
+normTerm (RTBinoms []) = [RTId]
+normTerm (RTBinoms bs) = foldr (distributeBinoms . normBinom) [] bs
+normTerm t = [t]
+
+distributeBinoms :: [ResourceTerm] -> [ResourceTerm] -> [ResourceTerm]
+distributeBinoms as [] = as
+distributeBinoms [] bs = bs
+distributeBinoms as bs = [multBinoms a b | a <- as, b <- bs]
+
+multBinoms :: ResourceTerm -> ResourceTerm -> ResourceTerm
+multBinoms (RTBinoms as) (RTBinoms bs) = RTBinoms $ as ++ bs
+
+normBinom :: (SizeSum, Int) -> [ResourceTerm]
+normBinom (SizeSum coeffs 1, k) = case M.keys coeffs of
+  [x] -> RTBinoms [(sizeVar x, k)] :
+    [RTBinoms [(sizeVar x, k - 1)] | k - 1 >= 0]
+normBinom (SizeSum coeffs 0, k) = case M.keys coeffs of
+  [x, y]   -> [RTBinoms [(sizeVar x, r),
+                         (sizeVar y, k - r)] | r <- [0..k]]
+
+--------------------------------------------------------------------------------
+-- Template Operations
+--------------------------------------------------------------------------------
+
+
+
+-- scale :: (Template a) => a -> ArithExpr -> ArithTemplate
+-- scale q k = ArithTemplate $
 --   M.fromList [(idx, C.prod2 (q!idx) k) | idx <- S.toList (terms q)]
 
--- add :: (Template a, Template b) => a -> b -> TermTemplate
--- add q p = TermTemplate (args q `L.union` args p) (ghosts q `L.union` ghosts p)$
---              M.fromList [(idx, C.sum [q!?idx, p!?idx])
---                         | idx <- S.toList $ terms q `S.union` terms p]
+
+add :: (Template a, Template b) => a -> b -> ArithTemplate
+add q p = ArithTemplate $ M.fromList
+  [(idx, C.sum [q!?idx, p!?idx])
+  | idx <- S.toList $ terms q `S.union` terms p]
 
 -- sub :: (Template a, Template b) => a -> b -> TermTemplate
 -- sub q p = TermTemplate (args q `L.union` args p) (ghosts q `L.union` ghosts p)$
@@ -178,8 +287,47 @@ zeroTemplate = TermTemplate [] M.empty
 -- sum :: (Template a) => a -> Term
 -- sum q = C.sum [q!i | i <- S.toList $ terms q]
 
--- assertEq :: (Template a, Template b) => a -> b -> [Formula]
--- assertEq q p = concat [C.eq (q!?idx) (p!?idx) | idx <- S.toList $ terms q `S.union` terms p]
+
+assertEq :: (Template a, Template b) => a -> b -> [Formula]
+assertEq q p = concat [C.eq (q!?idx) (p!?idx) | idx <- S.toList $ terms q `S.union` terms p]
+
+assertEqExceptTerm :: (Template a, Template b) => ResourceTerm -> (ArithExpr -> ArithExpr) -> a -> b -> [Formula]
+assertEqExceptTerm t f q p = concat $
+  C.eq (q!?t) (f (p!?t)) :
+  [C.eq (q!?idx) (p!?idx)
+  | idx <- S.toList $ terms q `S.union` terms p,
+    idx /= t]
+
+
+
+-- | Asserts that template 'q' with variable 'x' substituted for 'y' 
+-- is equivalent to template 'p'.
+--
+-- Formula: q[x -> y] = p
+--
+assertEqVarSubst :: (Template a, Template b) => Id -> Id -> a -> b -> [Formula]
+assertEqVarSubst x y q p = concat [(q!?t) `eq` (p!?substVar x y t) | t <- S.toList $
+                                    terms q
+                                    `S.union`
+                                    (terms p S.\\ substVar x y (terms q))]
+
+-- | Asserts that template 'q' with multiple variables substituted 
+-- is equivalent to template 'p'.
+--
+-- Formula: q[xs -> ys] = p
+--
+assertEqVarsSubst :: (Template a, Template b) => [Id] -> [Id] -> a -> b -> [Formula]
+assertEqVarsSubst xs ys q p = 
+  concat [(q !? t) `eq` (p !? substMultiple t) | t <- S.toList $
+           terms q
+           `S.union`
+           (terms p S.\\ S.map substMultiple (terms q))]
+  where
+    -- Pair up the source and target variables
+    substs = zip xs ys
+    -- Apply each substitution sequentially to the term
+    substMultiple qt = foldl (\accTerm (x, y) -> substVar x y accTerm) qt substs
+
 
 -- assertLe :: (Template a, Template b) => a -> b -> [Formula]
 -- assertLe q p = concat [C.le (q!?idx) (p!?idx) | idx <- S.toList $ terms q `S.union` terms p]
@@ -277,137 +425,7 @@ zeroTemplate = TermTemplate [] M.empty
 --         p@(BoundTemplate _ to') = bindTemplate to solution
 --         u = apply q p
 
--- array
-
-type TemplateArray = Map ResourceTerm FreeTemplate
-
-elems :: TemplateArray -> [FreeTemplate]
-elems = M.elems
-
-infixl 9 !!
-(!!) :: TemplateArray -> ResourceTerm -> FreeTemplate
-(!!) arr k = case M.lookup k arr of
-  Just c -> c
-  Nothing -> error $ "Invalid index '" ++ show k ++ "' for annotation array."
 
 
-type CoeffDef s a = State s a
 
-def :: ResourceTerm -> CoeffDef FreeTemplate ArithExpr
-def t = do
-  ftTerms %= (t `S.insert`)
-  templ <- get
-  return $ templ!t
 
--- def2 :: (Index i, Index j) => i -> j -> CoeffDef FreeTemplate Term
--- def2 i j = do
---   let idx1 = toIdx i
---   let idx2 = toIdx j
---   ftCoeffs %= (idx1 `S.insert`)
---   ftCoeffs %= (idx2 `S.insert`)
---   templ <- get
---   return $ C.sum [templ!idx1, templ!idx2]
-
--- chainDef :: [a -> (a, [Formula])] -> a -> (a, [Formula])
--- chainDef fs q_ = foldr go (q_, []) fs
---   where go f (q, css) = let (q', cs) = f q in
---           (q', cs ++ css)
-
--- defEntry :: ResourceTerm -> ResourceTerm -> CoeffDef TemplateArray Term
--- defEntry arrIdx coeffIdx = do
---   ix arrIdx . ftCoeffs %= (coeffIdx `S.insert`)
---   arr <- get
---   let entry = arr M.!? arrIdx
---   case entry of
---     Just e -> return $ e!coeffIdx
---     Nothing -> error (show arr ++ "[" ++ show arrIdx ++ "]: " ++ show coeffIdx)
---   --return $ (arr M.! arrIdx)!coeffIdx
-
-extend :: a -> [CoeffDef a [Formula]] -> (a, [Formula])
-extend ann defs = (ann', concat cs)
-  where (cs, ann') = runState def ann
-        def = sequence defs
-        
--- extends :: TemplateArray -> [CoeffDef TemplateArray [a]] -> (TemplateArray, [a])
--- extends arr defs = (arr', concat cs)
---   where (cs, arr') = runState def arr
---         def = sequence defs
-  
--- defineBy :: FreeTemplate -> FreeTemplate -> (FreeTemplate, [Formula])
--- defineBy q p = defineByWith q p (const C.eq)
-
--- | @'defineFrom' q p f@ Define q from p. This sets q(x) = p(x), where x contains only variables from q. If x is constant coefficient the function f is applied instead of euqality, i.e. f q(idx) p(idx).
--- defineByWith :: FreeTemplate -> FreeTemplate -> (ResourceTerm -> Term -> Term -> [Formula])
---   -> (FreeTemplate, [Formula])
--- defineByWith q p f = let xs = args q in
---   extend q $
---   [(`C.eq` (p!idx)) <$> def idx
---   | idx@(Pure x) <- pures p,
---     x `elem` xs]
---   ++ 
---   [(`C.eq` (p!idx)) <$> def idx
---   | idx <- mixes p,
---     (not . justConst) idx,
---     onlyVarsOrConst idx xs]
---   ++
---   [flip (f idx) (p!idx) <$> def idx
---   | idx <- mixes p,
---     justConst idx]
-
-rhs :: Id
-rhs = "e1"
-
--- cLetBodyUni :: FreeTemplate -> FreeTemplate -> FreeTemplate
---   -> Id -> FreeTemplate -> (FreeTemplate, [Formula])
--- cLetBodyUni q p p' x r_ = extend r_ $
---   [(`C.eq` (q!y)) <$> def y
---   | idx@(Pure y) <- pures q,
---     y `elem` ys]
---   ++ [(`C.eq` (q!idx)) <$> def idx
---      | idx <- mixes q,
---        onlyVars idx ys,
---        (not . justConst) idx]
---   -- move const
---   ++ [(`C.eq` C.sum [C.sub [q!?idx, p!idx], p'!?idx]) <$> def idx
---      | idx <- mixes q,
---        justConst idx]
-  
---   ++ [(`C.eq` (p'!rhs)) <$> def x | (p'!?rhs) /= ConstTerm 0]
---   ++ [(`C.eq` (p'!pIdx)) <$> def rIdx
---      | pIdx <- mixes p',
-       
--- --       let d = facForVar pIdx rhs,
--- --       let e = constFactor pIdx,
--- --       let rIdx = [mix|x^d,e|],
--- --       (not . justConst) rIdx]
---        (not . justConst) pIdx,
---        let rIdx = substitute (args p') (args r_) pIdx]
---   where ys = L.delete x (args r_)
-
--- nonBindingMultiGeZero :: FreeTemplate -> [Id] -> [Id] -> [Formula]
--- nonBindingMultiGeZero q gamma delta = concat $
---   [C.geZero (q!idx) 
---   | idx <- mixes q,
---     containsArgs gamma idx && containsArgs delta idx,
---     not . justConst $ idx]
-
--- nonBindingMultiZero :: FreeTemplate -> [Id] -> [Id] -> [Formula]
--- nonBindingMultiZero q gamma delta = concat $
---   [C.zero (q!idx) 
---   | idx <- mixes q,
---     containsArgs gamma idx && containsArgs delta idx,
---     not . justConst $ idx]  
-
--- share :: FreeTemplate -> FreeTemplate -> [Id] -> Substitution -> Substitution -> (FreeTemplate, [Formula]) 
--- share q p_ zs s1 s2 =
---   let (pCommon_, csCommon) =
---         extend p_ [(`C.eq` (q!idx)) <$> def idx
---                           | idx <- S.toList (idxs q),
---                             not (containsArgs zs idx)]
---       (p, cs) =
---         extend pCommon_ [(`C.eq` (q!idx)) <$> def2 idx1 idx2
---                           | idx <- S.toList (idxs q),
---                             containsArgs zs idx,
---                             let idx1 = substitute' s1 idx,
---                             let idx2 = substitute' s2 idx] in
---     (p, cs ++ csCommon)

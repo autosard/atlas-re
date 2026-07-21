@@ -17,9 +17,9 @@ data LemmaSpec = LemmaSpec
 logLemmaSpec :: LemmaSpec
 logLemmaSpec = LemmaSpec
   { lemmaPatterns = 
-      [ WeightedPattern (1%2) (PLog [SPVar (PatVar "x")])
-      , WeightedPattern (1%2) (PLog [SPVar (PatVar "y")])
-      , WeightedPattern (- (1%2))    (PLog [SPVar (PatVar "x"), SPVar (PatVar "y")])
+      [ WeightedPattern (1%2) (PGenLog [SizeVar "x"])
+      , WeightedPattern (1%2) (PGenLog [SizeVar "y"])
+      , WeightedPattern (- 1) (PGenLog [SizeVar "x", SizeVar "y"])
       ]
   , constantShift = 1
   }

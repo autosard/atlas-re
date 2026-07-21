@@ -8,6 +8,8 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE FunctionalDependencies #-}
+
 
 module Syntax.Ast where
 
@@ -20,12 +22,13 @@ import qualified Data.Set as S
 import Text.Megaparsec(SourcePos, unPos, sourceLine, sourceColumn)
 import Data.List(intercalate)
 import Prelude hiding (break)
-import Primitive(Id, printRat)
+import Data.Tuple (swap)
+import Data.List.Extra (groupSort)
+
 import Typing.Type (Type)
 import Typing.Subst(Types(apply, tv))
 import Typing.Scheme (Scheme)
-import Data.Tuple (swap)
-import Data.List.Extra (groupSort)
+import Primitive(Id, unionMap, HasVars(..), prettyPrint)
 import Syntax.Measure(Measure, MeasureEnv)
 import Syntax.ResourceExpression(ResourceTerm)
 import CostAnalysis.TemplateLanguage
@@ -84,7 +87,8 @@ data Expr a
 
 data CostSig = CostSig {
   csFrom :: BoundTemplate, 
-  csTo :: BoundTemplate
+  csTo :: BoundTemplate,
+  csBinder :: Id
 } deriving (Eq, Show)
 
 
@@ -106,8 +110,6 @@ makeLenses ''FunDef
 --------------------------------------------------------------------------------
 -- Core Programs
 --------------------------------------------------------------------------------
-
-type TemplateLanguageConfig = [AtomicLang]
 
 newtype ProgramConfig = ProgConfig {
   templateConfig :: TemplateLanguageConfig
@@ -162,7 +164,7 @@ data SurfaceFunSig = SurfaceFunSig {
 
 data SurfaceCostSig = SurfaceCostSig {
   scsFrom :: ([Id], Expr Parsed), 
-  scsTo :: ([Id], Expr Parsed)
+  scsTo :: (Id, Expr Parsed)
 } deriving (Eq, Show)
 
 
@@ -207,159 +209,6 @@ data MeasureDef = MeasureDef {
 } deriving Show
 
 
---------------------------------------------------------------------------------
--- Helpers
---------------------------------------------------------------------------------
-
-data Syntax a
-   = SynExpr (Expr a)
-   | SynArm (MatchArm a)
-   | SynPat (Pattern a)
-
-armExpr :: MatchArm a -> Expr a
-armExpr (MatchArmAnn _ _ e) = e
-
--- pattern synomyms to work with epxressions without the overhead of annotations
-pattern Lit :: Literal -> Expr a
-pattern Lit lit <- LitAnn _ lit
-pattern Var :: Id -> Expr a
-pattern Var id <- VarAnn _ id
-pattern Const :: Id -> [Expr a] -> Expr a
-pattern Const id args <- ConstAnn _ id args
-pattern Ite :: Expr a -> Expr a -> Expr a -> Expr a
-pattern Ite e1 e2 e3 <- IteAnn _ e1 e2 e3
-pattern Match :: Expr a -> [MatchArm a] -> Expr a
-pattern Match e arms <- MatchAnn _ e arms
-pattern App :: Id -> [Expr a] -> Expr a
-pattern App id args <- AppAnn _ id args
-pattern Let :: Id -> Expr a -> Expr a -> Expr a
-pattern Let id e1 e2 <- LetAnn _ id e1 e2
-pattern Tick :: Maybe Rational -> Expr a -> Expr a
-pattern Tick c e <- TickAnn _ c e
-pattern Coin :: Rational -> Expr a
-pattern Coin p <- CoinAnn _ p
-
-pattern MatchArm :: Pattern a -> Expr a -> MatchArm a
-pattern MatchArm p e <- MatchArmAnn _ p e
-
-containsFn :: Text -> Program a -> Bool
-containsFn fn prog = M.member fn (prog^.pFunDefs)
-  
-
-printExprHead :: Expr a -> String
-printExprHead (Var id) = T.unpack id 
-printExprHead (Const id args) = T.unpack id ++ " " ++ unwords (map printExprHead args)
-printExprHead (Ite {}) = "ite"
-printExprHead (Match (Var id) _) = "match " ++ T.unpack id
-printExprHead (App id args) = T.unpack id ++ " " ++ unwords (map printExprHead args)
-printExprHead (Let id e1 e2) = "let " ++ T.unpack id ++ " = " ++ printExprHead e1
-printExprHead (Tick _ _) = "tick"
-printExprHead (Coin _) = "coin"
-
-printPat :: Pattern a -> String
-printPat (PConst _ id ps) = T.unpack id ++ " " ++(unwords . map printPat $ ps)
-printPat (PVar _ id) = T.unpack id
-printPat (PWildcard _) = "_"
-
-printMatchArm :: (XExprAnn a -> String) -> Int -> MatchArm a -> String
-printMatchArm printAnn ident (MatchArmAnn _ pat e) = "| " ++ printPat pat ++ " -> " ++ printExpr printAnn ident e 
-
-break :: Int -> String
-break ident = "\n" ++ replicate (2*ident) ' ' 
-
-printExprPlain :: Expr a -> String
-printExprPlain = printExpr (const "") 0 
-
-printExpr :: (XExprAnn a -> String) -> Int -> Expr a -> String
-printExpr printAnn _ (LitAnn ann l) = show l ++ printAnn ann
-printExpr printAnn _ (VarAnn ann id) = T.unpack id ++ printAnn ann
-printExpr printAnn ident (ConstAnn ann "(,)" [x1, x2]) = "(" ++ printExpr printAnn ident x1 ++ ", " ++ printExpr printAnn ident x2 ++ ")" ++ printAnn ann
-printExpr printAnn ident (ConstAnn ann id args) = paren $ T.unpack id ++ " " ++ unwords (map (printExpr printAnn ident) args) ++ printAnn ann
-printExpr printAnn ident (IteAnn ann e1 e2 e3) = "if " ++ printExpr printAnn ident e1
-  ++ printAnn ann 
-  ++ break (ident + 1) ++ "then " ++ printExpr printAnn (ident + 1) e2
-  ++ break (ident + 1) ++ "else " ++ printExpr printAnn (ident + 1) e3 
-printExpr printAnn ident (MatchAnn ann e arms) = "match "
-  ++ printExpr printAnn ident e ++ printAnn ann
-  ++ break  (ident + 1) ++ printedArms 
-  where printedArms = intercalate (break (ident + 1)) . map (printMatchArm printAnn (ident + 1)) $ arms
-printExpr printAnn ident (AppAnn ann id args) = paren $ T.unpack id ++ " "
-                          ++ (unwords . map (printExpr printAnn ident) $ args) ++ printAnn ann
-printExpr printAnn ident (LetAnn ann id e1 e2) = "let " ++ T.unpack id ++ " = " ++ printExpr printAnn ident e1 ++ " in" ++ printAnn ann
-                           ++ break (ident + 1) ++ printExpr printAnn (ident + 1) e2
-printExpr printAnn ident (TickAnn ann c e) = "~" ++  frac c ++ printExpr printAnn ident e ++ printAnn ann
-  where frac = maybe "" printRat 
-printExpr printAnn ident (CoinAnn ann p) = "coin " ++ printRat p ++ printAnn ann
-
-printFun :: (XExprAnn a -> String) -> FunDef a -> String
-printFun printExprAnn fun = T.unpack (fun^.funName) ++ " " ++ printedArgs ++ " = " ++ printExpr printExprAnn 0 (fun^.funBody)
-  where printedArgs = unwords . map T.unpack $ (fun^.funArgs)
-
-printFuns :: (XExprAnn a -> String) -> Program a -> String
-printFuns printExprAnn mod = intercalate "\n\n" (map (printFun printExprAnn) (fns mod)) ++ "\n"
-
-printProg :: Program a -> String
-printProg = printFuns (const "")
-
-printProgPositioned :: Program Positioned -> String
-printProgPositioned = printFuns printCtx
-  where printCtx (PositionedExprAnn {..}) = " " ++ paren (intercalate "," (map show (S.toList peCtx)))
-
-class HasAnnotation a b where
-  getAnn :: a b -> XExprAnn b
-  
-class MapAnnotation a b c where
-  mapAnn :: (XExprAnn b -> XExprAnn c) -> a b -> a c
-  
-
-instance MapAnnotation Expr a b where
-  mapAnn f (LitAnn ann lit) = LitAnn (f ann) lit
-  mapAnn f (VarAnn ann id) = VarAnn (f ann) id
-  mapAnn f (ConstAnn ann id args) = ConstAnn (f ann) id $ map (mapAnn f) args
-  mapAnn f (IteAnn ann e1 e2 e3) = IteAnn (f ann) (mapAnn f e1) (mapAnn f e2) (mapAnn f e3)
-  mapAnn f (MatchAnn ann e arms) = MatchAnn (f ann) (mapAnn f e) $ map (mapAnn f) arms
-  mapAnn f (AppAnn ann id args) = AppAnn (f ann) id $ map (mapAnn f) args
-  mapAnn f (LetAnn ann id e1 e2) = LetAnn (f ann) id (mapAnn f e1) (mapAnn f e2)
-  mapAnn f (TickAnn ann c e) = TickAnn (f ann) c (mapAnn f e)
-  mapAnn f (CoinAnn ann p) = CoinAnn (f ann) p
-  
-instance HasAnnotation Expr a where
-  getAnn (LitAnn ann _) = ann
-  getAnn (VarAnn ann _) = ann
-  getAnn (ConstAnn ann _ _) = ann
-  getAnn (IteAnn ann _ _ _) = ann
-  getAnn (MatchAnn ann _ _) = ann
-  getAnn (AppAnn ann _ _) = ann
-  getAnn (LetAnn ann _ _ _) = ann
-  getAnn (TickAnn ann _ _) = ann
-  getAnn (CoinAnn ann _) = ann
-
-instance MapAnnotation MatchArm a b where
-  mapAnn f (MatchArmAnn ann p e) = MatchArmAnn (f ann) (mapAnn f p) (mapAnn f e)
-
-instance HasAnnotation MatchArm a where  
-  getAnn (MatchArmAnn ann _ _) = ann
-  
-
-instance MapAnnotation Pattern a b where
-  mapAnn f (PConst ann id vars) = PConst (f ann) id (map (mapAnn f) vars)
-  mapAnn f (PVar ann id) = PVar (f ann) id
-  mapAnn f (PWildcard ann) = PWildcard (f ann)
-
-instance HasAnnotation Pattern a where
-  getAnn (PConst ann _ _) = ann
-  getAnn (PVar ann _) = ann
-  getAnn (PWildcard ann) = ann
-
-instance MapAnnotation Syntax a b where
-  mapAnn f (SynExpr e) = SynExpr $ mapAnn f e
-  mapAnn f (SynArm arm) = SynArm $ mapAnn f arm
-  mapAnn f (SynPat p) = SynPat $ mapAnn f p
-  
-instance HasAnnotation Syntax a  where
-  getAnn (SynExpr e) = getAnn e
-  getAnn (SynArm arm) = getAnn arm
-  getAnn (SynPat p) = getAnn p
 
 --------------------------------------------------------------------------------
 -- Parsed 
@@ -456,31 +305,6 @@ instance HasType TypedExprAnn where
 extendWithType :: Type -> XExprAnn Parsed -> XExprAnn Typed
 extendWithType t pos = TypedExprAnn (Loc pos) t
 
--- ctxFromFn :: FunDef Positioned -> ([(Id, Type)], [(Id, Type)])
--- ctxFromFn (FunDef ann _ args _) =
---   let (tFrom, tTo) = splitFnType . toType . tfType $ ann
---       tsFrom = splitProdType tFrom
---       ctxFrom = zip args tsFrom 
---       ctxTo = ctxFromType tTo in
---     (ctxFrom, ctxTo)
-
-    
--- ctxFromType :: Type -> [(Id, Type)]
--- ctxFromType t = let ts = splitProdType t in 
---   zip [T.pack $ "e" ++ show n
---       |n <- [1..]] ts 
-
--- returnTypeToArgs :: Type -> [Id]
--- returnTypeToArgs t = map fst (ctxFromType t)
-
-
--- fnArgsByType :: FunDef Positioned -> (Map Type [Id], Map Type [Id])
--- fnArgsByType fn = let (from, to) = ctxFromFn fn in
---                     (toMap from, toMap to)
---   where toMap = M.fromList . groupSort . map swap
---           --M.fromListWith (++) $ map (\(x, t) -> (t, [x])) args
-        
-
 instance Types TypedExpr where
   apply s = mapAnn (\ann -> ann{teType = apply s (teType ann) })
   tv e = tv (getType e)
@@ -533,7 +357,170 @@ type instance XExprAnn Positioned = PositionedExprAnn
 extendWithCtx :: Set ExprCtx -> XExprAnn Typed -> XExprAnn Positioned
 extendWithCtx ctx (TypedExprAnn {..}) = PositionedExprAnn teSrc teType ctx
 
--- 
+--------------------------------------------------------------------------------
+-- Helpers
+--------------------------------------------------------------------------------
+
+data Syntax a
+   = SynExpr (Expr a)
+   | SynArm (MatchArm a)
+   | SynPat (Pattern a)
+
+armExpr :: MatchArm a -> Expr a
+armExpr (MatchArmAnn _ _ e) = e
+
+-- pattern synomyms to work with epxressions without the overhead of annotations
+pattern Lit :: Literal -> Expr a
+pattern Lit lit <- LitAnn _ lit
+pattern Var :: Id -> Expr a
+pattern Var id <- VarAnn _ id
+pattern Const :: Id -> [Expr a] -> Expr a
+pattern Const id args <- ConstAnn _ id args
+pattern Ite :: Expr a -> Expr a -> Expr a -> Expr a
+pattern Ite e1 e2 e3 <- IteAnn _ e1 e2 e3
+pattern Match :: Expr a -> [MatchArm a] -> Expr a
+pattern Match e arms <- MatchAnn _ e arms
+pattern App :: Id -> [Expr a] -> Expr a
+pattern App id args <- AppAnn _ id args
+pattern Let :: Id -> Expr a -> Expr a -> Expr a
+pattern Let id e1 e2 <- LetAnn _ id e1 e2
+pattern Tick :: Maybe Rational -> Expr a -> Expr a
+pattern Tick c e <- TickAnn _ c e
+pattern Coin :: Rational -> Expr a
+pattern Coin p <- CoinAnn _ p
+
+pattern MatchArm :: Pattern a -> Expr a -> MatchArm a
+pattern MatchArm p e <- MatchArmAnn _ p e
+
+containsFn :: Text -> Program a -> Bool
+containsFn fn prog = M.member fn (prog^.pFunDefs)
+
+instance HasVars (Expr a) where
+  freeVars (Var id) = S.singleton id
+  freeVars (Const _ exps) = unionMap freeVars exps
+  freeVars (Ite e1 e2 e3) = unionMap freeVars [e1, e2, e3]
+  freeVars (Match m arms) = freeVars m `S.union`
+    unionMap (freeVars . (\(MatchArm _ e) -> e)) arms
+  freeVars (App _ exps) = unionMap freeVars exps
+  freeVars (Let id e1 e2) = S.delete id $ freeVars e1 `S.union` freeVars e2
+  freeVars (Tick _ e) = freeVars e
+  freeVars _ = S.empty
+
+printExprHead :: Expr a -> String
+printExprHead (Var id) = T.unpack id 
+printExprHead (Const id args) = T.unpack id ++ " " ++ unwords (map printExprHead args)
+printExprHead (Ite {}) = "ite"
+printExprHead (Match (Var id) _) = "match " ++ T.unpack id
+printExprHead (App id args) = T.unpack id ++ " " ++ unwords (map printExprHead args)
+printExprHead (Let id e1 e2) = "let " ++ T.unpack id ++ " = " ++ printExprHead e1
+printExprHead (Tick _ _) = "tick"
+printExprHead (Coin _) = "coin"
+printExprHead (Lit l) = show l
+
+printPat :: Pattern a -> String
+printPat (PConst _ id ps) = T.unpack id ++ " " ++(unwords . map printPat $ ps)
+printPat (PVar _ id) = T.unpack id
+printPat (PWildcard _) = "_"
+
+printMatchArm :: (XExprAnn a -> String) -> Int -> MatchArm a -> String
+printMatchArm printAnn ident (MatchArmAnn _ pat e) = "| " ++ printPat pat ++ " -> " ++ printExpr printAnn ident e 
+
+break :: Int -> String
+break ident = "\n" ++ replicate (2*ident) ' ' 
+
+printExprPlain :: Expr a -> String
+printExprPlain = printExpr (const "") 0 
+
+printExpr :: (XExprAnn a -> String) -> Int -> Expr a -> String
+printExpr printAnn _ (LitAnn ann l) = show l ++ printAnn ann
+printExpr printAnn _ (VarAnn ann id) = T.unpack id ++ printAnn ann
+printExpr printAnn ident (ConstAnn ann "(,)" [x1, x2]) = "(" ++ printExpr printAnn ident x1 ++ ", " ++ printExpr printAnn ident x2 ++ ")" ++ printAnn ann
+printExpr printAnn ident (ConstAnn ann id args) = paren $ T.unpack id ++ " " ++ unwords (map (printExpr printAnn ident) args) ++ printAnn ann
+printExpr printAnn ident (IteAnn ann e1 e2 e3) = "if " ++ printExpr printAnn ident e1
+  ++ printAnn ann 
+  ++ break (ident + 1) ++ "then " ++ printExpr printAnn (ident + 1) e2
+  ++ break (ident + 1) ++ "else " ++ printExpr printAnn (ident + 1) e3 
+printExpr printAnn ident (MatchAnn ann e arms) = "match "
+  ++ printExpr printAnn ident e ++ printAnn ann
+  ++ break  (ident + 1) ++ printedArms 
+  where printedArms = intercalate (break (ident + 1)) . map (printMatchArm printAnn (ident + 1)) $ arms
+printExpr printAnn ident (AppAnn ann id args) = paren $ T.unpack id ++ " "
+                          ++ (unwords . map (printExpr printAnn ident) $ args) ++ printAnn ann
+printExpr printAnn ident (LetAnn ann id e1 e2) = "let " ++ T.unpack id ++ " = " ++ printExpr printAnn ident e1 ++ " in" ++ printAnn ann
+                           ++ break (ident + 1) ++ printExpr printAnn (ident + 1) e2
+printExpr printAnn ident (TickAnn ann c e) = "~" ++  frac c ++ printExpr printAnn ident e ++ printAnn ann
+  where frac = maybe "" prettyPrint
+printExpr printAnn ident (CoinAnn ann p) = "coin " ++ prettyPrint p ++ printAnn ann
+
+printFun :: (XExprAnn a -> String) -> FunDef a -> String
+printFun printExprAnn fun = T.unpack (fun^.funName) ++ " " ++ printedArgs ++ " = " ++ printExpr printExprAnn 0 (fun^.funBody)
+  where printedArgs = unwords . map T.unpack $ (fun^.funArgs)
+
+printFuns :: (XExprAnn a -> String) -> Program a -> String
+printFuns printExprAnn mod = intercalate "\n\n" (map (printFun printExprAnn) (fns mod)) ++ "\n"
+
+printProg :: Program a -> String
+printProg = printFuns (const "")
+
+printProgPositioned :: Program Positioned -> String
+printProgPositioned = printFuns printCtx
+  where printCtx (PositionedExprAnn {..}) = " " ++ paren (intercalate "," (map show (S.toList peCtx)))
+
+class HasAnnotation a b where
+  getAnn :: a b -> XExprAnn b
+  
+class MapAnnotation a b c where
+  mapAnn :: (XExprAnn b -> XExprAnn c) -> a b -> a c
+  
+
+instance MapAnnotation Expr a b where
+  mapAnn f (LitAnn ann lit) = LitAnn (f ann) lit
+  mapAnn f (VarAnn ann id) = VarAnn (f ann) id
+  mapAnn f (ConstAnn ann id args) = ConstAnn (f ann) id $ map (mapAnn f) args
+  mapAnn f (IteAnn ann e1 e2 e3) = IteAnn (f ann) (mapAnn f e1) (mapAnn f e2) (mapAnn f e3)
+  mapAnn f (MatchAnn ann e arms) = MatchAnn (f ann) (mapAnn f e) $ map (mapAnn f) arms
+  mapAnn f (AppAnn ann id args) = AppAnn (f ann) id $ map (mapAnn f) args
+  mapAnn f (LetAnn ann id e1 e2) = LetAnn (f ann) id (mapAnn f e1) (mapAnn f e2)
+  mapAnn f (TickAnn ann c e) = TickAnn (f ann) c (mapAnn f e)
+  mapAnn f (CoinAnn ann p) = CoinAnn (f ann) p
+  
+instance HasAnnotation Expr a where
+  getAnn (LitAnn ann _) = ann
+  getAnn (VarAnn ann _) = ann
+  getAnn (ConstAnn ann _ _) = ann
+  getAnn (IteAnn ann _ _ _) = ann
+  getAnn (MatchAnn ann _ _) = ann
+  getAnn (AppAnn ann _ _) = ann
+  getAnn (LetAnn ann _ _ _) = ann
+  getAnn (TickAnn ann _ _) = ann
+  getAnn (CoinAnn ann _) = ann
+
+instance MapAnnotation MatchArm a b where
+  mapAnn f (MatchArmAnn ann p e) = MatchArmAnn (f ann) (mapAnn f p) (mapAnn f e)
+
+instance HasAnnotation MatchArm a where  
+  getAnn (MatchArmAnn ann _ _) = ann
+  
+
+instance MapAnnotation Pattern a b where
+  mapAnn f (PConst ann id vars) = PConst (f ann) id (map (mapAnn f) vars)
+  mapAnn f (PVar ann id) = PVar (f ann) id
+  mapAnn f (PWildcard ann) = PWildcard (f ann)
+
+instance HasAnnotation Pattern a where
+  getAnn (PConst ann _ _) = ann
+  getAnn (PVar ann _) = ann
+  getAnn (PWildcard ann) = ann
+
+instance MapAnnotation Syntax a b where
+  mapAnn f (SynExpr e) = SynExpr $ mapAnn f e
+  mapAnn f (SynArm arm) = SynArm $ mapAnn f arm
+  mapAnn f (SynPat p) = SynPat $ mapAnn f p
+  
+instance HasAnnotation Syntax a  where
+  getAnn (SynExpr e) = getAnn e
+  getAnn (SynArm arm) = getAnn arm
+  getAnn (SynPat p) = getAnn p
 
 paren :: String -> String
 paren s = "(" ++ s ++ ")"
@@ -544,6 +531,3 @@ printPos pos = show (unPos . sourceLine $ pos) ++ ","  ++ show (unPos $ sourceCo
 toVar :: Expr a -> Maybe Id
 toVar (Var x) = Just x
 toVar _ = Nothing
-
-
-

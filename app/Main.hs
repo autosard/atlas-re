@@ -10,6 +10,7 @@ module Main (main) where
 import Options.Applicative
 import System.Console.ANSI.Codes
 import Control.Monad.IO.Class (MonadIO (..))
+import System.IO
 import Data.Map(Map)
 import qualified Data.Map as M
 import System.Exit
@@ -24,21 +25,17 @@ import System.Directory
 import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
+
+
 import Syntax.Ast
+import Parsing.Tactic
 import CostAnalysis.Coeff
--- import CostAnalysis.PrettyProof(renderProof, css, js)
+import CostAnalysis.Analysis
+import CostAnalysis.ProveMonad (ProofEnv(..))
+import CostAnalysis.Tactic
+import CostAnalysis.PrettyProof
 
 
-import Colog (cmap, fmtMessage, logTextStdout, logWarning,
-              usingLoggerT, logError, LoggerT, Msg, Severity)
-
-
-import System.Environment(lookupEnv)
-
-import Typing.Inference(inferProgram)
---import Normalization(normalizeMod, normalizeExpr)
-import Parsing.Program(parseExpr)
--- import Parsing.Tactic
 import Primitive(Id)
 
 import Cli(Options(..),
@@ -49,15 +46,13 @@ import Cli(Options(..),
 
 import System.Random (getStdGen)
 import Loading (loadProgram)
-import SourceError (printSrcError)
+
 --import CostAnalysis.Constraint (Constraint)
-import Control.Monad (when)
---import AstContext (contextualizeMod)
+import Control.Monad (when, unless)
+
 -- import Benchmark(sort, genBenchmark, median)
 import Control.Concurrent (yield)
-import Syntax.Elaboration (elabProg, elabProgram)
 
--- type App a = LoggerT (Msg Severity) IO a
 
 app :: Options -> IO ()
 app options = do
@@ -72,44 +67,44 @@ run Options{..} AnalyzeOptions{..} = do
   let (modName, fn) = case target of
         (Left mod) -> (mod, Nothing)
         (Right (mod, fn)) -> (mod, Just fn)
-  loadProg searchPath modName fn
+  prog <- loadProgram searchPath modName fn
+  when switchPrintProg $ liftIO $ putStrLn (printProg prog)
 
-  -- let positionedProg = contextualizeMod normalizedProg
-  -- when switchPrintProg $ liftIO $ putStrLn (printProg positionedProg)
-  -- when (null . mutRecGroups $ positionedProg) $ do
-  --   fail $ "Module does not define the requested function."
-  -- printAnalysisInfo positionedProg
-  -- tactics <- case tacticsPath of
-  --   Just path -> loadTactics (T.unpack modName) (M.keys (defs normalizedProg)) path
-  --   Nothing -> return M.empty
-  -- let env = ProofEnv {
-  --       _tactics=tactics,
-  --       _analysisMode=analysisMode,
-  --       _incremental=switchIncremental,
-  --       _rhsTerms=(modRhsTerms . config) positionedProg}
-  -- result <- liftIO $ analyzeModule env positionedProg
-  
-  -- case result of
-  --   Left srcErr -> liftIO $ die $ printSrcError srcErr contents
-  --   Right solverResult -> case solverResult of
-  --     (AnalysisResult deriv sigCs _ (Left unsatCore)) ->
-  --       let core' = S.fromList unsatCore in do
-  --         logError "solver returned unsat. See unsat-core for details."
-  --         liftIO $ writeHtmlProof "./out" (renderProof (Just core') deriv sigCs) 
-  --     (AnalysisResult deriv sigCs sig (Right ((solution, objective), pots))) -> do
-  --       liftIO $ putStr "Done. "
-  --       liftIO $ writeHtmlProof "./out" (renderProof Nothing deriv sigCs)
-  --       liftIO $ printSolution switchDumpCoeffs sig pots solution
-  --       liftIO $ when switchPrintObjective (do
-  --                                              putStrLn ""
-  --                                              putStrLn ("objective: " ++ objective))
+  unless (case fn of 
+            Just name -> M.member name (_pFunDefs prog)
+            Nothing -> False
+         ) $ do
+    fail "Module does not define the requested function."
+  tactics <- case tacticsPath of
+    Just path -> loadTactics (T.unpack modName) (M.keys (_pFunDefs prog)) path
+    Nothing -> return M.empty
+  let env = ProofEnv {
+        _tactics=tactics
+        , _analysisMode=analysisMode
+        , _incremental=switchIncremental
+        }
+  result <- liftIO $ analyzeProgram env prog
+  case result of
+    (AnalysisResult {_arDerivs=derivs,
+                     _arSigCs=sigCs,
+                     _arResult=Left unsatCore}) ->
+      let core' = S.fromList unsatCore in do
+          hPutStrLn stderr "solver returned unsat. See unsat-core for details."
+          writeHtmlProof "./out" (renderProof (Left core') derivs sigCs) 
+    (AnalysisResult {
+        _arDerivs=derivs
+        , _arSigCs=sigCs
+        , _arSig=sig
+        , _arResult=(Right (solution, objective))}) -> do
+        putStr "Done. "
+        writeHtmlProof "./out" (renderProof (Right solution) derivs sigCs)
+--        printSolutionCoeffs solution
+--        liftIO $ printSolution switchDumpCoeffs sig pots solution
+        when switchPrintObjective (do
+                                      putStrLn ""
+                                      putStrLn ("objective: " ++ objective))
 
--- printAnalysisInfo :: PositionedModule -> IO ()
--- printAnalysisInfo (Module {..}) = putStrLn $
---   "Analyzing module " ++ T.unpack name ++ "("
---   ++ T.unpack (T.intercalate ", " (concat mutRecGroups))
---   ++ ") ..."
-
+printSolutionCoeffs solution = mapM_ (\(q, v) -> putStrLn $ show q ++ " = " ++ show v) (M.assocs solution)
 -- printSolution :: Bool -> FreeSignature -> PotFnMap -> Map Coeff Rational -> IO ()
 -- printSolution dumpCoeffs sig potFns solution = do
 --   when dumpCoeffs (do
@@ -134,14 +129,14 @@ run Options{..} AnalyzeOptions{..} = do
 --           putStrLn $ "\t" ++ show kind ++ ": " ++ printRHS pot rhs solution 
           
 
--- writeHtmlProof :: FilePath -> LT.Text -> IO ()
--- writeHtmlProof path html = do
---   path <- liftIO $ makeAbsolute path
---   liftIO $ createDirectoryIfMissing False path
---   liftIO $ TextLazyIO.writeFile (path </> "index.html") html
---   liftIO $ TextLazyIO.writeFile (path </> "style.css") css
---   liftIO $ TextLazyIO.writeFile (path </> "proof.js") js
---   liftIO $ putStrLn $ "Saved proof to \"file://" ++ path </> "index.html" ++ "\""
+writeHtmlProof :: FilePath -> LT.Text -> IO ()
+writeHtmlProof path html = do
+  path <- liftIO $ makeAbsolute path
+  liftIO $ createDirectoryIfMissing False path
+  liftIO $ TextLazyIO.writeFile (path </> "index.html") html
+  liftIO $ TextLazyIO.writeFile (path </> "style.css") css
+  liftIO $ TextLazyIO.writeFile (path </> "proof.js") js
+  liftIO $ putStrLn $ "Saved proof to \"file://" ++ path </> "index.html" ++ "\""
 
 -- printDeriv :: Bool -> Maybe (Set Constraint) -> Derivation -> IO ()
 -- printDeriv showCs unsatCore deriv = putStr (drawTree deriv')
@@ -185,32 +180,19 @@ run Options{..} AnalyzeOptions{..} = do
 --         Right expr -> return expr
 --   return $ normalizeExpr typed
 
--- loadTactics :: String -> [Id] -> FilePath -> App (Map Id Tactic)
--- loadTactics modName fns path = M.fromList . catMaybes <$> mapM loadOne fns
---   where loadOne :: Id -> App (Maybe (Id, Tactic))
---         loadOne fn = do
---           let fileName = path </> modName </> T.unpack fn <.> "txt"
---           exists <- liftIO $ doesFileExist fileName
---           if exists then do
---             contents <- liftIO $ TextIO.readFile fileName
---             return $ Just (fn, parseTactic fileName contents)
---           else do
---             logWarning $ "No tactic file for function '" `T.append` fn `T.append` "' found."
---             return Nothing
+loadTactics :: String -> [Id] -> FilePath -> IO (Map Id Tactic)
+loadTactics modName fns path = M.fromList . catMaybes <$> mapM loadOne fns
+  where loadOne :: Id -> IO (Maybe (Id, Tactic))
+        loadOne fn = do
+          let fileName = path </> modName </> T.unpack fn <.> "txt"
+          exists <- doesFileExist fileName
+          if exists then do
+            contents <-TextIO.readFile fileName
+            return $ Just (fn, parseTactic fileName contents)
+          else do
+            print $ "No tactic file for function '" `T.append` fn `T.append` "' found."
+            return Nothing
 
-loadProg :: Maybe FilePath -> Text -> Maybe Id -> IO ()
-loadProg pathSearch modName fn = do
-  searchPathfromEnv <- lookupEnv "ATLAS_SEARCH"
-  let path = (`fromMaybe` pathSearch) . (`fromMaybe` searchPathfromEnv) $ "."
-  surfaceProg <- loadProgram path modName
-
-  let run step = either printSrcError return . step
-  
-  typedProg <-
-    run inferProgram
-    =<< run elabProgram surfaceProg
-
-  print typedProg  
 
 main :: IO ()
 main = do

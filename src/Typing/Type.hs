@@ -4,9 +4,13 @@
 module Typing.Type where
 
 import qualified Data.Text as T
+import Data.Map (Map)
+import qualified Data.Map as M
 
 
-import Primitive(Id)
+import Primitive(Id, PrettyPrint(..))
+import Data.Maybe (isJust)
+import Control.Monad (zipWithM, foldM)
 
 data Type
   = TVar Id
@@ -15,27 +19,6 @@ data Type
   | TGen Int
   deriving (Eq, Ord, Show)
 
-prettyPrint :: Type -> String
-prettyPrint t = runPrec 0 t
-  where
-    -- d represents the current precedence depth
-    runPrec :: Int -> Type -> String
-    runPrec _ (TVar x)  = T.unpack x
-    runPrec _ (TGen n)  = "?" ++ show n
-    
-    -- Type application (e.g., Tree a) has higher precedence (tier 1)
-    runPrec d (TAp c [])   = T.unpack c
-    runPrec d (TAp c args) = parensIf (d > 0) $ 
-      T.unpack c ++ " " ++ unwords (map (runPrec 1) args)
-    
-    -- Function arrow is right-associative and has lower precedence (tier 0)
-    runPrec d (TFun arg res) = parensIf (d > 0) $
-      runPrec 1 arg ++ " -> " ++ runPrec 0 res
-
-    -- Helper to conditionally wrap strings in parentheses
-    parensIf :: Bool -> String -> String
-    parensIf True  s = "(" ++ s ++ ")"
-    parensIf False s = s
 
 prod :: [Type] -> Type
 prod [] = error "empty product"
@@ -54,65 +37,65 @@ fn :: [Type] -> Type -> Type
 fn [] to = to
 fn from to = TFun (prod from) to
 
--- splitFnType :: Type -> (Type, Type)
--- splitFnType (TAp Arrow [from, to]) = (from, to)
--- splitFnType t = error $ "Cannot split function type: got invalid function type '" ++ show t ++ "'."
+instance PrettyPrint Type where
+  prettyPrint = runPrec 0 
+    where
+      -- d represents the current precedence depth
+      runPrec :: Int -> Type -> String
+      runPrec _ (TVar x)  = T.unpack x
+      runPrec _ (TGen n)  = "?" ++ show n
+    
+      -- Type application (e.g., Tree a) has higher precedence (tier 1)
+      runPrec d (TAp c [])   = T.unpack c
+      runPrec d (TAp c args) = parensIf (d > 0) $ 
+        T.unpack c ++ " " ++ unwords (map (runPrec 1) args)
+    
+      -- Function arrow is right-associative and has lower precedence (tier 0)
+      runPrec d (TFun arg res) = parensIf (d > 0) $
+        runPrec 1 arg ++ " -> " ++ runPrec 0 res
 
--- treeValueType :: Type -> Type
--- treeValueType (TAp Tree [t]) = t
--- treeValueType t = error "Got non-tree type."
+      -- Helper to conditionally wrap strings in parentheses
+      parensIf :: Bool -> String -> String
+      parensIf True  s = "(" ++ s ++ ")"
+      parensIf False s = s
 
--- splitTupleType :: Type -> (Type, Type)
--- splitTupleType (TAp Prod [x1, x2]) = (x1, x2)
--- splitTupleType t = error "Got non-tuple type."
+isResourceRelevant :: Type -> Bool
+isResourceRelevant (TAp c args) = True
+isResourceRelevant (TVar _) = False
+isResourceRelevant (TGen _) = False
+isResourceRelevant (TFun _ _) = error "should not happen"
 
--- splitProdType :: Type -> [Type]
--- splitProdType (TAp Prod ts) = ts
--- splitProdType t = [t]
-
--- countTrees :: Type -> Int
--- countTrees (TAp Tree _) = 1
--- countTrees (TAp Prod ts) = sum . map countTrees $ ts
--- countTrees _ = 0
-
--- isProd :: Type -> Bool
--- isProd (TAp Prod _) = True
--- isProd _ = False
-
--- isSimpleProd :: Type -> Bool
--- isSimpleProd (TAp Prod ts) = (not . any isProd) ts
--- isSimpleProd _ = False
-
-
--- isTree :: Type -> Bool
--- isTree (TAp Tree _) = True
--- isTree _ = False
-
--- isBool :: Type -> Bool
--- isBool (TAp Bool []) = True
--- isBool _ = False
-
--- isBase (TAp Bool []) = True
--- isBase (TAp Num []) = True
--- isBase _ = False
-
--- notNested :: Type -> Bool
--- notNested (TAp List [t]) | isBase t = True
--- notNested (TAp Tree [t]) | isBase t = True
--- notNested _ = True
 
 -- no proper unification just top level check
-matchesType :: Type -> Type -> Bool
-matchesType (TAp c1 _) (TAp c2 _) | c1 == c2 = True
-matchesType _ _ = False
+-- matchesType :: Type -> Type -> Bool
+-- matchesType (TAp c1 _) (TAp c2 _) | c1 == c2 = True
+-- matchesType _ _ = False
 
 matchesTypes :: Type -> [Type] -> Bool
-matchesTypes t = any (matchesType t)
+matchesTypes t = any (isJust . match t)
 
--- pattern TreeType :: Type
--- pattern TreeType <- TAp Tree [TAp Base []]
---   where TreeType = TAp Tree [TAp Base []]
+type SchemeSubst = Map Int Type
 
--- pattern ListType :: Type
--- pattern ListType <- TAp List [TAp Base []]
---   where ListType = TAp List [TAp Base []]
+match :: Type -> Type -> Maybe SchemeSubst
+match (TGen i) t = Just (M.singleton i t)
+match (TVar u) (TVar v) 
+  | u == v    = Just M.empty
+  | otherwise = Nothing
+match (TFun l1 r1) (TFun l2 r2) = do
+  sl <- match l1 l2
+  sr <- match r1 r2
+  mergeSubst sl sr
+match (TAp c1 tsl) (TAp c2 tsr)
+  | c1 == c2 && length tsl == length tsr = do
+      substs <- zipWithM match tsl tsr
+      foldM mergeSubst M.empty substs
+  | otherwise = Nothing
+match _ _ = Nothing
+
+
+mergeSubst :: SchemeSubst -> SchemeSubst -> Maybe SchemeSubst
+mergeSubst s1 s2 =
+  let conflicts = M.intersectionWith (==) s1 s2
+  in if and conflicts 
+     then Just (M.union s1 s2) 
+     else Nothing

@@ -1,9 +1,16 @@
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE FlexibleInstances #-}
+
 module Primitive where
 
 import Data.Text(Text)
 import qualified Data.Text as T
 import Data.Map(Map)
 import qualified Data.Map as M
+import Data.Set(Set)
+import qualified Data.Set as S
+import Data.List (intercalate)
+
 import Data.Ratio
 import Debug.Trace hiding (traceShow)
 import Data.Maybe
@@ -48,12 +55,10 @@ instance Ord IntWithInf where
   (<=) _ Inf = True
   (<=) (NotInf x) (NotInf y) = x <= y
 
-printRat :: Rational -> String
-printRat r = let n = numerator r
-                 d = denominator r in
-               case d of
-                 1 -> show n
-                 _ -> show n ++ "/" ++ show d
+toIntegerExact :: Rational -> Maybe Integer
+toIntegerExact r
+  | denominator r == 1 = Just (numerator r)
+  | otherwise          = Nothing             
 
 traceShow x = trace (show x) x
 
@@ -68,3 +73,46 @@ printTerms combinator ((t,c):xs) | c == 0 = printTerms' xs
         printTerms' ((t,c):xs) | c == 0 = printTerms' xs
                                | c < 0 = " - " ++ combinator (abs c) t ++ printTerms' xs
                                | c > 0 = " + " ++ combinator c t ++ printTerms' xs
+
+class PrettyPrint a where
+  prettyPrint :: a -> String
+
+instance (PrettyPrint a) => PrettyPrint [a] where
+  prettyPrint = intercalate ", " . map prettyPrint
+
+instance PrettyPrint Rational where
+  prettyPrint r
+    | denominator r == 1 = show (numerator r)
+    | otherwise          = show (numerator r) ++ "/" ++ show (denominator r) where
+  
+class Substitutable a where
+  subst :: M.Map Id Id -> a -> a
+
+instance (Substitutable a) => Substitutable [a] where
+  subst s = map (subst s)
+
+instance (Ord a, Substitutable a) => Substitutable (Set a) where
+  subst :: (Ord a, Substitutable a) => Map Id Id -> Set a -> Set a
+  subst s = S.map (subst s)
+
+instance Substitutable Id where
+  subst env var = M.findWithDefault var var env
+
+unionMap :: (Ord b) => (a -> Set b) -> [a] -> Set b
+unionMap f xs = S.unions $ map f xs
+
+class HasVars a where
+  freeVars :: a -> Set Id
+
+instance (HasVars a) => HasVars [a] where
+  freeVars l = S.unions (map freeVars l)
+
+instance (HasVars a) => HasVars (Set a) where
+  freeVars l = S.unions (S.map freeVars l)  
+
+substVar :: (Substitutable a) => Id -> Id -> a -> a
+substVar x y = subst (M.singleton x y)
+
+substVars :: (Substitutable a) => [Id] -> [Id] -> a -> a
+substVars xs ys = subst (M.fromList (zip xs ys)) 
+

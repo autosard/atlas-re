@@ -34,7 +34,6 @@ import CostAnalysis.TemplateLanguage
 import Syntax.Measure (Measure(Size, Potential))
 
 
-
 --------------------------------------------------------------------------------
 -- Parser Interface
 --------------------------------------------------------------------------------
@@ -59,15 +58,15 @@ parseExpr contents = case runParser (pExpr sc) (T.unpack name) contents of
 pPragma :: Text -> Parser a -> Parser (Maybe a)
 pPragma word p = optional $ between (symbol "{-#") (symbol "#-}") $ symbol word *> p
 
-pAtomicLang :: Parser AtomicLang
-pAtomicLang =
-  symbol "size" *> pParens sc (SizeLang <$> pInt <* symbol "," <*> pInt)
-  <|> symbol "log" *> pParens sc (LogLang <$> pInt <* symbol "," <*> pInt)
-  <|> BinomLang <$ symbol "binom" <*> pParens sc pInt
-  <|> RankLang <$ symbol "rank"
+pAtomicLangConf :: Parser AtomicLangConfig
+pAtomicLangConf =
+  symbol "size" $> SizeLangConf 
+  <|> symbol "log" *> pParens sc (LogLangConf <$> pInt <* symbol "," <*> pInt)
+  <|> BinomLangConf <$ symbol "binom" <*> pParens sc pInt
+  <|> RankLangConf <$ symbol "rank"
 
 pTemplateLanguageConfig :: Parser (Maybe TemplateLanguageConfig)
-pTemplateLanguageConfig = pPragma "TEMPLATE" (pSqParens (sepBy pAtomicLang (symbol ",")))
+pTemplateLanguageConfig = pPragma "TEMPLATE" (pSqParens (sepBy pAtomicLangConf (symbol ",")))
 
 --------------------------------------------------------------------------------
 -- Programs and Top Level Definitions
@@ -180,31 +179,40 @@ pMeasureDef = L.indentBlock sc $ do
 -- Function Signatures
 --------------------------------------------------------------------------------
 
-pBind :: Parser [(Id, Type)]
-pBind = try (pParens sc pBindInner)
+pBindings :: Parser [(Id, Type)]
+pBindings = try (pParens sc pBindInner)
   <|> pBindInner
 
 pBindInner :: Parser [(Id, Type)]
 pBindInner = sepBy ((,) <$> pIdentifier <* symbol ":" <*> pType) (symbol ",")
 
+pResultBinding :: Parser (Id, Type)
+pResultBinding = try (pParens sc single) <|> single
+  where
+    single = do
+      x  <- pIdentifier
+      _  <- symbol ":"
+      ty <- pType
+      return (x, ty)
+
 pFunSig :: Parser (Id, SurfaceFunSig)
 pFunSig = do
   name <- try pIdentifier <?> "function name"
   symbol ":"
-  argBindings <- pBind
+  argBindings <- pBindings
   let tArgs = prod (map snd argBindings)
   symbol "|"
   costFrom <- pExpr sc
   pArrow
-  resultBindings <- pBind
-  let tResult = prod (map snd resultBindings)
+  resultBinding <- pResultBinding
+  let tResult = snd resultBinding
   symbol "|"
   costTo <- pExpr sc
   return (name, SurfaceFunSig
     (quantifyAll (TFun tArgs tResult))
     SurfaceCostSig {
         scsFrom = (map fst argBindings, costFrom),
-        scsTo = (map fst resultBindings, costTo)})
+        scsTo = (fst resultBinding, costTo)})
 
 
 --------------------------------------------------------------------------------
@@ -278,9 +286,9 @@ pIfThenElse :: Parser () -> Parser (Expr Parsed)
 pIfThenElse sc' = do
   pos <- getSourcePos
   symbol "if"
-  e1 <- pExpr sc'
+  e1 <- pExpr scn
   symbol "then"
-  e2 <- pExpr sc'
+  e2 <- pExpr scn
   symbol "else"
   e3 <- pExpr sc'
   return $ IteAnn pos e1 e2 e3
@@ -315,16 +323,16 @@ pZeroAryConst :: Parser () -> Parser (Expr Parsed)
 pZeroAryConst sc' = ConstAnn <$> getSourcePos <*> pUpperIdentifier <*> pure []
 
 pAtom :: Parser () -> Parser (Expr Parsed)
-pAtom sc = 
-  pParenExpr sc
-  <|> pZeroAryConst sc
+pAtom sc' = 
+  pParenExpr sc'
+  <|> pZeroAryConst sc'
   <|> pVar sc
   <|> pLiteral
   <?> "atomic expression"
 
 pApplication :: Parser () -> Parser (Expr Parsed)
 pApplication sc' = 
-  AppAnn <$> getSourcePos <*> pIdentifier' sc' <*> sepEndBy (pAtom sc) (try sc')
+  AppAnn <$> getSourcePos <*> pIdentifier' sc' <*> sepEndBy1 (pAtom sc) (try sc')
   <|> (do 
           pos <- getSourcePos
           args <- singleton <$> between (symbol "|") (symbol "|")  (pAtom sc)
@@ -340,7 +348,7 @@ pConst sc' = do
   return $ ConstAnn pos name args
 
 pVar :: Parser () -> Parser (Expr Parsed)
-pVar sc = VarAnn <$> getSourcePos <*> pIdentifier' sc
+pVar sc' = VarAnn <$> getSourcePos <*> pIdentifier' sc'
 
 pLiteral :: Parser (Expr Parsed)
 pLiteral = do
@@ -356,14 +364,15 @@ pJuxtaposition :: Parser () -> Parser (Expr Parsed)
 pJuxtaposition sc' = 
   try (pApplication sc')
   <|> pConst sc'
+  <|> pVar sc'
   <|> pVar sc
   <|> pLiteral
 
 binaryL :: Parser () -> Text -> Operator Parser (Expr Parsed)
 binaryL sc op = InfixL (mk sc op)
 
-binaryR :: Parser () -> Text -> Operator Parser (Expr Parsed)
-binaryR sc op = InfixR (mk sc op)
+-- binaryR :: Parser () -> Text -> Operator Parser (Expr Parsed)
+-- binaryR sc op = InfixR (mk sc op)
 
 binaryN :: Parser () -> Text -> Operator Parser (Expr Parsed)
 binaryN sc op = InfixN (mk sc op)
@@ -435,7 +444,7 @@ pIdentifier :: Parser Text
 pIdentifier = pIdentifierLike scn lowerChar
 
 pIdentifier' :: Parser () -> Parser Text
-pIdentifier' sc = pIdentifierLike sc lowerChar
+pIdentifier' sc' = pIdentifierLike sc' lowerChar
 
 pUpperIdentifier :: Parser Text
 pUpperIdentifier = pIdentifierLike scn upperChar
@@ -460,9 +469,6 @@ pNumber = lexeme L.decimal
 
 pInteger :: Parser Integer
 pInteger = lexeme L.decimal
-  -- sign <- maybe 1 (const (-1)) <$> optional (symbol "-")
-  --num <- lexeme L.decimal
-  --return $ num
 
 pRational :: Parser Rational
 pRational = do

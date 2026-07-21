@@ -21,11 +21,11 @@ import Lens.Micro.Platform
 import qualified Data.List as L
 import qualified Data.Text as T
   
-import Typing.Type(Type(..),fn, unprod, tCurry, prettyPrint)
+import Typing.Type(Type(..),fn, unprod, tCurry)
 import Typing.Subst
 import Typing.Scheme
 import Syntax.Ast
-import Primitive(Id, enumId)
+import Primitive(Id, enumId, prettyPrint)
 import Text.Megaparsec(SourcePos(sourceName, sourceLine, sourceColumn))
 import Text.Megaparsec.Pos(unPos)
 import SourceError

@@ -7,7 +7,7 @@ import qualified Data.Map as M
 import Data.Maybe (catMaybes)
 import qualified Data.Vector as V
 
-import CostAnalysis.Template (Template(terms))
+import CostAnalysis.Template (Template(terms,(!?)))
 import CostAnalysis.Coeff (HasCoeffs(..))
 import Syntax.ResourceExpression
 import CostAnalysis.Constraint
@@ -17,6 +17,8 @@ import CostAnalysis.Rules
 import Syntax.ResourceExpression.Order ( GuardMatrix, resourceLe )
 import Syntax.ResourceExpression.Lemmas
 import Syntax.ResourceExpression.Pattern ( findMatches ) 
+import Primitive (dbg, prettyPrint)
+import Data.List (intercalate)
 
 type LeMatrix = V.Vector (V.Vector Rational)
 
@@ -26,7 +28,7 @@ newtype ExpertKnowledge = ExpertKnowledge {
 --  cols :: !(V.Vector (ResourceTerm, ArithExpr))}
 
 farkas :: LeMatrix -> V.Vector ArithExpr -> V.Vector ArithExpr -> ProveMonad [Formula]
-farkas as ps qs = do
+farkas as ps qs | V.length ps == V.length qs = do
   let bs = replicate (length as) 0
   fs <- mapM (const freshVar) bs
   let fsPos = [ge f (ConstTerm 0) | f <- fs]
@@ -39,11 +41,11 @@ farkas as ps qs = do
 templLe :: (Template a, Template b, HasCoeffs a, HasCoeffs b) => Set SubArg -> a -> b -> ProveMonad [Formula]
 templLe subArgs p q = do
   let ks = merge $
-        [termOrderConstraints [] (terms p) | S.member Mono subArgs]
-        ++ [instantiateLemma logLemmaSpec (terms p) | S.member L2xy subArgs]
+        -- [termOrderConstraints [] (terms p) | S.member Mono subArgs]
+        [instantiateLemma logLemmaSpec (terms p) | S.member L2xy subArgs]
   farkas ks ps qs
   where ps = V.fromList . map CoeffTerm $ getCoeffs p
-        qs = V.fromList . map CoeffTerm $ getCoeffs q
+        qs = V.fromList $ [q!?t | t <- S.toList $ terms p]
 
 
   
@@ -71,7 +73,8 @@ termOrderConstraints guards terms = merge . catMaybes $
                   else if k == j then -1
                   else 0))
       else Nothing
-        
+
+-- dbg "resource le" (\r -> show t1 ++ "<=" ++ show t2 ++ ": "  ++ show r) $ 
 
 -- | Instantiates all possible applications of a lemma over a set of ResourceTerms.
 instantiateLemma :: LemmaSpec -> S.Set ResourceTerm -> LeMatrix
@@ -84,10 +87,10 @@ instantiateLemma (LemmaSpec weightedPatterns d) termsSet =
 
     -- For a successful combination of matched terms, generate the constraint row
     buildRows :: [ResourceTerm] -> [V.Vector Rational]
-    buildRows matchedTerms = case mapM (`S.lookupIndex` termsSet) matchedTerms of
+    buildRows matchedTerms = case mapM (`S.lookupIndex` termsSet) (dbg "match" prettyPrint matchedTerms) of
       Nothing -> [] -- Skip if some matched term is missing from our active template set
       Just indices ->
-        let rowAssocs = (iConst, d) : zipWith (\idx (WeightedPattern coeff _) -> (idx, -coeff)) indices weightedPatterns
+        let rowAssocs = (iConst, d) : zipWith (\idx (WeightedPattern coeff _) -> (idx, coeff)) indices weightedPatterns
             rowMap    = M.fromListWith (+) rowAssocs
         in [V.generate numTerms (\k -> M.findWithDefault 0 k rowMap)]
 

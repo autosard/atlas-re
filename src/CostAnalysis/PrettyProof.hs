@@ -3,13 +3,14 @@ module CostAnalysis.PrettyProof where
 
 import Data.Text.Lazy(Text)
 import Data.Set(Set)
+import Data.Map(Map)
+import qualified Data.Map as M
 import Text.Blaze.Html.Renderer.Text(renderHtml)
 import Text.Blaze.Html(Html, toHtml)
 import Text.Hamlet (shamlet)
 import Text.Lucius 
 import qualified Data.Tree as T
 import qualified Data.Set as S
-import qualified Data.Map as M
 import qualified Data.Text as Text
 import Text.Julius
 import Data.Char(toLower)
@@ -18,17 +19,14 @@ import Data.Ratio
 
 
 import Primitive(Id)
-import Typing.Type(Type)
-import Ast
-    ( printExprHead, FunDef(FunDef), TypedFunAnn(tfFqn), printFqn, ExprSrc(..), peSrc, getAnn, printPos )
+import Syntax.Ast
 import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
 import CostAnalysis.Rules
-    ( Rule, RuleApp(ExprRuleApp, FunRuleApp) )
-import CostAnalysis.Template(FreeTemplate(..))
-import CostAnalysis.Annotation(FreeAnn, Measure(..), ProveKind(..))
-import qualified CostAnalysis.Predicate as P
+import CostAnalysis.Template(FreeTemplate(..), BoundTemplate (BoundTemplate), bindTemplate)
 import CostAnalysis.Coeff
+import Syntax.ResourceExpression
+import Syntax.ResourceExpression.Size hiding (ConstTerm, VarTerm)
 
 css = renderCss ([lucius|
 
@@ -175,8 +173,10 @@ window.addEventListener("load", () => {
 });
 |] undefined)
 
-renderProof :: Maybe (Set Constraint) -> Derivation -> [Constraint] -> Text
-renderProof unsat deriv sigCs = renderHtml [shamlet|
+type Result = Either (Set Formula) (Map Coeff Rational)
+
+renderProof :: Result -> Map Id [Derivation] -> [Formula] -> Text
+renderProof result derivs sigCs = renderHtml [shamlet|
 $doctype 5
 <html>
     <link rel="stylesheet" href="style.css">
@@ -185,83 +185,116 @@ $doctype 5
         <title>Atlas
     <body>
         <h2>Result
-        $maybe core <- unsat
-           <p class="unsat">unsat
-        $nothing
-           <p> sat
+        $case result
+          $of Left _
+            <p class="unsat">unsat
+          $of Right _
+            <p> sat
         <h2>Signature Constraints
-        ^{hamCsList sigCs (inCore unsat)}
+        ^{hamCsList sigCs (inCore result)}
         <h2>Derivation
         <div class="deriv-flags">
             <input type=checkbox id="onlyUnsat">show only unsat constraints
         <br>
-        ^{hamDeriv unsat deriv}
-|]
-          
-inCore unsat c = case unsat of
-                   Just core -> S.member c core
-                   Nothing -> False
-          
-hamDeriv :: Maybe (Set Constraint) -> Derivation -> Html
-hamDeriv unsat (T.Node mod fns) = [shamlet|
-<p class="tree">mod
-<ul class="collapse tree">
-    $forall fn <- fns
-        <li class="fn">^{hamDeriv' unsat fn}
+        ^{hamDerivs result derivs}
 |]
 
-hamDeriv' :: Maybe (Set Constraint) -> Derivation -> Html
-hamDeriv' unsat (T.Node appl []) = [shamlet|#{hamRuleApp unsat appl}|]  
-hamDeriv' unsat (T.Node appl children) = [shamlet|
-#{hamRuleApp unsat appl}
+  
+          
+inCore result c = case result of
+                   Left core -> S.member c core
+                   Right _ -> False
+          
+hamDerivs :: Result -> Map Id [Derivation] -> Html
+hamDerivs result derivs = let fnDerivs = M.toList derivs in
+  [shamlet|
+<ul class="collapse tree">
+    $forall fnDeriv <- fnDerivs
+        <li class="fn">^{hamFnDerivs result fnDeriv}
+|]
+
+hamFnDerivs :: Result -> (Id, [Derivation]) -> Html
+hamFnDerivs result (fn, derivs) =  [shamlet|
+<span class="listHead">
+    <span> #{fn}
+<ul class="collapse tree">      
+    $forall deriv <- derivs
+        <li class="fn">^{hamDeriv result deriv}
+|]
+
+hamDeriv :: Result -> Derivation -> Html
+hamDeriv result (T.Node appl []) = [shamlet|#{hamRuleApp result appl}|]  
+hamDeriv result (T.Node appl children) = [shamlet|
+#{hamRuleApp result appl}
 <ul class="collapse tree">
     $forall child <- children
-        <li .app>^{hamDeriv' unsat child}
+        <li .app>^{hamDeriv result child}
 |]
   
 
-hamRuleApp :: Maybe (Set Constraint) -> RuleApp -> Html
-hamRuleApp unsat (FunRuleApp (FunDef ann id args body)) = [shamlet|
-<span class="listHead">
-  <span> #{printFqn (tfFqn ann)}|]
-hamRuleApp unsat (ExprRuleApp rule cf kind (q, qe, preds) q' cs e) = [shamlet|
+hamRuleApp :: Result -> RuleApp -> Html
+hamRuleApp result (MatchArmApp pat RuleAppInfo{_raJt=jt
+                                               ,_raQ=q
+                                               ,_raQ'=q'
+                                               ,_raCs=cs
+                                               ,_raExpr=e})
+  = [shamlet|
+<span .listHead :((not . null) cs'):.unsat>
+  <math display="inline">
+    <mrow>
+      <mtext>case
+      <mo>: 
+      ^{hamPattern pat}
+      ^{hamCsList cs (inCore result)}|]
+  where cs' = case result of
+          Left core -> S.toList $ S.intersection (S.fromList cs) core
+          Right _ -> []
+  
+hamRuleApp result (ExprRuleApp rule RuleAppInfo{_raJt=jt
+                                               ,_raQ=q
+                                               ,_raQ'=q'
+                                               ,_raCs=cs
+                                               ,_raExpr=e})
+  = [shamlet|
 <span .listHead :((not . null) cs'):.unsat>
   <math display="inline">
     <mrow>
       <mo form="prefix" stretchy="false">(
-      <mtext>#{printRule cf kind rule}
+      <mtext>#{printRule jt rule}
       <mo form="postfix" stretchy="false">)
       <mspace width="1em">
-      ^{hamAnn qe}
-      <mtext>, 
-      ^{hamAnn q}
-      <mo form="prefix" stretchy="false">[
-      ^{hamPredicates preds}
-      <mo form="postfix" stretchy="false">]
+      ^{hamTemplUnderResult result q}
       <mo>⊢
       <mtext>
           <code>#{printExprHead e}
           (#{printPos srcPos})  
       <mo lspace="0.22em" rspace="0.22em" stretchy="false">|
-      ^{hamAnn q'}
-      ^{hamCsList cs (inCore unsat)}
+      ^{hamTemplUnderResult result q'}
+      ^{hamCsList cs (inCore result)}
 |]
   where srcPos = case peSrc $ getAnn e of
           Loc pos -> pos
           DerivedFrom pos -> pos
-        cs' = case unsat of
-          Just core -> S.toList $ S.intersection (S.fromList cs) core
-          Nothing -> []
+        cs' = case result of
+          Left core -> S.toList $ S.intersection (S.fromList cs) core
+          Right _ -> []
 
-printRule :: Bool -> ProveKind -> Rule -> String
-printRule cf kind rule = map toLower (show rule)
-  ++ (if cf then ", cf" else "")
-  ++ (case kind of
-       Lower -> ", ≤"
-       Upper -> ", ≥")
+hamTemplUnderResult :: Result -> FreeTemplate -> Html 
+hamTemplUnderResult result q = [shamlet|
+$case result
+  $of Left _ 
+    ^{hamTempl q}
+  $of Right sol
+    ^{hamTempl q}
+    <mo>:
+    ^{hamBoundTempl (bindTemplate q sol)}
+|]
+  
+printRule :: JudgementType -> Rule -> String
+printRule jt rule = map toLower (show rule)
+  ++ "(" ++ show jt ++ ")"
 
-
-hamCsList :: [Constraint] -> (Constraint -> Bool) -> Html
+hamCsList :: [Formula] -> (Formula -> Bool) -> Html
 hamCsList cs inCore = [shamlet|
 <div class="constraints">
     <math class="constraintsBlock" display="block">
@@ -273,46 +306,54 @@ hamCsList cs inCore = [shamlet|
                           ^{hamConstraint c}
 |]
 
-hamPredOp :: P.PredOp -> Html
-hamPredOp P.Le = [shamlet|<mo>≤|]
-hamPredOp P.Lt = [shamlet|<mo><|]
-hamPredOp P.Eq = [shamlet|<mo>=|]
-hamPredOp P.Neq = [shamlet|<mo>≠|]
+-- hamPredOp :: P.PredOp -> Html
+-- hamPredOp P.Le = [shamlet|<mo>≤|]
+-- hamPredOp P.Lt = [shamlet|<mo><|]
+-- hamPredOp P.Eq = [shamlet|<mo>=|]
+-- hamPredOp P.Neq = [shamlet|<mo>≠|]
 
-hamPredicates :: Set P.Predicate -> Html
-hamPredicates preds = toHtml $ intersperse
-  [shamlet|<mo separator="true">,|]
-  (map hamPredicate (S.toAscList preds))
+-- hamPredicates :: Set P.Predicate -> Html
+-- hamPredicates preds = toHtml $ intersperse
+--   [shamlet|<mo separator="true">,|]
+--   (map hamPredicate (S.toAscList preds))
   
-hamPredicate :: P.Predicate -> Html
-hamPredicate (P.Predicate m op x y _ _) =
-  [shamlet|
-<apply>
-  <apply>
-    ^{hamMeasure m x}    
-  ^{hamPredOp op}
-  <apply>
-    ^{hamMeasure m y}|]
+-- hamPredicate :: P.Predicate -> Html
+-- hamPredicate (P.Predicate m op x y _ _) =
+--   [shamlet|
+-- <apply>
+--   <apply>
+--     ^{hamMeasure m x}    
+--   ^{hamPredOp op}
+--   <apply>
+--     ^{hamMeasure m y}|]
 
-hamMeasure :: Measure -> Id -> Html
-hamMeasure Weight x = [shamlet|
-|<mi>#{x}</mi>||]
-hamMeasure Rank x = [shamlet|
-†<mi>#{x}</mi>|]                      
-    
-hamAnn :: FreeAnn -> Html
-hamAnn ctx = toHtml $ intersperse
-  [shamlet|<mo separator="true">,|]
-  (map hamTemplType (M.toAscList ctx))
-  
+-- hamMeasure :: Measure -> Id -> Html
+-- hamMeasure Weight x = [shamlet|
+-- |<mi>#{x}</mi>||]
+-- hamMeasure Rank x = [shamlet|
+-- †<mi>#{x}</mi>|]
 
-hamTemplType :: (Type, FreeTemplate) -> Html
-hamTemplType (t, q) = [shamlet|
-^{hamArgs (_ftArgs q)}
-<mo>:
-<mtext> #{show t}
-<mo>|
-^{hamTempl q}|]
+hamPattern :: Pattern a -> Html
+hamPattern (PVar _ x) = [shamlet|
+  <mi>#{Text.unpack x}</mi>
+|]
+hamPattern (PWildcard _) = [shamlet|
+  <mo>_</mo>
+|]
+hamPattern (PConst _ constructor args) = [shamlet|
+  <mrow>
+    <mi>#{Text.unpack constructor}</mi>
+    $if not (null args)
+      <mo>⁡</mo>
+      <mfenced>
+        ^{hamPatterns args}
+|]
+
+-- Helper to join pattern arguments with commas
+hamPatterns :: [Pattern a] -> Html
+hamPatterns [] = [shamlet| |]
+hamPatterns [p] = hamPattern p
+hamPatterns patList = toHtml $ intersperse [shamlet|<mo separator="true">,</mo>|] (map hamPattern patList)  
 
 hamArgs :: [Id] -> Html
 hamArgs [] = [shamlet|<mi>∅|]
@@ -321,48 +362,37 @@ hamArgs args = toHtml $ intersperse
   (map hamArg args)
   where hamArg arg = [shamlet|<mi>#{Text.unpack arg}|]
         
-  
+hamBoundTempl :: BoundTemplate -> Html
+hamBoundTempl (BoundTemplate coeffs) = 
+  let activeTerms = filter (\(_, val) -> val /= 0) (M.toList coeffs)
+  in case activeTerms of
+    [] -> [shamlet|<mn>0</mn>|]
+    (first : rest) -> [shamlet|
+      <mrow>
+        ^{hamFirstTerm first}
+        $forall term <- rest
+          ^{hamRestTerm term}
+    |]
+  where
+    -- Renders the very first term (handling an implicit positive sign or explicit negative)
+    hamFirstTerm (rt, val)
+      | val == 1  = [shamlet|^{hamResourceTerm rt}|]
+      | val == -1 = [shamlet|<mo>-</mo>^{hamResourceTerm rt}|]
+      | otherwise = [shamlet|^{hamRat val}<mo>⋅</mo>^{hamResourceTerm rt}|]
+
+    -- Renders subsequent terms with correct sign operators
+    hamRestTerm (rt, val)
+      | val == 1  = [shamlet|<mo>+</mo>^{hamResourceTerm rt}|]
+      | val == -1 = [shamlet|<mo>-</mo>^{hamResourceTerm rt}|]
+      | val > 0   = [shamlet|<mo>+</mo>^{hamRat val}<mo>⋅</mo>^{hamResourceTerm rt}|]
+      | otherwise = [shamlet|<mo>-</mo>^{hamRat (abs val)}<mo>⋅</mo>^{hamResourceTerm rt}|]
+          
 hamTempl :: FreeTemplate -> Html
 hamTempl q = [shamlet|
 <msubsup>
-    <mi>q
+    <mi>Q
     <mn>#{_ftId q}
-    <mtext>#{_ftLabel q}
 |]
-
-hamCoeffIdx (Pure x) = [shamlet|
-<mo form="prefix" stretchy="false">(
-<mi>#{x}
-<mo form="postfix" stretchy="false">)
-|]
-hamCoeffIdx (Mixed factors) = [shamlet|
-<mo form="prefix" stretchy="false">(
-^{hamFactors factors}
-<mo form="postfix" stretchy="false">)
-|]
-        
-hamFactors :: Set Factor -> Html
-hamFactors factors = toHtml $ intersperse
-  [shamlet|<mo separator="true">,|]
-  (map hamFactor (S.toList factors))
-
-hamFactor :: Factor -> Html
-hamFactor (Const c)= [shamlet|
-<mn>#{c}
-|]
-hamFactor (Arg x [a])= [shamlet|
-<msup>
-   <mi>#{x}
-   <mn>#{a}
-|]  
-hamFactor (Arg x a) = [shamlet|
-<msup>
-   <mi>#{x}
-   <mrow>
-     <mo form="prefix" stretchy="false">(
-     ^{hamListInt a}
-     <mo form="postfix" stretchy="false">)
-|]  
 
 hamListInt :: [Int] -> Html
 hamListInt xs = toHtml $ intersperse
@@ -370,63 +400,66 @@ hamListInt xs = toHtml $ intersperse
   (map (\x -> [shamlet|<mn>#{x}|]) xs)
   
 hamCoeff :: Coeff -> Html
-hamCoeff (Coeff id label comment idx) = [shamlet|
-<msubsup>
-   <mi>q
-   <mn>#{id}
-   <mtext>#{label}
-^{hamCoeffIdx idx}
+hamCoeff (Coeff id term) = [shamlet|
+<msub>
+  <mi>Q
+  <mn>#{id}
+<mo form="prefix" stretchy="false">[
+^{hamResourceTerm term}
+<mo form="prefix" stretchy="false">]
 |]
   
-hamTerm :: Term -> Html
-hamTerm (VarTerm k) = [shamlet|
+hamArithExpr :: ArithExpr -> Html
+hamArithExpr (VarTerm k) = [shamlet|
 <msub>
   <mi>k
   <mn>#{k}
 |]
-hamTerm (CoeffTerm q) = hamCoeff q
-hamTerm (Sum terms) = hamOpTerm [shamlet|<mo>+|] terms
-hamTerm (Diff terms) = hamOpTerm [shamlet|<mo>-|] terms
-hamTerm (Minus term) = [shamlet|
+hamArithExpr (CoeffTerm q) = hamCoeff q
+hamArithExpr (Sum terms) = hamOpTerm [shamlet|<mo>+|] terms
+hamArithExpr (Diff terms) = hamOpTerm [shamlet|<mo>-|] terms
+hamArithExpr (Minus term) = [shamlet|
 <mo form="prefix" stretchy="false">(
 <mo>-
-#{hamTerm term}
+#{hamArithExpr term}
 <mo form="postfix" stretchy="false">)
 |]
-hamTerm (Prod terms) = hamOpTerm [shamlet|<mo lspace="0em" rspace="0em">⋅|] terms
-hamTerm (ConstTerm c) = hamRat c
+hamArithExpr (Prod terms) = hamOpTerm [shamlet|<mo lspace="0em" rspace="0em">⋅|] terms
+hamArithExpr (ConstTerm c) = hamRat c
 
 hamRat :: Rational -> Html
 hamRat 0 = [shamlet|<mn>0|]
 hamRat 1 = [shamlet|<mn>1|]
+hamRat r | denominator r == 1
+  = [shamlet|<mn>#{numerator r}|]
 hamRat r = [shamlet|
 <mfrac>
    <mn>#{numerator r}
    <mn>#{denominator r}
 |]
   
-hamOpTerm :: Html -> [Term] -> Html
+hamOpTerm :: Html -> [ArithExpr] -> Html
 hamOpTerm op [] = [shamlet|
 <mn>0
 |]
-hamOpTerm op [t] = hamTerm t
-hamOpTerm op terms = toHtml $ intersperse op (map hamTerm terms)
+hamOpTerm op [t] = hamArithExpr t
+hamOpTerm op terms = toHtml $ intersperse op (map hamArithExpr terms)
 
-hamConstraint :: Constraint -> Html
+hamConstraint :: Formula -> Html
 hamConstraint (Eq t1 t2) = [shamlet|
-#{hamTerm t1}
+#{hamArithExpr t1}
 <mo>=
-#{hamTerm t2}
+#{hamArithExpr t2}
 |]
 hamConstraint (Le t1 t2) = [shamlet|
-#{hamTerm t1}
+#{hamArithExpr t1}
 <mo lspace="0em" rspace="0em">≤
-#{hamTerm t2}
+#{hamArithExpr t2}
 |]
 hamConstraint (Ge t1 t2) = [shamlet|
-#{hamTerm t1}
+#{hamArithExpr t1}
 <mo lspace="0em" rspace="0em">≥
-#{hamTerm t2}
+#{hamArithExpr t2}
 |]
 hamConstraint (Impl c1 c2) = [shamlet|
 <mo form="prefix" stretchy="false">(
@@ -473,3 +506,84 @@ hamConstraintList op cs = [shamlet|
             <mrow>
               ^{hamConstraint c}
 |]  
+
+hamSize :: Id -> Html
+hamSize x = [shamlet|
+<mo form="prefix" stretchy="false">|
+<mi>#{Text.unpack x}
+<mo form="postfix" stretchy="false">|
+|]
+
+
+hamResourceTerm :: ResourceTerm -> Html
+hamResourceTerm (RTSize s) = hamSize s
+
+-- Binomial coefficients: e.g., (x_1 + x_2 \choose k)
+hamResourceTerm (RTBinoms binoms) = toHtml $ intersperse [shamlet|<mo>⋅|] (map hamBinom binoms)
+  where
+    hamBinom (sizes, k) = [shamlet|
+      <mfenced>
+        <mfrac linethickness="0">
+          <mrow>
+            ^{hamSizeSum sizes}
+          <mn>#{k}</mn>
+      |]
+      
+hamResourceTerm (RTLog sizes) = [shamlet|
+<mi>log
+<mo form="prefix" stretchy="false">(
+^{hamSizeSum sizes}
+<mo form="prefix" stretchy="false">)  
+|]
+
+-- Potential function: e.g., Φ(x)
+hamResourceTerm (RTPhi x) = [shamlet|
+<mi>𝜙
+<mo form="prefix" stretchy="false">(
+<mi>#{Text.unpack x}
+<mo form="postfix" stretchy="false">)
+|]
+
+-- Constant 1 term
+hamResourceTerm RTId = [shamlet|<mn>1</mn>|]
+
+-- Scaled resource terms: e.g., 3/2 * RT
+hamResourceTerm (RTScale r term) = [shamlet|
+^{hamRat r}
+<mo>⋅
+<mo form="prefix" stretchy="false">(
+^{hamResourceTerm term}
+<mo form="postfix" stretchy="false">)
+|]
+
+
+hamSizeSum :: SizeSum -> Html
+hamSizeSum (SizeSum cs k) = case (M.toList cs, k) of
+  ([], 0) -> [shamlet|<mn>0|]
+  ([], k) -> [shamlet|<mn>#{k}|]
+  (s:ss, k) -> [shamlet|
+  ^{hamSizeTermSigned False s}
+  $forall term <- ss
+    ^{hamSizeTermSigned True term}
+  $if k > 0
+    <mo>+
+    <mn>#{k}
+  $if k < 0
+    <mo>-
+    <mn>#{abs k}
+|]
+    
+hamSizeTermSigned :: Bool -> (Id, Int) -> Html
+hamSizeTermSigned showLeadingPlus (varId, coeff) = [shamlet|
+$if coeff < 0
+  <mo>-
+  $if coeff > 1
+    <mn>#{abs coeff}
+  <mi>^{hamSize varId}
+$else
+  $if showLeadingPlus
+    <mo>+
+  $if coeff > 1
+    <mn>#{abs coeff}  
+  <mi>^{hamSize varId}
+|]

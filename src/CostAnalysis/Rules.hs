@@ -1,50 +1,49 @@
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module CostAnalysis.Rules where
 
+import Lens.Micro.Platform
+
+import Syntax.Ast
 import CostAnalysis.Constraint
-import CostAnalysis.Annotation
-import CostAnalysis.Predicate
-import Ast
-import Data.Text(unpack)
-import Data.Set(Set)
+import CostAnalysis.Template
 
-data WeakenArg = Mono | L2xy | Neg
+data JudgementType = Standard | CfEq | Cf
   deriving (Eq, Ord, Show)
 
-data LetArg = NegE
+data SubArg = Mono | L2xy 
   deriving (Eq, Ord, Show)
+
+-- data LetArg = NegE
+--   deriving (Eq, Ord, Show)
 
 data Rule 
   = Const
-  | ConstBase
-  | ConstUnfold
   | Var
   | Ite 
   | Match 
-  | Let [LetArg]
+  | Let 
   | App 
-  | TickNow 
-  | TickDefer
-  | WeakenVar
-  | Weaken [WeakenArg]
-  | ShiftConst
-  | ShiftTerm
+  | Tick
+  | Sub [SubArg]
+  | Shift
+  | Lit
   deriving(Eq, Show)
 
-data RuleApp
-  = ExprRuleApp
-    Rule
-    Bool
-    ProveKind
-    (FreeAnn, FreeAnn, Set Predicate)
-    FreeAnn
-    [Constraint]
-    PositionedExpr
-  | FunRuleApp PositionedFunDef
-  | ProgRuleApp PositionedModule
+data RuleAppInfo = RuleAppInfo {
+  _raJt :: JudgementType
+  , _raQ :: FreeTemplate
+  , _raQ' :: FreeTemplate
+  , _raCs :: [Formula]
+  , _raExpr :: PositionedExpr
+  } deriving Show
+
+makeLenses ''RuleAppInfo
+
+data RuleApp 
+  = ExprRuleApp Rule RuleAppInfo
+  | MatchArmApp (Pattern Positioned) RuleAppInfo
+  | FunRuleApp (FunDef Positioned)
   deriving Show
 
-{-# DEPRECATED #-}          
-printRuleApp _ _ (FunRuleApp (Fn name _ _)) = "Fun: " ++ unpack name
-printRuleApp _ _ (ProgRuleApp _) = "Prog" 

@@ -42,7 +42,7 @@ data JudgementType =
   | Aux Measure
   deriving (Eq, Show)
 
-type LeMatrix = (V.Vector (V.Vector Rational), [Rational])
+
 
 
 data ExpertKnowledge = ExpertKnowledge {

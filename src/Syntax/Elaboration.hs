@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE DataKinds #-}
 
 
 module Syntax.Elaboration where
@@ -7,6 +8,19 @@ module Syntax.Elaboration where
 import Data.Map(Map)
 import qualified Data.Map as M
 import Data.List (singleton)
+import Control.Monad.Except
+import Control.Monad.State
+    ( MonadState(put, get), State, evalState, MonadTrans(lift) )
+import Control.Monad.Trans.Maybe
+import Control.Applicative
+import Control.Monad
+import Text.Megaparsec (SourcePos(SourcePos), pos1)
+import Data.Tuple (swap)
+import qualified Data.Text as T
+import qualified Data.List as L
+import qualified Data.Set as S
+import Data.Set (Set)
+
 
 import Primitive (Id)
 import Syntax.Ast
@@ -17,18 +31,9 @@ import Syntax.Measure
 import SourceError
 import CostAnalysis.Template (BoundTemplate(..))
 import Syntax.ResourceExpression
+import Syntax.ResourceExpression.Size
 import StaticAnalysis ( groupFuns )
 
-import Control.Monad.Except
-import Control.Monad.State
-import Control.Monad.Trans.Maybe
-import Control.Applicative
-import Control.Monad
-import Text.Megaparsec (SourcePos(SourcePos), pos1)
-import Data.Tuple (swap)
-
-import qualified Data.Text as T
-import qualified Data.List as L
 
 
 newtype ElabState = ElabState {
@@ -97,14 +102,15 @@ elabProg sp = do
 elabSig :: SurfaceFunSig -> Elab FunSig
 elabSig sSig = do
   from <- uncurry elabBoundTemplate (scsFrom sCostSig)
-  to <- uncurry elabBoundTemplate (scsTo sCostSig)
-  return $ FunSig (sfsType sSig) (Just $ CostSig from to)
+  let (binder, coeffs) = scsTo sCostSig
+  to <- elabBoundTemplate [binder] coeffs
+  return $ FunSig (sfsType sSig) (Just $ CostSig from to binder)
   where sCostSig = sfsCostSig sSig
 
 elabBoundTemplate :: [Id] -> Expr Parsed -> Elab BoundTemplate
 elabBoundTemplate args e = do
   coeffs <- M.fromList <$> elabScalarComb e
-  return $ BoundTemplate args coeffs
+  return $ BoundTemplate coeffs
 
 --------------------------------------------------------------------------------
 -- Resource Expressions
@@ -157,53 +163,51 @@ elabLogTermM (App "log" [s]) = lift $ RTLog <$> elabSizeSum s
 elabLogTermM _ = empty
   --illformedTerm e "Expected log term."
 
-elabSizeSum :: Expr Parsed -> Elab [SizeTerm]
+elabSizeSum :: Expr Parsed -> Elab SizeSum
 elabSizeSum (App "-" [ss, s]) = do
   st <- elabSizeTerm s (-1)
   sts <- elabSizeSum ss
-  return $ sts ++ [st]
+  return $ add st sts 
 elabSizeSum (App "+" [ss, s]) = do
   st <- elabSizeTerm s 1
   sts <- elabSizeSum ss
-  return $ sts ++ [st]
-elabSizeSum e = singleton <$> elabSizeTerm e 1
--- elabSizeSum e = illformedTerm e "Expected sum of size terms."
+  return $ add st sts 
+elabSizeSum e = elabSizeTerm e 1
 
-elabSizeTerm :: Expr Parsed -> Int -> Elab SizeTerm
-elabSizeTerm (App "size" [Var x]) _ = return $ SVar x
-elabSizeTerm (Lit (LNat b)) sign = return $ SConst (sign * b)
-elabSizeTerm (App "*" [k, x]) sign = do
+elabSizeTerm :: Expr Parsed -> Int -> Elab SizeSum
+elabSizeTerm (App "size" [Var x]) _ = return $ sizeVar x
+elabSizeTerm (Lit (LNat b)) sign = return $ sizeConst (sign * b)
+elabSizeTerm (App "*" [k, App "size" [Var x]]) sign = do
   k <- elabIntLit k
-  sx <- elabSizeTerm x 1
-  return $ SScalar (sign * k) sx
+  return $ sizeScalar x (sign * k)
 elabSizeTerm e _ = illformedTerm e "Expected a size term." 
 
 elabIntLit :: Expr Parsed -> Elab Int
 elabIntLit (Lit (LNat n)) = return n 
 elabIntLit e = illformedTerm e "Expected a nat literal."
   
-elabProdTermM :: Expr Parsed -> MaybeT Elab [(SizeTerm, Int)]
-elabprodTermM (App "binom" [x,k]) = do
-  sx <- lift $ elabSizeAtom x
+elabProdTermM :: Expr Parsed -> MaybeT Elab [(SizeSum, Int)]
+elabProdTermM (App "binom" [x,k]) = do
+  sx <- lift $ elabSizeSum x
   ck <- lift $ elabIntLit k
   return [(sx,ck)]
 elabProdTermM (App "*" [App "binom" [x,k], bs]) = do
-  sx <- lift $ elabSizeAtom x
+  sx <- lift $ elabSizeSum x
   ck <- lift $ elabIntLit k
   ((sx,ck) :) <$> elabProdTermM bs 
 elabProdTermM _ = empty
 
-elabSizeAtomM :: Expr Parsed -> MaybeT Elab SizeTerm
-elabSizeAtomM (App "size" [Var x]) = lift (return $ SVar x)
+elabSizeAtomM :: Expr Parsed -> MaybeT Elab Id
+elabSizeAtomM (App "size" [Var x]) = lift (return x)
 elabSizeAtomM _ = empty
 
-elabSizeAtom :: Expr Parsed -> Elab SizeTerm
-elabSizeAtom e = do
-  r <- runMaybeT (elabSizeAtomM e)
-  case r of
-    Just sx -> return sx
-    Nothing ->
-      illformedTerm e "Expected a valid atomic size expression (e.g. 'size x')."
+-- elabSizeAtom :: Expr Parsed -> Elab SizeTerm
+-- elabSizeAtom e = do
+--   r <- runMaybeT (elabSizeAtomM e)
+--   case r of
+--     Just sx -> return sx
+--     Nothing ->
+--       illformedTerm e "Expected a valid atomic size expression (e.g. 'size x')."
 
 --------------------------------------------------------------------------------
 -- Function Clauses
@@ -211,6 +215,7 @@ elabSizeAtom e = do
 
 elabFunDef :: SurfaceFunDef -> Elab (FunDef Elaborated)
 elabFunDef (SurfaceFunDef name clauses) = do
+  put $ ElabState {idGen=0}
   validateClauses name clauses
 
   case clauses of
@@ -281,6 +286,7 @@ elabCtorDecl dDecl cDecl = do
     let msg = "Unbound type variable '" ++ T.unpack (head freeVars) ++ "'." in
       throwError $ SourceError (ddPos dDecl) (ElabError msg)
   return $ CtorInfo (ctorName cDecl) (quantify (ddParams dDecl) t)
+  
 --------------------------------------------------------------------------------
 -- Measures
 --------------------------------------------------------------------------------
@@ -289,7 +295,7 @@ elabAlgebra :: SMeasure m -> [SurfaceClause] -> Elab (MeasureAlgebra m)
 elabAlgebra mKind clauses = do
   eqs <- mapM (elabClause mKind) clauses
   return $ Equations eqs
-  
+
 elabClause :: SMeasure m -> SurfaceClause -> Elab (ConstPat, Carrier m)
 elabClause mKind (SurfaceClause _ [PConst _ cPat pVars] body) = do
   let varNames = map (\(PVar _ x) -> x) pVars
