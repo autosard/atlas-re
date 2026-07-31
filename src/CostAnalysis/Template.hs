@@ -17,7 +17,7 @@ import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
 import Data.Bifunctor (first)
 
-import Primitive(Id, freeVars, Substitutable(..), substVar, toIntegerExact)
+import Primitive(Id, freeVars, Substitutable(..), substVar, toIntegerExact, dbg)
 import CostAnalysis.Coeff
 import Control.Monad.State
 import qualified CostAnalysis.Constraint as C
@@ -191,11 +191,14 @@ data SubstValue =
 --
 -- Formula: q[x -> v] -^-> q' = p
 --
-assertEqSubst :: (Id, SubstValue) -> FreeTemplate -> FreeTemplate -> (Set ResourceTerm, [Formula])
-assertEqSubst subst q p = (rhsTerms, map constrain reducts)
-  where constrain (tgt, srcs) = Eq
-          (CoeffTerm (Coeff (p^.ftId) tgt))
-          (sum (map termFromSrc srcs))
+assertEqSubst :: Bool -> (Id, SubstValue) -> FreeTemplate -> FreeTemplate -> (Set ResourceTerm, [Formula])
+assertEqSubst checkTarget subst q p = (rhsTerms, constrain reducts)
+  where constrain rs = [ Eq
+                         (if checkTarget 
+                          then p!?tgt
+                          else CoeffTerm (Coeff (p^.ftId) tgt))
+                         (sum (map termFromSrc srcs))
+                       | (tgt, srcs) <- rs, (not . isZero) tgt] 
         termFromSrc (1, t) = q!t
         termFromSrc (k, t) = prod2 (C.ConstTerm k) (q!t)
         rhsTerms = S.fromList $ map fst reducts
@@ -243,6 +246,8 @@ reduceSizeSum (x, TransformApp args st) sum =
 
 
 normTerm :: ResourceTerm -> [ResourceTerm]
+normTerm (RTLog s) | M.null (s^.ssCoeffs) &&
+                     s^.ssConstant == 2 = [RTId]
 normTerm (RTBinoms []) = [RTId]
 normTerm (RTBinoms bs) = foldr (distributeBinoms . normBinom) [] bs
 normTerm t = [t]

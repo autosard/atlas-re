@@ -80,6 +80,8 @@ sizeSumLe guards qTerms pTerms = checkCertificate zeroV || checkCertificate oneV
 -- | Checks if resource term r1 <= r2 under the given guard constraints.
 resourceLe :: GuardMatrix -> ResourceTerm -> ResourceTerm -> Bool
 
+
+-- resourceLe guards RTId (RTPhi _) = True
 -- 1. Constant 1 Term (RTId) vs Sizes
 -- RTId is treated semantically as the constant 1 size term: (SConst 1)
 resourceLe guards RTId (RTSize s) = True
@@ -95,7 +97,8 @@ resourceLe guards (RTSize s1) (RTSize s2) =
 -- 3. Logarithmic Terms
 resourceLe guards (RTLog qTerms) (RTLog pTerms) = 
   sizeSumLe guards qTerms pTerms
-
+  
+resourceLe guards RTId (RTLog s) = coeffSum s >= 2
 -- 4. Logarithmic Terms vs Linear Terms (Asymptotic Dominance)
 -- Logarithmic terms are always bounded by linear terms (e.g., log(x) <= x)
 resourceLe _ (RTLog _) (RTSize _) = True

@@ -18,11 +18,9 @@ import Text.Megaparsec (SourcePos(SourcePos), pos1)
 import Data.Tuple (swap)
 import qualified Data.Text as T
 import qualified Data.List as L
-import qualified Data.Set as S
-import Data.Set (Set)
 
 
-import Primitive (Id)
+import Primitive (Id, dbg)
 import Syntax.Ast
 import Typing.Scheme (Scheme, quantify, quantifyAll)
 import Typing.Subst (tv)

@@ -54,3 +54,7 @@ instance PrettyPrint ResourceTerm where
     where
       parenthesize t@RTBinoms{} = "(" ++ prettyPrint t ++ ")"
       parenthesize t           = prettyPrint t
+
+isZero :: ResourceTerm -> Bool
+isZero (RTLog s) = s == sizeConst 1
+isZero otherTerm = False

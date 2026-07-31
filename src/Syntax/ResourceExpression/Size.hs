@@ -40,7 +40,6 @@ sizeSubst (x, v) sum
           sum' = sum & ssCoeffs %~ M.delete x in
         add (scale k v) sum'
   | otherwise = sum
-  
 
 data SizeTerm = VarTerm Id Int | ConstTerm Int
 
@@ -50,6 +49,9 @@ addSizeTerm (ConstTerm k) = ssConstant %~ (+ k)
 
 sizeFromList :: [SizeTerm] -> SizeSum
 sizeFromList = foldr addSizeTerm emptySizeSum
+
+coeffSum :: SizeSum -> Int
+coeffSum (SizeSum cs c) = foldr (+) 0 cs + c
 
 instance Substitutable SizeSum where
   subst env (SizeSum cs c) = SizeSum

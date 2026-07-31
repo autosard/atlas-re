@@ -40,7 +40,7 @@ genSizeSums (a,b) xs = [SizeSum vars c
                        | vars <- varSums xs,
                          c <- [-1..b],                
                          foldr (+) 0 vars + c >= 1,
-                         not (M.null vars && c == 1), -- log(1) not allowed
+--                         not (M.null vars && c == 1), -- log(1) not allowed
                          not (M.null vars && c == 2)] -- log(2) covered by RTId
   where
     varSums :: [Id] -> [Map Id Int]

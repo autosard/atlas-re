@@ -16,7 +16,7 @@ import qualified System.FilePath.Glob as Glob
 import System.Environment(lookupEnv)
 import SourceError (printSrcError)
 
-import Primitive(Id)
+import Primitive(Id, dbg)
 import Syntax.Ast
 import Parsing.Program(parseProgram)
 import Typing.Inference (inferProgram)

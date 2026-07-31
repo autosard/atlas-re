@@ -202,15 +202,14 @@ measureEnvForType t = do
 defEqSubst :: (Id, SubstValue) -> FreeTemplate -> ProveMonad (FreeTemplate, [Formula])
 defEqSubst subst q = do
   p <- freshEmptyTempl
-  let (tgtTerms, cs) = Templ.assertEqSubst subst q p
+  let (tgtTerms, cs) = Templ.assertEqSubst False subst q p
   return (p & ftTerms .~ tgtTerms, cs)
 
 assertEqSubst :: (Id, SubstValue) -> FreeTemplate -> FreeTemplate  -> ProveMonad [Formula]
 assertEqSubst subst q p = do
-  let (tgtTerms, cs) = Templ.assertEqSubst subst q p
+  let (tgtTerms, cs) = Templ.assertEqSubst True subst q p
   let leftOverTerms = (p^.ftTerms)  S.\\ tgtTerms
   return $ cs ++ concatMap (zero . (p!?)) leftOverTerms
-      
 
 sizeTransformable :: Program Positioned -> Id -> ProveMonad Bool
 sizeTransformable prog fn = do

@@ -139,7 +139,7 @@ proveShift :: Prove PositionedExpr Derivation
 proveShift tactic e judgeType binder q q' = do
   let [subTactic] = subTactics 1 tactic
   k <- freshVar
-  let shift s = sub [s,k]
+  let shift s = sum [s,k]
   (p, cs1) <- defineByShift shift q
   (p', cs2) <- defineByShift shift q'
   deriv <- proveExpr subTactic e judgeType binder p p'

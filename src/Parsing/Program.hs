@@ -32,6 +32,7 @@ import Typing.Scheme
 import Primitive(Id)
 import CostAnalysis.TemplateLanguage
 import Syntax.Measure (Measure(Size, Potential))
+import Text.Megaparsec.Debug (dbg', MonadParsecDbg (dbg))
 
 
 --------------------------------------------------------------------------------
@@ -294,7 +295,7 @@ pIfThenElse sc' = do
   return $ IteAnn pos e1 e2 e3
 
 pMatchArm :: Parser () -> Parser (MatchArm Parsed)
-pMatchArm sc' = MatchArmAnn <$> getSourcePos <* L.symbol sc' "|" <*> pPattern <* pArrow <*> (pExpr sc')
+pMatchArm sc' = MatchArmAnn <$> getSourcePos <* L.symbol sc' "|" <*> pPattern <* pArrow <*> (pExpr sc') <* scn
 
 pMatch :: Parser () -> Parser (Expr Parsed)
 pMatch sc' = do
@@ -465,6 +466,7 @@ pInt = do
   num <- lexeme L.decimal
   return $ sign * num
 
+pNumber :: Parser Int
 pNumber = lexeme L.decimal
 
 pInteger :: Parser Integer

@@ -96,7 +96,7 @@ analyzeSize prog = do
   initSig prog
   constrainSigForSize prog
   optimizeSig prog
-  analyzeProg CfEq prog
+  analyzeProg Cf prog
 
   obtainSizeTransforms
 
@@ -107,6 +107,7 @@ analyzeCost prog = do
   initSig prog
   constrainSig prog
   optimizeSig prog
+  
   analyzeProg Standard prog
   
 initSig :: Program Positioned -> ProveMonad ()
@@ -167,7 +168,8 @@ optimizeSig prog = mapM_ go . M.toList =<< use sig
             optiTargets %= (costTerm:)
           where
             templ = fsSig^.fsFrom
-            termsWithCost = computeStratifiedCosts [] (templ^.ftTerms)
+            terms' = S.filter (not . isZero) (templ^.ftTerms)
+            termsWithCost = computeStratifiedCosts [] terms'
             costTerm = sum [prod2 (ConstTerm (fromIntegral c)) (CoeffTerm (Coeff (templ^.ftId) t))
                            | (t, c) <- termsWithCost]
         
@@ -177,15 +179,9 @@ constrainSig prog = do
   mode <- view analysisMode
   case mode of
     Check -> assertSigMatchesAnn prog
-    Infer -> assertPotential
-    -- Infer -> do
-    --   s <- use sig
-    --   let CostSig s1 s2 = withCost $ s M.! fnId
-    --   tellSigCs =<< externalCsForCtx s1
-    --   tellSigCs =<< maybe (return []) externalCsForCtx s2
-    --   rhs <- view rhsTerms
-    --   let hybrid = (costMode . tfFnConfig) funAnn == HybridCost
-    --   addFullCostOptimization fnId True -- (rhs || hybrid)
+    Infer -> do
+      assertPotential
+      optimizeSig prog
 
 assertPotential :: ProveMonad ()
 assertPotential = mapM_ go =<< use sig

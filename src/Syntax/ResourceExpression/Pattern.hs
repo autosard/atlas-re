@@ -57,29 +57,23 @@ unifySizeVar v concreteTerms subst =
 
 partitionsK :: Int -> SizeSum -> [[SizeSum]]
 partitionsK k (SizeSum cs constVal) = do
-  -- 1. Extract indivisible terms (drop 0-valued terms)
   let varTerms = [VarTerm v c | (v, c) <- M.toList cs, c /= 0]
       cTerm    = [ConstTerm constVal | constVal /= 0]
       allTerms = varTerms ++ cTerm
-  -- 2. Distribute each indivisible term into one of the k buckets
-  partitions <- partitions k allTerms
+  partitions <- partitions allTerms
   
   return (map sizeFromList partitions)
 
-partitions :: Int -> [a] -> [[[a]]]
-partitions 1 xs = [[xs]]
-partitions k xs 
-  | k <= 0 || null xs = []
-  | k > length xs     = []
-  | otherwise         = do
-      -- Pick a non-empty prefix for the first group (using permutations to handle any ordering)
-      (part, rest) <- splits xs
-      nextParts    <- partitions (k - 1) rest
-      return (part : nextParts)
-  where
-    -- Helper to get all non-empty splits of a list
-    splits []     = []
-    splits (y:ys) = ([y], ys) : map (\(p, r) -> (y:p, r)) (splits ys)
+partitions :: [a] -> [[[a]]]
+partitions [x] = [[[x]]]
+partitions (x:xs) =
+  let ys = partitions xs in
+    [[x] : y | y <- ys]
+    ++ concatMap (multiply x) ys
+  where multiply :: a -> [[a]] -> [[[a]]]
+        multiply x [y] = [[(x : y)]]
+        multiply x (y:ys) = ((x : y) : ys) : map (y:) (multiply x ys)
+
 
 -- | Non-deterministically matches a sequence of patterns against the active term set
 findMatches :: [TermPattern] -> [ResourceTerm] -> Subst -> [[ResourceTerm]]

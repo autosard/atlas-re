@@ -41,8 +41,8 @@ farkas as ps qs | V.length ps == V.length qs = do
 templLe :: (Template a, Template b, HasCoeffs a, HasCoeffs b) => Set SubArg -> a -> b -> ProveMonad [Formula]
 templLe subArgs p q = do
   let ks = merge $
-        -- [termOrderConstraints [] (terms p) | S.member Mono subArgs]
-        [instantiateLemma logLemmaSpec (terms p) | S.member L2xy subArgs]
+        [termOrderConstraints [] (terms p) | S.member Mono subArgs]
+        ++ [instantiateLemma logLemmaSpec (terms p) | S.member L2xy subArgs]
   farkas ks ps qs
   where ps = V.fromList . map CoeffTerm $ getCoeffs p
         qs = V.fromList $ [q!?t | t <- S.toList $ terms p]
@@ -51,6 +51,8 @@ templLe subArgs p q = do
   
 merge :: [LeMatrix] -> LeMatrix
 merge = V.concat 
+
+-- dbg "le" (\r -> show r ++ " " ++ prettyPrint t1 ++ " <= " ++ prettyPrint t2)
 
 termOrderConstraints :: GuardMatrix -> S.Set ResourceTerm -> LeMatrix
 termOrderConstraints guards terms = merge . catMaybes $
@@ -74,8 +76,6 @@ termOrderConstraints guards terms = merge . catMaybes $
                   else 0))
       else Nothing
 
--- dbg "resource le" (\r -> show t1 ++ "<=" ++ show t2 ++ ": "  ++ show r) $ 
-
 -- | Instantiates all possible applications of a lemma over a set of ResourceTerms.
 instantiateLemma :: LemmaSpec -> S.Set ResourceTerm -> LeMatrix
 instantiateLemma (LemmaSpec weightedPatterns d) termsSet = 
@@ -87,7 +87,7 @@ instantiateLemma (LemmaSpec weightedPatterns d) termsSet =
 
     -- For a successful combination of matched terms, generate the constraint row
     buildRows :: [ResourceTerm] -> [V.Vector Rational]
-    buildRows matchedTerms = case mapM (`S.lookupIndex` termsSet) (dbg "match" prettyPrint matchedTerms) of
+    buildRows matchedTerms = case mapM (`S.lookupIndex` termsSet) matchedTerms of
       Nothing -> [] -- Skip if some matched term is missing from our active template set
       Just indices ->
         let rowAssocs = (iConst, d) : zipWith (\idx (WeightedPattern coeff _) -> (idx, coeff)) indices weightedPatterns
