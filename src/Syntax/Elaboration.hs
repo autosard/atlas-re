@@ -139,6 +139,7 @@ elabScale e sign = do
 
 elabRatLit :: Expr Parsed -> Elab Rational
 elabRatLit (Lit (LRat r)) = return r
+elabRatLit (Lit (LNat n)) = return (fromIntegral n)
 elabRatLit e = illformedTerm e "Expected a rational number."
 
 elabResourceTerm :: Expr Parsed -> Elab ResourceTerm

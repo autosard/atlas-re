@@ -11,8 +11,11 @@ data SourceError e = SourceError !SourcePos e
 
 printSrcError :: (Show a) => SourceError a -> IO b
 printSrcError (SourceError pos@SourcePos {..} error) = do
-  contents <- TextIO.readFile sourceName
-  die (buildMessage contents)
+  if sourceName == "<elab>" then 
+    die (show error)
+  else do
+    contents <- TextIO.readFile sourceName
+    die (buildMessage contents)
   where buildMessage contents =
           let msg = "Error: " ++ sourcePosPretty pos ++ ": "
               lines = T.lines contents
