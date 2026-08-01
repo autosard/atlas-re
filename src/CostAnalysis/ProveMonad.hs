@@ -76,9 +76,9 @@ enrichMeasureSig :: Map Scheme MeasureEnv -> ProveMonad (Map Scheme EnrichedMeas
 enrichMeasureSig = M.traverseWithKey go
   where go :: Scheme -> MeasureEnv -> ProveMonad EnrichedMeasureEnv
         go t mEnv = do
-          potMeasure <- case potentialMeasure mEnv of
-              Just pm -> return $ Left pm
-              Nothing -> error $ "missing potential measure for type " ++ prettyPrint t
+          let potMeasure = case potentialMeasure mEnv of
+                Just pm -> return $ Left pm
+                Nothing -> Nothing -- error $ "missing potential measure for type " ++ prettyPrint t
           return $ EnrichedMeasureEnv {
             emSizeMeasure = sizeMeasure mEnv
             , emPotentialMeasure = potMeasure

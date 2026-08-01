@@ -115,7 +115,7 @@ pProgram :: Parser (SurfaceProgram, [Id])
 pProgram = scn *> do
   templLangConfig <- pTemplateLanguageConfig
   
-  let config = ProgConfig (fromMaybe defaultLangConfig templLangConfig)
+  let config = ProgConfig (fromMaybe [] templLangConfig)
 
   imports <- many pImport
 

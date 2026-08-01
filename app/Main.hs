@@ -36,7 +36,7 @@ import CostAnalysis.Tactic
 import CostAnalysis.PrettyProof
 
 
-import Primitive(Id)
+import Primitive(Id, dbg)
 
 import Cli(Options(..),
            AnalyzeOptions(..),
@@ -72,11 +72,11 @@ run Options{..} AnalyzeOptions{..} = do
 
   unless (case fn of 
             Just name -> M.member name (_pFunDefs prog)
-            Nothing -> False
+            Nothing -> True
          ) $ do
     fail "Module does not define the requested function."
   tactics <- case tacticsPath of
-    Just path -> loadTactics (T.unpack modName) (M.keys (_pFunDefs prog)) path
+    Just path -> loadTactics (T.unpack modName) (M.keys (_pFunDefs (dbg "templ" (show .templateConfig . _pConfig )prog))) path
     Nothing -> return M.empty
   let env = ProofEnv {
         _tactics=tactics
@@ -85,24 +85,17 @@ run Options{..} AnalyzeOptions{..} = do
         }
   result <- liftIO $ analyzeProgram env prog
   case result of
-    (AnalysisResult {_arDerivs=derivs,
-                     _arSigCs=sigCs,
-                     _arResult=Left unsatCore}) ->
+    (AnalysisResult {_arResult=Left unsatCore}) ->
       let core' = S.fromList unsatCore in do
           hPutStrLn stderr "solver returned unsat. See unsat-core for details."
-          writeHtmlProof "./out" (renderProof (Left core') derivs sigCs) 
-    (AnalysisResult {
-        _arDerivs=derivs
-        , _arSigCs=sigCs
-        , _arSig=sig
-        , _arResult=(Right (solution, objective))}) -> do
+          writeHtmlProof "./out" (renderProof result) 
+    (AnalysisResult {_arResult=(Right (solution, objective))}) -> do
         putStr "Done. "
-        writeHtmlProof "./out" (renderProof (Right solution) derivs sigCs)
---        printSolutionCoeffs solution
---        liftIO $ printSolution switchDumpCoeffs sig pots solution
-        when switchPrintObjective (do
-                                      putStrLn ""
-                                      putStrLn ("objective: " ++ objective))
+        writeHtmlProof "./out" (renderProof result)
+        when switchPrintObjective
+          (do
+              putStrLn ""
+              putStrLn ("objective: " ++ objective))
 
 printSolutionCoeffs solution = mapM_ (\(q, v) -> putStrLn $ show q ++ " = " ++ show v) (M.assocs solution)
 -- printSolution :: Bool -> FreeSignature -> PotFnMap -> Map Coeff Rational -> IO ()

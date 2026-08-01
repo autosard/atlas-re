@@ -395,6 +395,11 @@ pattern MatchArm p e <- MatchArmAnn _ p e
 containsFn :: Text -> Program a -> Bool
 containsFn fn prog = M.member fn (prog^.pFunDefs)
 
+subPatterns :: Pattern a -> [Pattern a]
+subPatterns (PVar _ _) = []
+subPatterns (PConst _ _ ps) = concatMap subPatterns ps
+subPatterns (PWildcard _) = []
+
 instance HasVars (Expr a) where
   freeVars (Var id) = S.singleton id
   freeVars (Const _ exps) = unionMap freeVars exps

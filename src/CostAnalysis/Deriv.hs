@@ -59,6 +59,7 @@ proveIte tactic e@(Ite e1 e2 e3) judgeType binder q q' = do
 simplifyPattern :: Pattern Positioned -> ProveMonad ConstPat
 simplifyPattern p@(PConst _ id ps) = ConstPat id <$> mapM toVar ps
   where toVar (PVar _ x) = return x
+        toVar (PWildcard _) = return "_"
         toVar _ = errorFrom (SynPat p) $ "Analysis does not support nested patterns."
 
 

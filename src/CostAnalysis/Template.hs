@@ -17,7 +17,7 @@ import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
 import Data.Bifunctor (first)
 
-import Primitive(Id, freeVars, Substitutable(..), substVar, toIntegerExact, dbg)
+import Primitive(Id, freeVars, Substitutable(..), substVar, toIntegerExact, dbg, PrettyPrint (prettyPrint))
 import CostAnalysis.Coeff
 import Control.Monad.State
 import qualified CostAnalysis.Constraint as C
@@ -25,6 +25,7 @@ import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Size
 import Syntax.Measure
 import CostAnalysis.Constraint hiding (ConstTerm, VarTerm)
+import qualified Data.Text as T
 
 --------------------------------------------------------------------------------
 -- General Templates
@@ -175,7 +176,7 @@ type instance  Carrier 'TemplPotential = FreeTemplate
 
 data EnrichedMeasureEnv = EnrichedMeasureEnv {
   emSizeMeasure :: MeasureAlgebra Size, 
-  emPotentialMeasure :: Either (MeasureAlgebra Potential) (MeasureAlgebra TemplPotential)
+  emPotentialMeasure :: Maybe (Either (MeasureAlgebra Potential) (MeasureAlgebra TemplPotential))
 } deriving (Eq, Show)
 
 --------------------------------------------------------------------------------
@@ -227,8 +228,9 @@ reduceTerm subst (RTSize x) = let sizes = reduceSizeSum subst (sizeVar x) in
 reduceTerm subst (RTLog ss) = [RTLog $ reduceSizeSum subst ss]
 reduceTerm (x,  ExpandCtor pat mEnv) t@(RTPhi y)
   | x == y = case emPotentialMeasure mEnv of
-      Left potAlg -> apply potAlg pat
-      Right _ -> error "not implemented"
+      Just (Left potAlg) -> apply potAlg pat
+      Just (Right _) -> error "not implemented"
+      Nothing -> error $ "missing potential measure for " ++ T.unpack x
   | otherwise = [t]
 reduceTerm (x,  _) t@(RTPhi _) = [t]
 reduceTerm subst t@(RTBinoms ss)

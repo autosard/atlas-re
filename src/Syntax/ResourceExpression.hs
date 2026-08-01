@@ -5,7 +5,6 @@ module Syntax.ResourceExpression where
 import Primitive(Id, HasVars(..), Substitutable(..), PrettyPrint(..))
 import Data.Bifunctor (Bifunctor(first))
 import qualified Data.Set as S
-import Data.Set (Set)
 import Data.List (intercalate)
 import qualified Data.Text as T
 

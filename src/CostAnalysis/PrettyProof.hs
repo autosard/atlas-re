@@ -18,7 +18,7 @@ import Data.List(intersperse)
 import Data.Ratio
 
 
-import Primitive(Id)
+import Primitive(Id, dbg)
 import Syntax.Ast
 import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
@@ -27,6 +27,8 @@ import CostAnalysis.Template(FreeTemplate(..), BoundTemplate (BoundTemplate), bi
 import CostAnalysis.Coeff
 import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Size hiding (ConstTerm, VarTerm)
+import CostAnalysis.Analysis (AnalysisResult (..))
+import Syntax.Measure (SizeTransform (SizeTransform))
 
 css = renderCss ([lucius|
 
@@ -175,8 +177,8 @@ window.addEventListener("load", () => {
 
 type Result = Either (Set Formula) (Map Coeff Rational)
 
-renderProof :: Result -> Map Id [Derivation] -> [Formula] -> Text
-renderProof result derivs sigCs = renderHtml [shamlet|
+renderProof :: AnalysisResult -> Text
+renderProof result = renderHtml [shamlet|
 $doctype 5
 <html>
     <link rel="stylesheet" href="style.css">
@@ -185,26 +187,57 @@ $doctype 5
         <title>Atlas
     <body>
         <h2>Result
-        $case result
-          $of Left _
-            <p class="unsat">unsat
-          $of Right _
-            <p> sat
+        $if sat
+          <p> sat
+        $else
+          <p class="unsat">unsat
+        <h2>Size Signature
+        ^{hamSizeSig (_arSizeSig result)}
         <h2>Signature Constraints
-        ^{hamCsList sigCs (inCore result)}
+        ^{hamCsList (_arSigCs result) (inCore result')}
         <h2>Derivation
         <div class="deriv-flags">
             <input type=checkbox id="onlyUnsat">show only unsat constraints
         <br>
-        ^{hamDerivs result derivs}
+        ^{hamDerivs result' (_arDerivs result)}
 |]
-
+  where (result', sat) = case _arResult result of
+          Left core -> (Left $ S.fromList core, False)
+          Right sol -> (Right (fst sol), True)
+        
   
           
 inCore result c = case result of
                    Left core -> S.member c core
                    Right _ -> False
-          
+
+hamSizeSig :: Map Id SizeTransform -> Html
+hamSizeSig sig = [shamlet|
+<span class="listHead">
+    <span> Size Signature
+<ul class="collapse tree">
+    $forall (fn, trans) <- sigs
+        <li class="fn">
+          <math display="inline">
+            <mrow>
+              <mi>#{fn}
+              <mo form="infix">:
+              ^{hamSizeTransform fn trans}
+|]
+  where sigs = M.toList sig
+
+hamSizeTransform :: Id -> SizeTransform -> Html
+hamSizeTransform fn (SizeTransform lhs rhs) = [shamlet|
+<mo rspace=0>|
+<mo lspace=0>#{fn}
+$forall arg <- lhs
+  <mo>&ApplyFunction;
+  <mi>#{arg}
+<mo lspace=0 rspace=0>|  
+<mo>≤
+^{hamSizeSum rhs}
+|]
+                  
 hamDerivs :: Result -> Map Id [Derivation] -> Html
 hamDerivs result derivs = let fnDerivs = M.toList derivs in
   [shamlet|
@@ -381,11 +414,17 @@ hamBoundTempl (BoundTemplate coeffs) =
       | otherwise = [shamlet|^{hamRat val}<mo>⋅</mo>^{hamResourceTerm rt}|]
 
     -- Renders subsequent terms with correct sign operators
+    hamRestTerm (RTId, val) 
+      | val == 1  = [shamlet|<mo>+</mo><mn>1</mn>|]
+      | val == -1 = [shamlet|<mo>-</mo><mn>1</mn>|]
+      | val > 0   = [shamlet|<mo>+</mo>^{hamRat val}|]
+      | otherwise = [shamlet|<mo>-</mo>^{hamRat (abs val)}|]
     hamRestTerm (rt, val)
       | val == 1  = [shamlet|<mo>+</mo>^{hamResourceTerm rt}|]
       | val == -1 = [shamlet|<mo>-</mo>^{hamResourceTerm rt}|]
       | val > 0   = [shamlet|<mo>+</mo>^{hamRat val}<mo>⋅</mo>^{hamResourceTerm rt}|]
       | otherwise = [shamlet|<mo>-</mo>^{hamRat (abs val)}<mo>⋅</mo>^{hamResourceTerm rt}|]
+          
           
 hamTempl :: FreeTemplate -> Html
 hamTempl q = [shamlet|

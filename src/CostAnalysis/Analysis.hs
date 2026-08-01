@@ -106,7 +106,6 @@ analyzeCost prog = do
   tLang .= lang
   initSig prog
   constrainSig prog
-  optimizeSig prog
   
   analyzeProg Standard prog
   
@@ -170,7 +169,7 @@ optimizeSig prog = mapM_ go . M.toList =<< use sig
             templ = fsSig^.fsFrom
             terms' = S.filter (not . isZero) (templ^.ftTerms)
             termsWithCost = computeStratifiedCosts [] terms'
-            costTerm = sum [prod2 (ConstTerm (fromIntegral c)) (CoeffTerm (Coeff (templ^.ftId) t))
+            costTerm = sum [prod2 (ConstTerm (fromIntegral (c*c))) (CoeffTerm (Coeff (templ^.ftId) t))
                            | (t, c) <- termsWithCost]
         
 

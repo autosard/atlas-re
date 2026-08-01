@@ -11,7 +11,6 @@ module Syntax.Measure where
 import Data.Kind (Type)
 import Data.List (find)
 import qualified Data.Set as S
-import Data.Set (Set)
 
 import Primitive(Id, Substitutable(..), HasVars(..), substVars)
 import Syntax.ResourceExpression
@@ -59,7 +58,7 @@ data MeasureEnv = MeasureEnv {
 apply :: (Show (Carrier a), Substitutable (Carrier a)) => MeasureAlgebra a -> ConstPat -> Carrier a
 apply (Equations eqs) cv@(ConstPat _ argsInst) = case find (match cv . fst) eqs of
         Just (ConstPat _ argsDef, result) -> substVars argsDef argsInst result
-        Nothing          -> error "No matching equation in F-Algebra."
+        Nothing          -> error $ "No matching equation in F-Algebra." ++ show cv ++ show eqs
 
 match :: ConstPat -> ConstPat -> Bool
 match (ConstPat c2 xs) (ConstPat c1 ys) = c1 == c2 && length xs == length xs 

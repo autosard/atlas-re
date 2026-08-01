@@ -1,5 +1,5 @@
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Loading where
 
@@ -24,7 +24,7 @@ import Syntax.Normalization (normalizeProg)
 import Syntax.AstContext (contextualizeProg)
 import Syntax.Elaboration (elabProgram)
 
-extension = ".ml"
+extension = ".atl"
 
 data ModuleState
   = NotVisited
@@ -46,10 +46,15 @@ buildProgram [] = error "No module loaded."
 buildProgram (p:ps) = foldr go p ps
   where go p1 p2 = SurfaceProgram {
           sfSig = M.union (sfSig p1) (sfSig p2),
-          sfConfig = sfConfig p2,
+          sfConfig = mergeConfigs (sfConfig p1) (sfConfig p2),
           sfFunDefs = M.union (sfFunDefs p1) (sfFunDefs p2),
           sfDataDefs = sfDataDefs p1 ++ sfDataDefs p2,
           sfMeasureDefs = sfMeasureDefs p1 ++ sfMeasureDefs p2}
+        mergeConfigs cfg1 cfg2 = ProgConfig
+          { templateConfig = case templateConfig cfg1 of
+              [] -> templateConfig cfg2
+              nonEmpty -> templateConfig cfg1
+          }
     
 loadSurfaceProgram :: FilePath -> Text -> IO SurfaceProgram
 loadSurfaceProgram loadPath initialMod = evalStateT go (LoaderState M.empty)
@@ -70,12 +75,15 @@ loadModule loadPath name = do
     Visiting -> fail $ "Import cycle detected involving " ++ show name
 
 
+
 findModule :: String -> String -> IO FilePath
 findModule loadPath moduleName = do
-  matches <- Glob.glob $ loadPath ++ "/**/" ++ moduleName ++ extension
+  matches <- Glob.glob $ loadPath ++ "/**/" ++ modulePath ++ extension
   case uncons matches of
     Nothing -> fail $ "Could not locate module '" ++ moduleName ++ "'. Please check the specified search path."
     Just (file,_) -> return file
+    where modulePath = map (\c -> if c == '.' then '/' else c) moduleName 
+
 
 
 loadProgram :: Maybe FilePath -> Text -> Maybe Id -> IO (Program Positioned)
