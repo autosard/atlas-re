@@ -21,7 +21,8 @@ data SubArg = Mono | L2xy
 data Rule 
   = Const
   | Var
-  | Ite 
+  | Ite
+  | IteCoin
   | Match 
   | Let 
   | App 

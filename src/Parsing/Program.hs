@@ -318,7 +318,9 @@ pKeywordExpr sc'
   <|> CoinAnn <$> getSourcePos <* symbol "coin" <*> ((pRational <?> "coin probability") <|> pure defaultCoinPropability)
 
 pParenExpr :: Parser () -> Parser (Expr Parsed)
-pParenExpr sc' = pParens sc (pExpr sc')
+pParenExpr sc' = pParens sc' (pExpr sc)
+  
+  
 
 pZeroAryConst :: Parser () -> Parser (Expr Parsed)
 pZeroAryConst sc' = ConstAnn <$> getSourcePos <*> pUpperIdentifier <*> pure []

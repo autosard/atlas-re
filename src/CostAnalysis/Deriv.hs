@@ -48,7 +48,16 @@ proveConst _ e@(Const name args) judgeType binder q q' = do
 
 
 proveIte :: Prove PositionedExpr Derivation
-proveIte _ e@(Ite (Coin p) e1 e2) _ _ _ _ = error "not implemented"
+proveIte tactic e@(Ite (Coin p) e1 e2) judgeType binder q q' = do
+  let [t1, t2] = subTactics 2 tactic
+  q1 <- freshFrom q
+  q2 <- freshFrom q
+  let cs = assertEq q $ add 
+        (scale q1 (ConstTerm p))
+        (scale q2 (ConstTerm (1-p)))
+  deriv1 <- proveExpr t1 e1 judgeType binder q1 q'
+  deriv2 <- proveExpr t2 e2 judgeType binder q2 q'
+  conclude R.IteCoin judgeType q q' cs e [deriv1, deriv2]
 proveIte tactic e@(Ite e1 e2 e3) judgeType binder q q' = do
   let [_, t2, t3] = subTactics 3 tactic
   deriv2 <- proveExpr t2 e2 judgeType binder q q'

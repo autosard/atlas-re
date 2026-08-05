@@ -275,10 +275,9 @@ normBinom (SizeSum coeffs 0, k) = case M.keys coeffs of
 --------------------------------------------------------------------------------
 
 
-
--- scale :: (Template a) => a -> ArithExpr -> ArithTemplate
--- scale q k = ArithTemplate $
---   M.fromList [(idx, C.prod2 (q!idx) k) | idx <- S.toList (terms q)]
+scale :: (Template a) => a -> ArithExpr -> ArithTemplate
+scale q k = ArithTemplate $
+  M.fromList [(term, C.prod2 (q!term) k) | term <- S.toList (terms q)]
 
 
 add :: (Template a, Template b) => a -> b -> ArithTemplate
