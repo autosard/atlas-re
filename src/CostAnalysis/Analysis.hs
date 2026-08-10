@@ -34,7 +34,7 @@ import CostAnalysis.TemplateLanguage
 import CostAnalysis.ProveMonad
 import CostAnalysis.Rules (JudgementType (..))
 import Syntax.ResourceExpression
-import Control.Monad (unless, when)
+import Control.Monad (unless, when, filterM)
 import Data.Maybe (isNothing)
 import Syntax.ResourceExpression.Order (computeStratifiedCosts)
 import CostAnalysis.Constraint (sum)
@@ -85,6 +85,8 @@ analyzeProgram env prog = do
 
 analyzeStages :: Program Positioned -> ProveMonad ()
 analyzeStages prog = do
+  initMeasureSig prog
+  
   analyzeSize prog
 
   resetAnalysis
@@ -93,7 +95,7 @@ analyzeStages prog = do
 analyzeSize :: Program Positioned -> ProveMonad ()
 analyzeSize prog = do
   tLang .= sizeTLang
-  initSig prog
+  initSizeSig prog
   constrainSigForSize prog
   optimizeSig prog
   analyzeProg Cf prog
@@ -104,29 +106,42 @@ analyzeCost :: Program Positioned -> ProveMonad ()
 analyzeCost prog = do
   let lang = fromConfig $ templateConfig (prog^.pConfig)
   tLang .= lang
-  initSig prog
+  initCostSig prog
   constrainSig prog
   
   analyzeProg Standard prog
-  
-initSig :: Program Positioned -> ProveMonad ()
-initSig prog = do
-  computedSigs <- M.traverseWithKey genSig (prog^.pSig)
-  sig .= computedSigs
 
+initMeasureSig :: Program Positioned -> ProveMonad ()
+initMeasureSig prog = do
   mSig' <- enrichMeasureSig (prog^.pMeasureSig)
   measureSig .= mSig'
-  where genSig :: Id -> FunSig -> ProveMonad FreeSig
-        genSig fn sig = do
-          let argts = tFunArgs (sig^.typeSig)
-              args = ((prog^.pFunDefs) M.! fn)^.funArgs
-              argsWithT = zip args argts
-          tl <- use tLang
-          from <- freshTempl [x | (x,t) <- argsWithT, isResourceRelevant t]
-          
-          let binder = maybe "𝜈" csBinder (sig^.costSig) 
-          to <- freshTempl [binder]
-          return $ FreeSig from to binder args
+
+initSizeSig :: Program Positioned -> ProveMonad ()
+initSizeSig prog = initSig' (sizeTransformable prog) prog
+
+initCostSig = initSig' (\_ -> return True) 
+
+
+initSig' :: (Id -> ProveMonad Bool) -> Program Positioned -> ProveMonad ()
+initSig' filter prog = do
+  validFns <- filterM filter $ M.keys (prog^.pSig)
+  let filteredSig = M.restrictKeys (prog^.pSig) (S.fromList validFns)
+  computedSigs <- M.traverseWithKey (genSig prog) filteredSig 
+  sig .= computedSigs
+
+  
+  
+genSig :: Program Positioned -> Id -> FunSig -> ProveMonad FreeSig
+genSig prog fn sig = do
+  let argts = tFunArgs (sig^.typeSig)
+      args = ((prog^.pFunDefs) M.! fn)^.funArgs
+      argsWithT = zip args argts
+  tl <- use tLang
+  from <- freshTempl [x | (x,t) <- argsWithT, isResourceRelevant t]
+        
+  let binder = maybe "𝜈" csBinder (sig^.costSig) 
+  to <- freshTempl [binder]
+  return $ FreeSig from to binder args
 
 analyzeProg :: JudgementType -> Program Positioned ->  ProveMonad ()
 analyzeProg mode prog = do
@@ -143,7 +158,7 @@ analyzeBindingGroup mode prog fns = do
   tell sol
   solution .= Just (fst sol)
   where go :: Id -> ProveMonad ()
-        go fn = whenM (sizeTransformable prog fn) $ do
+        go fn = whenM (M.member fn <$> use sig) $ do
           let def = (prog^.pFunDefs) M.! fn
           let sig = (prog^.pSig) M.! fn
           deriv <- proveFun sig def mode
@@ -183,12 +198,18 @@ constrainSig prog = do
       optimizeSig prog
 
 assertPotential :: ProveMonad ()
-assertPotential = mapM_ go =<< use sig
-  where go :: FreeSig -> ProveMonad ()
-        go fs = do
-          let fromCs = concat [(fs^.fsFrom)!?RTPhi x `eq` ConstTerm 1 | x <- args (fs^.fsFrom)]
+assertPotential = mapM_ go . M.toList =<< use sig
+  where go :: (Id, FreeSig) -> ProveMonad ()
+        go (fn, fs) = do
+          costMode <- M.findWithDefault Amortized fn <$> view costModes
+
+          let pot = case costMode of
+                WorstCase -> ConstTerm 0
+                Amortized -> ConstTerm 1
+                
+          let fromCs = concat [(fs^.fsFrom)!?RTPhi x `eq` pot | x <- args (fs^.fsFrom)]
           let toCs = concat [case t of
-                               i@(RTPhi _) -> (fs^.fsTo)!i `eq` ConstTerm 1
+                               i@(RTPhi _) -> (fs^.fsTo)!i `eq` pot
                                i -> zero ((fs^.fsTo)!i)
                             | t <- S.toList $ terms (fs^.fsTo)]
           tellSigCs (fromCs ++ toCs)
@@ -228,189 +249,3 @@ appendDeriv fn newDeriv =
   fnDerivs . at fn %= \case
     Nothing     -> Just [newDeriv]
     Just derivs -> Just (derivs ++ [newDeriv]) 
-
-
--- externalCsForCtx :: FunSig FreeTemplate -> ProveMonad [Constraint]
--- externalCsForCtx (FunSig (q, qe) q') = concatMapM csForType (M.assocs q) 
---   where csForType :: (Type, FreeTemplate) -> ProveMonad [Constraint]
---         csForType (t, q) = do
---           pots <- use potentials
---           if M.member t q' then do
---             pot <- potForType t 
---             return $ cExternal pot q (q' M.! t)
---           else
---             return []
-
--- assertNonNegativePotFn :: Id -> ProveMonad ()
--- assertNonNegativePotFn fn = do
---   ann <- (M.! fn) <$> use sig
---   let CostSig s1 s2 = withCost ann
---   potGeZero s1
---   case s2 of
---     Just s -> potGeZero s
---     Nothing -> tellSigCs []
---   where potGeZero (FunSig (_,_) q') = do
---           tellSigCs $ assertGeZero q'
-
--- assertNonNegativeCost' :: Id -> ProveMonad ()
--- assertNonNegativeCost' fn = do
---   ann <- (M.! fn) <$> use sig
---   let (FunSig (q,qe) q') = withCost ann
---   let cost = symbolicCost ((q,qe), q')
---   let zero = zeroAnnFrom cost
---   cs <- annFarkas (S.fromList [Mono]) S.empty zero cost
---   tellSigCs cs
-
--- assertNonNegativeCost :: Id -> ProveMonad ()
--- assertNonNegativeCost fn = do
---   ann <- (M.! fn) <$> use sig
---   let (FunSig (q,qe) q') = withCost ann
---   let cost = symbolicCost ((q,qe), q')
---   tellSigCs (assertGeZero cost)
-
--- type CostComparision = Map Type TermTemplate -> BoundAnn -> [Constraint]
-
--- cmpCostWithAnn :: CostComparision -> Id -> BoundAnn -> ProveMonad ()
--- cmpCostWithAnn cmp fn costAnn = do
---   ann <- (M.! fn) <$> use sig
---   let (FunSig (q,qe) q') = withCost ann
---   let cost = symbolicCost ((q,qe), q')
---   tellSigCs $ assertGeZero cost
---   tellSigCs $ cmp cost costAnn
-
--- coeffsMatchAnnotation :: Id -> BoundFunAnn -> ProveMonad ()
--- coeffsMatchAnnotation fn target = do
---   ann <- (M.! fn) <$> use sig
---   tellSigCs $ assertFunAnnEq ann target
-
--- addSimpleCostOptimization :: Id -> ProveMonad ()
--- addSimpleCostOptimization fn = do
---   ann <- (M.! fn) <$> use sig
---   let (FunSig (q,qe) q') = withCost ann
---   let cost = symbolicCost ((q,qe), q')
---   let costTerm = sum cost
---   optiTargets %= (costTerm:)
-
-  
--- addFullCostOptimization :: Id -> Bool -> ProveMonad ()
--- addFullCostOptimization fn addAbs = do
---   ann <- (M.! fn) <$> use sig
---   let CostSig s1 s2 = withCost ann
---   optimize s1
---   case s2 of
---     Just s -> optimize s
---     Nothing -> tellSigCs []
---   where optimize (FunSig (q, qe) q')  = do
---           costTerms <- annCOptimize (q, qe) q'
---           absTerms <- if addAbs 
---                       then mapM abs costTerms
---                       else return []
---           let costTerm = C.sum $ costTerms ++ absTerms
---           optiTargets %= (costTerm:)
---         abs :: Term -> ProveMonad Term
---         abs t = do
---           absT <- freshVar 
---           tellCs $ 
---             ge absT t
---             ++ ge absT (minus t)
---           return absT
-            
-
--- argsWithPot :: (Map Type [Id], Map Type [Id]) -> ProveMonad (Map Type [Id], Map Type [Id])
--- argsWithPot (from, to) = do
---   pots <- use potentials
---   let from' = M.restrictKeys from $ M.keysSet pots
---   let to' = M.restrictKeys to $ M.keysSet pots
---   return (from', to')
-
--- genFunAnn :: PositionedFunDef -> ProveMonad FreeFunAnn
--- genFunAnn fn@(FunDef funAnn _ _ _) = do
---   (argsFrom, argsTo) <- argsWithPot $ fnArgsByType fn
---   pots <- use potentials
---   let potFnAnn = M.mapWithKey (\t _ -> annForType t pots) argsTo
---   costSig <- do
---     fromPrimary <- defaultAnn argsFrom "Q" "fn"
---     fromPrimaryRef <- ifM (view rhsTerms)
---                       (defaultAnn argsTo "QE" "fn")
---                       (emptyAnn (M.map (,[]) argsTo) "QE" "fn")
---     zero <- if null argsTo
---                 then defaultAnn (M.map (const []) argsFrom) "Q'" "fn" 
---                 else defaultAnn argsTo "Q' zero" "fn"
---     tellSigCs $ assertZero zero                  
---     case (costMode . tfFnConfig) funAnn of
---       AmortizedCost -> do
---         let to = potFnAnn
---         return $ CostSig (FunSig
---                            (fromPrimary, fromPrimaryRef)
---                            to)
---                          Nothing
---       WorstCaseCost -> do
---         return $ CostSig (FunSig
---                            (fromPrimary, fromPrimaryRef)
---                            zero)
---                          Nothing
---       HybridCost -> do
---         let toPrimary = potFnAnn
---         fromSecondary <- defaultAnn argsFrom "Q" "fn"
---         fromRefSecondary <- ifM (view rhsTerms)
---                             (defaultAnn argsTo "QE" "fn")
---                             (emptyAnn (M.map (,[]) argsTo) "QE" "fn")
---         let toSecondary = zero
---         return $ CostSig (FunSig (fromPrimary, fromPrimaryRef) toPrimary)
---                          (Just (FunSig (fromSecondary, fromRefSecondary) toSecondary))
-  
---   let numCfSigs = fromMaybe 1 $ (numCf . tfFnConfig) funAnn
---   (fromCfs, toCfs) <- mapAndUnzipM (const $ genCf argsFrom argsTo) [1..numCfSigs]
---   auxs <- M.fromList . concat <$> mapM (genAuxs argsFrom argsTo) (M.assocs pots)
---   return $ FunAnn
---     costSig
---     (Prelude.zipWith FunSig fromCfs toCfs)
---     auxs
---   where genCf argsFrom argsTo = do
---           let opts = defaultTemplOpts {ghostVars=True}
---           q <- freshAnn argsFrom "P" "fn cf" opts
---           qe <- ifM (view rhsTerms)
---             (freshAnn argsTo "PE" "fn cf" opts)
---             (emptyAnn (M.map (,[]) argsTo) "PE" "fn cf")
---           q' <- freshAnn argsTo "P'" "fn cf" opts
---           return ((q, qe), q')
---         genAux argsFrom argsTo t m = do
---           let pot = (fromKind . potForMeasure) m
---           auxPotentials . at t ?= pot
---           q <- singleAnn pot t argsFrom "A" "fn aux"
---           qe <- ifM (view rhsTerms)
---             (defaultAnn argsTo "AE" "fn aux")
---             (emptyAnn (M.map (,[]) argsTo) "AE" "fn aux")
---           q' <- singleAnn pot t argsTo "A'" "fn aux"
---           return (FunSig (q, qe) q')
---         genAuxs argsFrom argsTo (t, (pot, _)) = do
---           mapM (\(m, k) -> ((m,k), ) <$> genAux argsFrom argsTo t m) (auxSigs pot)
-          
-
-
--- addSigCs :: [Id] -> Solution -> ProveMonad ()
--- addSigCs fns (solution, _) = do
---   sig' <- (`M.restrictKeys` S.fromList fns) <$> use sig
---   let cs = concatMap go (getCoeffs sig')
---   sigCs %= (++cs)
---   where go coeff = eq (CoeffTerm coeff) (ConstTerm (fromMaybe 0 (solution M.!? coeff)))
-
--- argsForRHS :: [FunDef Positioned] -> [Type] -> ProveMonad (Map Type [Id])
--- argsForRHS fns ts = M.fromList <$> mapM checkArgs ts
---   where checkArgs :: Type -> ProveMonad (Type, [Id])
---         checkArgs t = do
---           let args = mapMaybe (M.!? t) rhsArgsByType
---           if sameLength args then
---             case args of
---               [] -> return (t, [])
---               sample:_ -> return (t, sample)
---           else throwError $ DerivErr $ SourceError (tfLoc $ funAnn (head fns))
---                "Cost analysis requries all involved functions to have the same return type to guarantee a consistent potential function."
---         rhsArgsByType :: [Map Type [Id]]
---         rhsArgsByType = [ snd $ fnArgsByType fn
---                         | fn <- fns,
---                           let mode = (costMode . tfFnConfig . funAnn) fn,
---                           mode == AmortizedCost || mode == HybridCost]
---         sameLength l = and [length l1 == length l2
---                            | l1 <- l, l2 <- l]
-

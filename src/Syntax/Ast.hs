@@ -111,8 +111,12 @@ makeLenses ''FunDef
 -- Core Programs
 --------------------------------------------------------------------------------
 
-newtype ProgramConfig = ProgConfig {
-  templateConfig :: TemplateLanguageConfig
+data CostMode = Amortized | WorstCase
+  deriving (Eq, Show)
+
+data ProgramConfig = ProgConfig {
+  templateConfig :: TemplateLanguageConfig,
+  analysisModes :: Map Id CostMode
   }
   deriving (Eq, Show)
 

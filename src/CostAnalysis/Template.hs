@@ -17,9 +17,8 @@ import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
 import Data.Bifunctor (first)
 
-import Primitive(Id, freeVars, Substitutable(..), substVar, toIntegerExact, dbg, PrettyPrint (prettyPrint))
+import Primitive(Id, freeVars, Substitutable(..), substVar, toIntegerExact)
 import CostAnalysis.Coeff
-import Control.Monad.State
 import qualified CostAnalysis.Constraint as C
 import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Size
@@ -284,15 +283,7 @@ add :: (Template a, Template b) => a -> b -> ArithTemplate
 add q p = ArithTemplate $ M.fromList
   [(idx, C.sum [q!?idx, p!?idx])
   | idx <- S.toList $ terms q `S.union` terms p]
-
--- sub :: (Template a, Template b) => a -> b -> TermTemplate
--- sub q p = TermTemplate (args q `L.union` args p) (ghosts q `L.union` ghosts p)$
---              M.fromList [(idx, C.sub [q!?idx, p!?idx])
---                         | idx <- S.toList $ terms q `S.union` terms p]
-
--- sum :: (Template a) => a -> Term
--- sum q = C.sum [q!i | i <- S.toList $ terms q]
-
+  
 
 assertEq :: (Template a, Template b) => a -> b -> [Formula]
 assertEq q p = concat [C.eq (q!?idx) (p!?idx) | idx <- S.toList $ terms q `S.union` terms p]
@@ -333,105 +324,4 @@ assertEqVarsSubst xs ys q p =
     substs = zip xs ys
     -- Apply each substitution sequentially to the term
     substMultiple qt = foldl (\accTerm (x, y) -> substVar x y accTerm) qt substs
-
-
--- assertLe :: (Template a, Template b) => a -> b -> [Formula]
--- assertLe q p = concat [C.le (q!?idx) (p!?idx) | idx <- S.toList $ terms q `S.union` terms p]
-
--- assertGe :: (Template a, Template b) => a -> b -> [Formula]
--- assertGe q p = concat [C.ge (q!?idx) (p!?idx) | idx <- S.toList $ terms q `S.union` terms p]
-
--- assertGeZero :: Template a => a -> [Formula]
--- assertGeZero = (`assertGe` zeroTemplate)
-
--- assertZero :: Template a => a -> [Formula]
--- assertZero = (`assertEq` zeroTemplate)
-
--- assertZeroExcept :: Template a => a -> Set ResourceTerm -> [Formula]
--- assertZeroExcept q except = concat [ if idx `S.member` except
---                                      then C.eq (q!idx) (ConstTerm 1)
---                                      else C.zero (q!idx)
---                                    | idx <- S.toList $ terms q]
-
--- unifyAssertEq :: (Template a, Template b) => a -> b -> [Formula]
--- unifyAssertEq q p = concat [C.eq (q!?idx) p'
---                           | idx <- S.toList $ terms q,
---                             let p' | justConst idx = p!?idx 
---                                    | length argsQ == length argsP
---                                   = p!?substitute argsQ argsP idx
---                                    | otherwise = ConstTerm 0]
---   where argsP = if L.null $ args p `L.intersect` ghosts p then ghosts p ++ args p else args p
---         argsQ = if length (args q) < length argsP
---                 then ghosts p ++ args q
---                 else args q
-
-                  
--- unifyAssertEqBy :: (Template a, Template b) => a -> b -> [Id] -> [Formula]
--- unifyAssertEqBy q p qArgs = let pArgs = (ghosts p ++ args p) 
---                                 qArgs' = if length qArgs < length pArgs
---                                          then ghosts p ++ qArgs
---                                          else qArgs in
---                                   concat [C.eq (q!?idx) (p!?substitute qArgs' pArgs idx)
---                                  | idx <- S.toList $ terms q]
-
--- | @'apply'@ returns a mapping between template indicies, that allow to apply function represented by
---   represented by the second template to be applied to the argument of the first template.
--- 
--- For two potentials \(\Phi(V), \Psi(W)\), this enables to obtain \(\Psi(V)\), a potential
--- with the arguments of \(\Phi\), applied to \(\Psi\), which can be used to calculate
--- the amortized costs by subtracting \(\Phi(V) - \Psi(V)\). Typically we want this potential
--- to be expressed in terms of the original coefficients of \(\Phi\), which can be accomplished by
--- appyling the unfier to lookup the coefficients.
---
--- If the potentials have an equal number of arguments unification just maps the arguments by
--- their position.
--- In the case where \(|V| > |W|\), we rely on a definition from Sleator and Tarjan, where we
--- define the potential of collection of arguments as the sum of the individual potentials.
---
--- \[\Psi(x_1, \dots, x_n) = \Psi(x_1) + \dots + \Psi(x_n)\]
---
--- This allows us to apply a potential \(\Psi(x) \), defined for only one argument to multible
--- arguments.
---
--- __Example:__ When calculating the costs of the meld operation that merges to two heaps, the
--- potentials differ in the number of their arguements. 
---
--- \[\Phi(x,y) = \mathcal{A}_{\mathbb{merge}} + \Psi(x) + \Psi(y), \Psi(z) = \Psi(z)\]
--- after unificication we get
--- \[\Psi(x,y) = \Psi(x) + \Psi(y)\]
--- so
--- \[\Phi(x,y) - \Psi(x,y) = \mathcal{A}_{\mathbb{merge}}\]
--- apply :: (Template a, Template b) => a -> b -> Map ResourceTerm ResourceTerm
--- apply q p | length (args q) == length (args p) =
---             let s = M.fromList (zip (args q) (args p)) in
---               M.fromList [(i, substitute (args q) (args p) i) | i <- S.toList (terms q)]
--- apply q p = case args p of
---               [] -> M.empty
---               [y] -> M.fromList [(i, substitute (args q)
---                                    (replicate (length (args q)) y) i)
---                                 | i <- S.toList (terms q),
---                                   isPure i || justConst i || singleVar i]
---               _ys_greater_xs -> error $ "cannot apply potential function " ++ show p ++ " to arguments " ++ show (args q)
-
--- symbolicCost :: (Template a, Template b) => a -> b -> TermTemplate
--- symbolicCost q p = TermTemplate (args q) (ghosts q) $  
---   M.fromList [(idx, C.sub [q!idx, tP]) 
---              | idx <- S.toList $ terms q,
---                let tP = maybe (ConstTerm 0) (p!?) (u M.!? idx)] 
---   where u = apply q p
-
--- calculateBound :: ((FreeTemplate, FreeTemplate), FreeTemplate) -> Map Coeff Rational -> BoundTemplate
--- calculateBound ((from, fromRef), to) solution =
---   let diff = BoundTemplate (args from) (ghosts from) $ M.fromList
---         [(idx, from' M.! idx - fromMaybe 0 ((to' M.!?) =<< (u M.!? idx)))
---         | idx <- S.toList $ terms from] in
---     addValues diff qe
---   where q@(BoundTemplate _ from') = bindTemplate from solution
---         qe = bindTemplate fromRef solution
---         p@(BoundTemplate _ to') = bindTemplate to solution
---         u = apply q p
-
-
-
-
-
+    

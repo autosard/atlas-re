@@ -18,7 +18,7 @@ import qualified Data.Set as S
 import qualified Data.Tree as T
 
 
-import Primitive(Id, PrettyPrint (prettyPrint))
+import Primitive(Id, PrettyPrint (prettyPrint), dbg)
 import CostAnalysis.Template hiding (assertEqSubst)
 import qualified CostAnalysis.Template as Templ
 import CostAnalysis.Rules
@@ -27,7 +27,7 @@ import SourceError
 import CostAnalysis.Constraint
 import Typing.Type
 import Typing.Scheme (Scheme, findByType, tFunResult)
-import Syntax.Ast
+import Syntax.Ast hiding (AnalysisMode)
 import CostAnalysis.Coeff
 import Syntax.Measure (SizeTransform, Measure(..), MeasureEnv(..))
 import CostAnalysis.TemplateLanguage
@@ -61,7 +61,8 @@ data AnalysisMode
 data ProofEnv = ProofEnv {
   _tactics :: Map Id Tactic,
   _analysisMode :: AnalysisMode,
-  _incremental :: Bool
+  _incremental :: Bool,
+  _costModes :: Map Id CostMode
   }
 
 data ProofErr

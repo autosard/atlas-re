@@ -32,8 +32,6 @@ import Typing.Scheme
 import Primitive(Id)
 import CostAnalysis.TemplateLanguage
 import Syntax.Measure (Measure(Size, Potential))
-import Text.Megaparsec.Debug (dbg', MonadParsecDbg (dbg))
-
 
 --------------------------------------------------------------------------------
 -- Parser Interface
@@ -57,7 +55,10 @@ parseExpr contents = case runParser (pExpr sc) (T.unpack name) contents of
 --------------------------------------------------------------------------------
 
 pPragma :: Text -> Parser a -> Parser (Maybe a)
-pPragma word p = optional $ between (symbol "{-#") (symbol "#-}") $ symbol word *> p
+pPragma word p = optional $ pPragmaStrict word p
+
+pPragmaStrict :: Text -> Parser a -> Parser a
+pPragmaStrict word p = between (symbol "{-#") (symbol "#-}") $ symbol word *> p
 
 pAtomicLangConf :: Parser AtomicLangConfig
 pAtomicLangConf =
@@ -78,6 +79,7 @@ data TopLevel
   | TLSig (Id, SurfaceFunSig)
   | TLData DataDecl
   | TLMeasure MeasureDef
+  | TLFnPragma (Id, CostMode) 
   deriving Show
 
 pTopLevel :: Parser TopLevel
@@ -86,6 +88,14 @@ pTopLevel =
   <|> TLMeasure <$> pMeasureDef
   <|> TLSig     <$> try pFunSig
   <|> TLClause     <$> pSurfaceClause
+  <|> TLFnPragma <$> pPragmaStrict "ANALYSIS" pCostMode
+
+pCostMode :: Parser (Id, CostMode)
+pCostMode = do
+  mode <- (symbol "amortized" $> Amortized)
+          <|> (symbol "worst_case" $> WorstCase)
+  fn <- pIdentifier
+  return (fn, mode)
 
 pImport :: Parser Id
 pImport = symbol "import" *> pUpperIdentifier
@@ -113,19 +123,20 @@ buildFunDefs sigs clauses =
 
 pProgram :: Parser (SurfaceProgram, [Id])
 pProgram = scn *> do
-  templLangConfig <- pTemplateLanguageConfig
-  
-  let config = ProgConfig (fromMaybe [] templLangConfig)
+  templLangConfig <- fromMaybe [] <$> pTemplateLanguageConfig
 
   imports <- many pImport
 
   tops <- L.nonIndented sc (manyTill pTopLevel eof)
 
   let sigs = M.fromList [(fn, s) | TLSig (fn,s) <- tops]
+      modes   = M.fromList [(fn, m) | TLFnPragma (fn, m) <- tops]
       clauses :: [(Id, SurfaceClause)]
       clauses = [c | TLClause c <- tops]
       groupedClauses = M.fromListWith (++) (map (\(i, c) -> (i, [c])) clauses)
-      
+
+  let config = ProgConfig templLangConfig modes
+  
   funDefs <- buildFunDefs sigs groupedClauses
       
   return (SurfaceProgram
@@ -274,10 +285,18 @@ pPattern :: Parser (Pattern Parsed)
 pPattern = do
   pos <- getSourcePos
   pZeroAryConstPattern pos
+    <|> try (pTuplePattern pos)
     <|> pParens sc (pConstPattern pos)
     <|> PWildcard pos <$ symbol "_"
     <|> PVar pos <$> pIdentifier
     <|> pParens sc pPattern
+
+pTuplePattern :: SourcePos -> Parser (Pattern Parsed)
+pTuplePattern pos = pParens sc (
+  do
+    args <- sepBy1 pPattern (symbol ",") 
+    return (PConst pos "(,)" args))
+  
 
 --------------------------------------------------------------------------------
 -- Expressions
@@ -346,8 +365,10 @@ pConst :: Parser () -> Parser (Expr Parsed)
 pConst sc' = do
   pos <- getSourcePos
   (name, args) <- (,)
-    <$> pUpperIdentifier' sc <*> sepEndBy (pAtom sc) (try sc')
-    <|> ("(,)",) <$> try (pParens sc' ((\x y -> [x, y]) <$> pAtom sc' <* symbol "," <*> pAtom sc'))
+    <$> pUpperIdentifier' sc <*> sepEndBy1 (pAtom sc) (try sc')
+    <|> ("(,)",) <$> try (pParens scn ((\x y -> [x, y]) <$>
+                                       pExpr sc'
+                                       <* symbol "," <*> pExpr sc'))
   return $ ConstAnn pos name args
 
 pVar :: Parser () -> Parser (Expr Parsed)
@@ -366,7 +387,8 @@ pLiteral = do
 pJuxtaposition :: Parser () -> Parser (Expr Parsed)
 pJuxtaposition sc' = 
   try (pApplication sc')
-  <|> pConst sc'
+  <|> try (pConst sc')
+  <|> pZeroAryConst sc'
   <|> pVar sc'
   <|> pVar sc
   <|> pLiteral
@@ -416,7 +438,7 @@ pInfixExpr :: Parser () -> Parser (Expr Parsed)
 pInfixExpr sc = makeExprParser (pJuxtaposition sc) (operatorTable sc)
 
 pExpr :: Parser () -> Parser (Expr Parsed)
-pExpr sc = try (pParenExpr sc)
+pExpr sc = try (pParenExpr scn)
   <|> pKeywordExpr sc
   <|> pInfixExpr sc
   <?> "expression"

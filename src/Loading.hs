@@ -53,7 +53,8 @@ buildProgram (p:ps) = foldr go p ps
         mergeConfigs cfg1 cfg2 = ProgConfig
           { templateConfig = case templateConfig cfg1 of
               [] -> templateConfig cfg2
-              nonEmpty -> templateConfig cfg1
+              nonEmpty -> templateConfig cfg1,
+            analysisModes = M.union (analysisModes cfg1) (analysisModes cfg2)
           }
     
 loadSurfaceProgram :: FilePath -> Text -> IO SurfaceProgram

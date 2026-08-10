@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               atlas-re
-version:            0.1.0.0
+version:            1.0.0.0
 
 -- A short (one-line) description of the package.
 synopsis: Automated Amortized Complexity Analysis
@@ -41,61 +41,21 @@ library
                       Typing.Scheme,
                       Typing.Subst,
                       Typing.Inference,
---                      Benchmark,
                       CostAnalysis.Analysis,
                       CostAnalysis.Coeff,
                       CostAnalysis.Template,
                       CostAnalysis.TemplateLanguage,
---                      CostAnalysis.Predicate,
---                      CostAnalysis.Potential,
                       CostAnalysis.Deriv,
                       CostAnalysis.ProveMonad,
                       CostAnalysis.Tactic,
                       CostAnalysis.Rules,
---                      CostAnalysis.AnnIdxQuoter,
                       CostAnalysis.Constraint,
                       CostAnalysis.Solving,
                       CostAnalysis.Subtyping,
-                      -- CostAnalysis.Potential.Logarithm.Constraints,
-                      -- CostAnalysis.Potential.Logarithm.Base,
-                      -- CostAnalysis.Potential.Logarithm.Weakening,
-                      -- CostAnalysis.Potential.Logarithm.Optimization,
-                      -- CostAnalysis.Potential.SumOfLogs,
-                      -- CostAnalysis.Potential.SumOfLogs.Base,
-                      -- CostAnalysis.Potential.SumOfLogs.Constraints,
-                      -- CostAnalysis.Potential.SumOfLogs.Optimization,
-                      -- CostAnalysis.Potential.SumOfLogs.Weakening,
-                      -- CostAnalysis.Potential.Poly,
-                      -- CostAnalysis.Potential.Poly.Base,
-                      -- CostAnalysis.Potential.Poly.Constraints,
-                      -- CostAnalysis.Potential.Poly.Optimization,
-                      -- CostAnalysis.Potential.Poly.Weakening,
-                      -- CostAnalysis.Potential.NLog,
-                      -- CostAnalysis.Potential.NLog.Base,
-                      -- CostAnalysis.Potential.NLog.Constraints,
-                      -- CostAnalysis.Potential.NLog.Optimization,
-                      -- CostAnalysis.Potential.NLog.Weakening,
-                      -- CostAnalysis.Potential.Rank,
-                      -- CostAnalysis.Potential.Rank.Base,
-                      -- CostAnalysis.Potential.Rank.Constraints,
-                      -- CostAnalysis.Potential.Rank.Optimization,
-                      -- CostAnalysis.Potential.Rank.Weakening,
-                      -- CostAnalysis.Potential.RightHeavy,
-                      -- CostAnalysis.Potential.RightHeavy.Base,
-                      -- CostAnalysis.Potential.RightHeavy.Constraints,
-                      -- CostAnalysis.Potential.RightHeavy.Optimization,
-                      -- CostAnalysis.Potential.RightHeavy.Weakening,
-                      -- CostAnalysis.Potential.TreeSize,
-                      -- CostAnalysis.Potential.TreeSize.Base,
-                      -- CostAnalysis.Potential.TreeSize.Constraints,
-                      -- CostAnalysis.Potential.TreeSize.Optimization,
-                      -- CostAnalysis.Potential.TreeSize.Weakening,
-                      -- CostAnalysis.Potential.Kind,
-                      -- CostAnalysis.Potential.Common,
+
                       CostAnalysis.PrettyProof,
                       StaticAnalysis,
                       SourceError
---                      Eval
  
                       
     

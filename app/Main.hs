@@ -82,6 +82,7 @@ run Options{..} AnalyzeOptions{..} = do
         _tactics=tactics
         , _analysisMode=analysisMode
         , _incremental=switchIncremental
+        , _costModes=analysisModes . _pConfig $ prog
         }
   result <- liftIO $ analyzeProgram env prog
   case result of

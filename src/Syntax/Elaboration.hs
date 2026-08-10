@@ -31,6 +31,7 @@ import CostAnalysis.Template (BoundTemplate(..))
 import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Size
 import StaticAnalysis ( groupFuns )
+import Syntax.Constants (builtInMeasures)
 
 
 
@@ -308,7 +309,7 @@ elabClause _ (SurfaceClause pos _ _) =
       throwError $ SourceError pos (ElabError "Measure definitions must use constructor patterns.")
       
 elabMeasureSig :: [MeasureDef] -> Elab (Map Scheme MeasureEnv)
-elabMeasureSig = foldM insertMeasure M.empty
+elabMeasureSig = foldM insertMeasure builtInMeasures
   where
     insertMeasure :: Map Scheme MeasureEnv -> MeasureDef -> Elab (Map Scheme MeasureEnv)
     insertMeasure envMap mDef = do
