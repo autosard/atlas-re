@@ -67,7 +67,7 @@ run Options{..} AnalyzeOptions{..} = do
   let (modName, fn) = case target of
         (Left mod) -> (mod, Nothing)
         (Right (mod, fn)) -> (mod, Just fn)
-  prog <- loadProgram searchPath modName fn
+  prog <- loadProgram switchInferPotential searchPath modName fn
   when switchPrintProg $ liftIO $ putStrLn (printProg prog)
 
   unless (case fn of 
@@ -83,6 +83,7 @@ run Options{..} AnalyzeOptions{..} = do
         , _analysisMode=analysisMode
         , _incremental=switchIncremental
         , _costModes=analysisModes . _pConfig $ prog
+        , _inferPotential=switchInferPotential
         }
   result <- liftIO $ analyzeProgram env prog
   case result of

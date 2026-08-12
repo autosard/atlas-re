@@ -1,4 +1,6 @@
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE DataKinds #-}
+
 module CostAnalysis.PrettyProof where
 
 import Data.Text.Lazy(Text)
@@ -28,7 +30,8 @@ import CostAnalysis.Coeff
 import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Size hiding (ConstTerm, VarTerm)
 import CostAnalysis.Analysis (AnalysisResult (..))
-import Syntax.Measure (SizeTransform (SizeTransform))
+import Syntax.Measure (SizeTransform (SizeTransform), MeasureAlgebra, Measure(..), ConstPat(..))
+import Typing.Scheme (Scheme) 
 
 css = renderCss ([lucius|
 
@@ -193,6 +196,8 @@ $doctype 5
           <p class="unsat">unsat
         <h2>Size Signature
         ^{hamSizeSig (_arSizeSig result)}
+        <h2>Potential Functions
+        ^{hamPotentialFunctions result' (_arPotSig result)}
         <h2>Signature Constraints
         ^{hamCsList (_arSigCs result) (inCore result')}
         <h2>Derivation
@@ -225,6 +230,41 @@ hamSizeSig sig = [shamlet|
               ^{hamSizeTransform fn trans}
 |]
   where sigs = M.toList sig
+
+hamPotentialFunctions :: Result -> Map Scheme [(ConstPat, FreeTemplate)] -> Html
+hamPotentialFunctions result env = [shamlet|
+<ul>
+    $forall (t, e) <- pots
+        <li>
+          <math display="inline">
+          <mrow>
+          <mi>#{show t}
+          ^{hamPotentialFunction result e}
+|]
+  where pots = M.toList env
+
+hamPotentialFunction :: Result -> [(ConstPat, FreeTemplate)] -> Html
+hamPotentialFunction result clauses = [shamlet|
+<ul class="fn">
+   $forall (lhs, rhs) <- clauses
+     <li class="fn">
+       <math display="inline">
+         <mrow>
+           <mi>𝜙
+           <mo form="prefix" stretchy="false">(
+           <mi>^{hamConstPattern lhs}
+           <mo form="postfix" stretchy="false">)
+           <mo form="infix">=
+           ^{hamTemplUnderResult result rhs}
+|]
+
+hamConstPattern :: ConstPat -> Html
+hamConstPattern (ConstPat name args) = [shamlet|
+<mi>#{name}
+$forall arg <- args
+  <mo>&ApplyFunction;
+  <mi>#{arg}
+|]
 
 hamSizeTransform :: Id -> SizeTransform -> Html
 hamSizeTransform fn (SizeTransform lhs rhs) = [shamlet|

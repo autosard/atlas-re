@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE StrictData #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DataKinds #-}
 
 module CostAnalysis.Analysis where
 
@@ -15,7 +15,7 @@ import Lens.Micro.Platform
 
 import System.Exit (die)
 
-import Primitive(Id, prettyPrint, dbg)
+import Primitive(Id, prettyPrint)
 import Syntax.Ast
 import CostAnalysis.Solving (solve)
 import CostAnalysis.Constraint hiding (and, sum)
@@ -24,8 +24,8 @@ import SourceError
 import Control.Monad.Except (MonadError (throwError))
 import CostAnalysis.Deriv
 import Typing.Type
-import Typing.Scheme (tFunArgs, tFunResult, findByType)
-import Syntax.Measure (SizeTransform)
+import Typing.Scheme (tFunArgs, Scheme(..))
+import Syntax.Measure (SizeTransform, ConstPat)
 -- import CostAnalysis.Potential(PotFnMap, Potential (cExternal), auxSigs)
 -- import CostAnalysis.Potential.Kind (fromKind)
 
@@ -34,12 +34,10 @@ import CostAnalysis.TemplateLanguage
 import CostAnalysis.ProveMonad
 import CostAnalysis.Rules (JudgementType (..))
 import Syntax.ResourceExpression
-import Control.Monad (unless, when, filterM)
-import Data.Maybe (isNothing)
 import Syntax.ResourceExpression.Order (computeStratifiedCosts)
 import CostAnalysis.Constraint (sum)
 import CostAnalysis.Coeff (Coeff(Coeff))
-import Control.Monad.Extra (ifM, whenM)
+import Control.Monad.Extra (whenM, filterM)
 
 
 data AnalysisResult = AnalysisResult {
@@ -48,6 +46,7 @@ data AnalysisResult = AnalysisResult {
   , _arSigCs :: [Formula]
   , _arSizeSig :: Map Id SizeTransform
   , _arResult :: Either [Formula] Solution
+  , _arPotSig :: Map Scheme [(ConstPat, FreeTemplate)]
   } deriving Show
 
 analyzeProgram :: ProofEnv -> Program Positioned
@@ -75,21 +74,26 @@ analyzeProgram env prog = do
     Left (MissingMeasure t m) -> die $ "Missing definition of measure '" ++ show m ++ "' for type '" ++ prettyPrint t ++ "'."  
     Right _ -> buildResult state' (Right solution)
   where buildResult state result =
-          return $ (AnalysisResult
+          return $ AnalysisResult
                      (state^.fnDerivs)
                      (state^.sig)
                      (state^.sigCs)
                      (state^.sizeSig)
-                     result)
+                     result
+                     (potentials $ state^.measureSig)
+
           
 
 analyzeStages :: Program Positioned -> ProveMonad ()
 analyzeStages prog = do
+  tLang .= fromConfig (templateConfig (prog^.pConfig))
   initMeasureSig prog
+  potOptiTgts <- use optiTargets
   
   analyzeSize prog
 
   resetAnalysis
+  optiTargets .= potOptiTgts
   analyzeCost prog
 
 analyzeSize :: Program Positioned -> ProveMonad ()
@@ -104,8 +108,7 @@ analyzeSize prog = do
 
 analyzeCost :: Program Positioned -> ProveMonad ()
 analyzeCost prog = do
-  let lang = fromConfig $ templateConfig (prog^.pConfig)
-  tLang .= lang
+  tLang .= fromConfig (templateConfig (prog^.pConfig))
   initCostSig prog
   constrainSig prog
   
@@ -113,7 +116,7 @@ analyzeCost prog = do
 
 initMeasureSig :: Program Positioned -> ProveMonad ()
 initMeasureSig prog = do
-  mSig' <- enrichMeasureSig (prog^.pMeasureSig)
+  mSig' <- enrichMeasureSig prog
   measureSig .= mSig'
 
 initSizeSig :: Program Positioned -> ProveMonad ()

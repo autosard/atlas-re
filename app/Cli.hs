@@ -55,7 +55,8 @@ data AnalyzeOptions = AnalyzeOptions {
   switchHideConstraints :: Bool,
   switchPrintProg :: Bool,
   switchPrintObjective :: Bool,
-  switchDumpCoeffs :: Bool}
+  switchDumpCoeffs :: Bool,
+  switchInferPotential :: Bool}
 
 runOptionsP :: Parser AnalyzeOptions
 runOptionsP = do
@@ -83,6 +84,9 @@ runOptionsP = do
   switchDumpCoeffs <- switch
     (long "dump-coeffs"
     <> help "Dump the values of found coefficients.")
+  switchInferPotential <- switch
+    (long "infer-potential"
+    <> help "Ignore given potential functions and infer them instead.")
   switchPrintObjective <- switch
     (long "print-objective"
     <> help "Output the final value of the objective function.")      

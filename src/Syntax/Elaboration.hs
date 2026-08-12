@@ -75,17 +75,17 @@ freshMatchVar = do
 -- Programs
 --------------------------------------------------------------------------------
 
-elabProgram :: SurfaceProgram -> Either (SourceError ElabError) (Program Elaborated)
-elabProgram sp = evalState (runExceptT (elabProg sp)) initState
+elabProgram :: Bool -> SurfaceProgram -> Either (SourceError ElabError) (Program Elaborated)
+elabProgram ignorePot sp = evalState (runExceptT (elabProg ignorePot sp)) initState
   
   where initState = ElabState 0
 
-elabProg :: SurfaceProgram -> Elab (Program Elaborated)
-elabProg sp = do
+elabProg :: Bool -> SurfaceProgram -> Elab (Program Elaborated)
+elabProg ignorePot sp = do
   sig <- mapM elabSig (sfSig sp)
   funDefs <- mapM elabFunDef $ sfFunDefs sp
   dataEnv <- elabDataDefs (sfDataDefs sp)
-  measureSig <- elabMeasureSig (sfMeasureDefs sp)
+  measureSig <- elabMeasureSig ignorePot (sfMeasureDefs sp)
   return $ Program {
     _pSig = sig
     , _pConfig = sfConfig sp
@@ -308,8 +308,8 @@ elabClause mKind (SurfaceClause _ [PConst _ cPat pVars] body) = do
 elabClause _ (SurfaceClause pos _ _) = 
       throwError $ SourceError pos (ElabError "Measure definitions must use constructor patterns.")
       
-elabMeasureSig :: [MeasureDef] -> Elab (Map Scheme MeasureEnv)
-elabMeasureSig = foldM insertMeasure builtInMeasures
+elabMeasureSig :: Bool -> [MeasureDef] -> Elab (Map Scheme MeasureEnv)
+elabMeasureSig ignorePot = foldM insertMeasure builtInMeasures
   where
     insertMeasure :: Map Scheme MeasureEnv -> MeasureDef -> Elab (Map Scheme MeasureEnv)
     insertMeasure envMap mDef = do
@@ -325,9 +325,11 @@ elabMeasureSig = foldM insertMeasure builtInMeasures
           alg <- elabAlgebra SSize (mClauses mDef)
           return $ existingEnv { sizeMeasure = alg }
           
-        Potential -> do
-          alg <- elabAlgebra SPotential (mClauses mDef)
-          return $ existingEnv { potentialMeasure = Just alg }
+        Potential -> if ignorePot
+          then return existingEnv
+          else do
+            alg <- elabAlgebra SPotential (mClauses mDef)
+            return $ existingEnv { potentialMeasure = Just alg }
           
       return $ M.insert schemeKey updatedEnv envMap
   

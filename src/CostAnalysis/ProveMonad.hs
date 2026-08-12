@@ -16,9 +16,10 @@ import qualified Data.Map as M
 import Data.Tree(Tree)
 import qualified Data.Set as S
 import qualified Data.Tree as T
+import qualified Data.Text as Text
 
 
-import Primitive(Id, PrettyPrint (prettyPrint), dbg)
+import Primitive(Id)
 import CostAnalysis.Template hiding (assertEqSubst)
 import qualified CostAnalysis.Template as Templ
 import CostAnalysis.Rules
@@ -26,13 +27,21 @@ import CostAnalysis.Tactic
 import SourceError
 import CostAnalysis.Constraint
 import Typing.Type
-import Typing.Scheme (Scheme, findByType, tFunResult)
+import Typing.Scheme (Scheme (Forall), findByType, tFunResult)
 import Syntax.Ast hiding (AnalysisMode)
 import CostAnalysis.Coeff
-import Syntax.Measure (SizeTransform, Measure(..), MeasureEnv(..))
+import Syntax.Measure (SizeTransform,
+                       Measure(..),
+                       MeasureEnv(..),
+                       MeasureAlgebra(..),
+                       ConstPat(..))
 import CostAnalysis.TemplateLanguage
-import Syntax.ResourceExpression ( ResourceTerm(RTId) )
-import Data.Maybe (isJust)
+import Syntax.ResourceExpression ( ResourceTerm(..), isPotential )
+import Data.Maybe (isJust, mapMaybe)
+import Control.Monad (forM)
+import Control.Arrow (Arrow(second))
+import Data.List (uncons)
+import Control.Monad.Extra (whenM)
 
 
 type Derivation = Tree RuleApp
@@ -56,13 +65,15 @@ makeLenses ''ProofState
 data AnalysisMode
   = Check
   | Infer
+  deriving Eq
 
 
 data ProofEnv = ProofEnv {
   _tactics :: Map Id Tactic,
   _analysisMode :: AnalysisMode,
   _incremental :: Bool,
-  _costModes :: Map Id CostMode
+  _costModes :: Map Id CostMode,
+  _inferPotential :: Bool
   }
 
 data ProofErr
@@ -73,27 +84,82 @@ data ProofErr
 
 makeLenses ''ProofEnv
 
-enrichMeasureSig :: Map Scheme MeasureEnv -> ProveMonad (Map Scheme EnrichedMeasureEnv)
-enrichMeasureSig = M.traverseWithKey go
+enrichMeasureSig :: Program a -> ProveMonad (Map Scheme EnrichedMeasureEnv)
+enrichMeasureSig prog = M.traverseWithKey go (prog^.pMeasureSig)
   where go :: Scheme -> MeasureEnv -> ProveMonad EnrichedMeasureEnv
         go t mEnv = do
-          let potMeasure = case potentialMeasure mEnv of
-                Just pm -> return $ Left pm
-                Nothing -> Nothing -- error $ "missing potential measure for type " ++ prettyPrint t
+          potMeasure <- case potentialMeasure mEnv of
+                Just pm -> return pm
+                Nothing -> genPotMeasure (prog ^. pDataEnv) t
+                  
           return $ EnrichedMeasureEnv {
             emSizeMeasure = sizeMeasure mEnv
-            , emPotentialMeasure = potMeasure
+            , emPotentialMeasure = Just potMeasure
             }
           
+potentials :: Map Scheme EnrichedMeasureEnv -> Map Scheme [(ConstPat, FreeTemplate)]
+potentials = M.mapMaybe go
+  where go env = do
+          (Equations eqs) <- emPotentialMeasure env
+          return $ map (second toTempl) eqs
+        toTempl :: [ResourceTerm] -> FreeTemplate
+        toTempl terms = let ts = mapMaybe go terms in
+                            case uncons ts of
+                              Just ((i, _), _) -> FreeTemplate i (S.fromList (map snd ts))
+                              Nothing -> FreeTemplate 0 S.empty
+          where go (RTCoeffScale i idx _) = Just (i, idx)
+                go _ = Nothing
+
+
+genPotMeasure :: DataEnv -> Scheme -> ProveMonad (MeasureAlgebra Potential)
+genPotMeasure env (Forall _ (TAp tName _)) = do
+  let ctors = diCtors $ env M.! tName
+
+  let ctorInputs = [(cName, args')
+                   | CtorInfo cName cType <- ctors
+                   ,  let (Forall _ t) = cType
+                          args' = [(Text.pack $ "_pArg" ++ show i, t)
+                                  | (t, i) <- zip (funTArgs t) [1..]
+                                  ]
+                   ]
+                   
+  eqs <- forM ctorInputs $ \(cName, args') -> do 
+      let templArgs = map fst $ filter (\(_,t) -> isResourceRelevant t) args'
+      let patArgs = map fst args'
+
+      templ <- freshTempl templArgs
+      
+      whenM ((== Infer) <$> view analysisMode)
+        (do
+            abs <- sequence [coeffAbs (templ!t) | t <- S.toList (terms templ)]
+--          let negCoeffs = [minus (templ!t) | t <- S.toList (terms templ)]
+            optiTargets %= (sum abs :)
+        )
         
+      let rhs = [RTCoeffScale (templ^.ftId) t t
+              | t <- S.toList $ terms templ
+              , not (isPotential t)]
+              ++ [RTScale 1 t 
+                 | t <- S.toList $ terms templ
+                 , isPotential t]
+      return (ConstPat cName patArgs, rhs)
+
+  return $ Equations eqs
+
+coeffAbs :: ArithExpr -> ProveMonad ArithExpr
+coeffAbs q = do
+  abs <- freshVar
+  tellCs $ geZero abs
+           ++ ge abs q
+           ++ ge abs (minus q)
+  return abs
+  
+  
 
 isCostFree :: JudgementType -> Bool
 isCostFree Standard = False
 isCostFree _ = True
 
--- cfSigIdx :: JudgementType -> Maybe Int
--- cfSigIdx (Cf n) = Just n
--- cfSigIdx _ = Nothing
 
 type Solution = (Map Coeff Rational, String)
 
@@ -218,157 +284,7 @@ sizeTransformable prog fn = do
   mSig <- use measureSig
   return $ isJust (findByType tResult mSig)
 
--- potForType :: Type -> ProveMonad Potential
--- potForType t = do
---   aux <- use auxMode
---   if aux
---   then do
---     auxPots <- use auxPotentials
---     return $ auxPots M.! t
---   else do
---     pots <- use potentials
---     return $ maybe
---       (error $ "No potential function for type '" ++ show t ++ "' defined.")
---       fst (pots M.!? t)
-
--- annForType :: Type -> Map Type (Potential, FreeTemplate) -> FreeTemplate
--- annForType t m = snd $ m M.! t
-
--- withPotAndId :: Type -> (Potential -> Int -> Text -> Text -> [Id] -> FreeTemplate)
---   -> (Text -> Text -> [Id] -> ProveMonad FreeTemplate)
--- withPotAndId t f label comment args = do
---   pot <- potForType t
---   id <- genAnnId
---   return $ f pot id label comment args
-
--- withId :: (Potential -> Int -> Text -> Text -> [Id] -> FreeTemplate)
---   -> (Potential -> Text -> Text -> [Id] -> ProveMonad FreeTemplate)
--- withId f pot label comment args = do
---   id <- genAnnId
---   return $ f pot id label comment args
-
--- emptyTempl :: Text -> Text -> [Id] -> [Id] -> ProveMonad FreeTemplate
--- emptyTempl label comment args ghosts = do
---   id <- genAnnId
---   return $ Templ.emptyTempl id label comment args ghosts
-
--- emptyAnn :: Map Type ([Id], [Id]) -> Text -> Text -> ProveMonad FreeAnn
--- emptyAnn args label comment = do
---   templs <- mapM (\(t, (vars, ghosts)) -> (t, ) <$> emptyTempl label comment vars ghosts) $ M.toAscList args
---   return $ M.fromList templs
-
--- emptyAnnFrom :: FreeAnn -> Text -> Text -> ProveMonad FreeAnn
--- emptyAnnFrom ann label comment = do
---   templs <- mapM (\(t, templ) -> (t, ) <$> emptyTempl label comment (Templ.args templ) (Templ.ghosts templ)) (M.assocs ann)
---   return $ M.fromList templs
-  
--- fromTempl :: Text -> Text -> FreeTemplate -> ProveMonad FreeTemplate
--- fromTempl label comment ann = do
---   id <- genAnnId
---   return $ Templ.defineFrom id label comment ann
-
--- fromAnn :: Text -> Text -> FreeAnn -> ProveMonad FreeAnn
--- fromAnn label comment ctx = M.fromList <$> mapM go (M.toList ctx)
---   where go (t, templ) = do
---           templ' <- fromTempl label comment templ
---           return (t, templ')
-
--- enrichWithDefaults :: TemplateOptions -> Text -> Text -> FreeAnn -> ProveMonad FreeAnn
--- enrichWithDefaults neg label comment ctx = do
---   let qs = M.toAscList ctx
---   M.fromList <$> mapM (enrichAnnWithDefaults neg label comment) qs
-
--- enrichAnnWithDefaults :: TemplateOptions -> Text -> Text -> (Type, FreeTemplate) -> ProveMonad (Type, FreeTemplate)
--- enrichAnnWithDefaults opts label comment (t, ann) = do
---   pot <- potForType t 
---   id <- genAnnId
---   return (t, P.enrichWithDefaults pot opts id label comment ann)
-
-
--- freshAnn :: Map Type [Id] -> Text -> Text -> TemplateOptions -> ProveMonad FreeAnn
--- freshAnn args label comment opts = do
---   anns <- mapM (\(t, vars) -> (t, ) <$> freshTempl t opts label comment vars) $ M.toAscList args
---   return $ M.fromList anns
-
--- defaultAnn :: Map Type [Id] -> Text -> Text  -> ProveMonad FreeAnn
--- defaultAnn args label comment = do
---   anns <- mapM (\(t, vars) -> (t, ) <$> defaultTempl t label comment vars) $ M.toAscList args
---   return $ M.fromList anns
-
-
-
--- singleAnn :: Potential -> Type -> Map Type [Id] -> Text -> Text -> ProveMonad FreeAnn
--- singleAnn pot nonZeroType args label comment = do
---   anns <- mapM templForType $ M.toAscList args
---   return $ M.fromList anns
---   where templForType (t, vars) = do
---           templ <- if t == nonZeroType
---                    then defaultTemplFor pot label comment vars 
---                    else emptyTempl label comment vars []
---           return (t, templ)
-
--- freshTempl :: Type -> TemplateOptions -> Text -> Text -> [Id] -> ProveMonad FreeTemplate
--- freshTempl t opts = withPotAndId t (P.templForPot opts)
-  
--- defaultTempl :: Type -> Text -> Text -> [Id] -> ProveMonad FreeTemplate
--- defaultTempl t = withPotAndId t P.defaultTemplForPot
-
--- defaultTemplFor :: Potential -> Text -> Text -> [Id]  -> ProveMonad FreeTemplate
--- defaultTemplFor = withId P.defaultTemplForPot
-
--- emptyArrayFromIdxs :: Id -> [(JudgementType, CoeffIdx)] -> Text -> [Id] -> [Id] -> ProveMonad TemplateArray
--- emptyArrayFromIdxs x idxs label args ghosts = templArrayFromIdxs x idxs label args ghosts emptyTempl
-
 defineByShift :: (ArithExpr -> ArithExpr) -> FreeTemplate -> ProveMonad (FreeTemplate , [Formula])
 defineByShift shift q = do
   p <- freshFrom q
-  return (p, assertEqExceptTerm RTId shift p q)
-  
--- defineByShift :: FreeAnn -> FreeAnn -> (ArithExpr -> ArithExpr) -> ProveMonad (FreeAnn, [Constraint])
--- defineByShift qs_ ps shift = do
---   annsWithPot <- mapM (\(t, q) -> do
---                           pot <- potForType t 
---                           return (t, pot, q, ps M.! t)) $ M.toAscList qs_
---   let (qs, css) = unzip $ map eqExceptConst' annsWithPot
---   qConsts <- mapM (\(t, q) -> do
---                       pot <- potForType t 
---                       return (t, oneCoeff pot)) qs
---   pConstTerms <- mapM (\(t, p) -> do
---                           pot <- potForType t 
---                           return $ p Templ.!? oneCoeff pot) $ M.assocs ps 
---   let (qs', cs) = extend (M.fromList qs) $ (`shiftSum` pConstTerms)  <$> defMulti qConsts
---   return (qs', concat css ++ cs)
---   where eqExceptConst' (t, pot, q, p) = let (q', cs) = defineByExceptConst pot q p in
---           ((t, q'), cs)
---         shiftSum qs ps = sum qs `eq` shift (sum ps)
-
--- defineByMinus :: FreeAnn -> FreeAnn -> ArithExpr -> ProveMonad (FreeAnn, [Constraint])
--- defineByMinus qs_ ps t = defineByShift qs_ ps (\s -> sub [s,t])
-
--- defineByPlus :: FreeAnn -> FreeAnn -> ArithExpr -> ProveMonad (FreeAnn, [Constraint])
--- defineByPlus qs_ ps t = defineByShift qs_ ps (\s -> sum [s,t])
-
-
--- templArrayFromIdxs :: Id -> [(JudgementType, CoeffIdx)] -> Text -> [Id] -> [Id]
---   -> (Text -> Text -> [Id] -> [Id] -> ProveMonad FreeTemplate)
---   -> ProveMonad TemplateArray
--- templArrayFromIdxs x idxs label args ghosts templGen = do
---   anns <- mapM annFromIdx idxs
---   return $ M.fromList anns
---   where annFromIdx (judgeT, idx) = (idx,) <$> do
---           auxMode .= case judgeT of
---             (Aux _) -> True
---             _ -> False
---           t <- templGen (label' idx) "" (addArgs idx ++ args) ghosts
---           auxMode .= False
---           return t
---         printIdx idx = "(" ++ intercalate "," (map show (S.toAscList idx)) ++ ")"
---         label' idx = Te.concat [label, "_", Te.pack $ show idx]
---         addArgs idx = (coeffArgs . mixed) (restrictFacs idx [2,1]) L.\\ args
-
--- annCOptimize :: (FreeAnn, FreeAnn) -> FreeAnn -> ProveMonad [ArithExpr]
--- annCOptimize (qs, qes) qs' = concat <$> mapM go (zip3 (M.assocs qs) (M.assocs qes) (M.assocs qs'))
---   where go :: ((Type, FreeTemplate), (Type, FreeTemplate), (Type, FreeTemplate)) -> ProveMonad [ArithExpr]
---         go ((t, q), (_, qe), (_, q')) = do
---           pot <- potForType t
---           return $ cOptimize pot (q, qe) q'          
+  return (p, assertEqExceptTerm RTId shift p q)  

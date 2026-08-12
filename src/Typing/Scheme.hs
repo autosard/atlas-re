@@ -32,6 +32,7 @@ tFunResult (Forall 0 (TFun _ result)) = result
 toType :: Scheme -> Type
 toType (Forall _ t) = t
 
+
 quantify :: [Id] -> Type -> Scheme
 quantify vs t = Forall (length vs) (apply s t)
   where vs' = [v | v <- tv t, v `elem` vs]

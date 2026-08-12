@@ -99,3 +99,8 @@ mergeSubst s1 s2 =
   in if and conflicts 
      then Just (M.union s1 s2) 
      else Nothing
+
+funTArgs :: Type -> [Type]
+funTArgs (TFun t s@(TFun _ _)) = t : funTArgs s
+funTArgs (TFun t _) = [t]
+funTArgs t = []

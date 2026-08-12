@@ -22,7 +22,7 @@ data ConstPat = ConstPat Id [Id]
 instance HasVars ConstPat where
   freeVars (ConstPat _ vars) = S.fromList vars
 
-data Measure = Size | Potential | TemplPotential
+data Measure = Size | Potential 
   deriving Show
 
 

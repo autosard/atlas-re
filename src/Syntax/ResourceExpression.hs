@@ -24,6 +24,7 @@ data ResourceTerm
   -- special form for specifing potential functions
   -- this is normalized aways in templates
   | RTScale Rational ResourceTerm
+  | RTCoeffScale Int ResourceTerm ResourceTerm
   deriving (Eq, Ord, Show)
 
 instance Substitutable ResourceTerm where
@@ -33,12 +34,15 @@ instance Substitutable ResourceTerm where
   subst env (RTPhi x) = RTPhi $ subst env x
   subst env RTId = RTId
   subst env (RTScale k t) = RTScale k $ subst env t
+  subst env (RTCoeffScale i idx t) = RTCoeffScale i idx $ subst env t
 
 instance HasVars ResourceTerm where
   freeVars (RTSize x) = S.singleton x
   freeVars (RTBinoms bs) = S.unions $ map (freeVars . fst) bs
   freeVars (RTLog ss) = freeVars ss
   freeVars (RTPhi x) = S.singleton x
+  freeVars (RTScale k t) = freeVars t
+  freeVars (RTCoeffScale i idx t) = freeVars t
   freeVars RTId = S.empty
 
 instance PrettyPrint ResourceTerm where
@@ -57,3 +61,6 @@ instance PrettyPrint ResourceTerm where
 isZero :: ResourceTerm -> Bool
 isZero (RTLog s) = s == sizeConst 1
 isZero otherTerm = False
+
+isPotential (RTPhi _) = True
+isPotential _ = False

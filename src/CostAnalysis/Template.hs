@@ -25,6 +25,7 @@ import Syntax.ResourceExpression.Size
 import Syntax.Measure
 import CostAnalysis.Constraint hiding (ConstTerm, VarTerm)
 import qualified Data.Text as T
+import Typing.Scheme (Scheme)
 
 --------------------------------------------------------------------------------
 -- General Templates
@@ -43,8 +44,6 @@ class (Show a) => Template a where
 
 costTerms :: Set ResourceTerm -> Set ResourceTerm
 costTerms = S.filter (not . isPotential) 
-  where isPotential (RTPhi _) = True
-        isPotential _ = False
 
 --------------------------------------------------------------------------------
 -- FreeTemplate
@@ -168,15 +167,14 @@ zeroTemplate = ArithTemplate M.empty
 
 
 --------------------------------------------------------------------------------
--- Measure Templates
+-- Measure Enviroment
 --------------------------------------------------------------------------------
-
-type instance  Carrier 'TemplPotential = FreeTemplate
 
 data EnrichedMeasureEnv = EnrichedMeasureEnv {
   emSizeMeasure :: MeasureAlgebra Size, 
-  emPotentialMeasure :: Maybe (Either (MeasureAlgebra Potential) (MeasureAlgebra TemplPotential))
+  emPotentialMeasure :: Maybe (MeasureAlgebra Potential)
 } deriving (Eq, Show)
+
 
 --------------------------------------------------------------------------------
 -- Template Equality
@@ -199,18 +197,19 @@ assertEqSubst checkTarget subst q p = (rhsTerms, constrain reducts)
                           else CoeffTerm (Coeff (p^.ftId) tgt))
                          (sum (map termFromSrc srcs))
                        | (tgt, srcs) <- rs, (not . isZero) tgt] 
-        termFromSrc (1, t) = q!t
-        termFromSrc (k, t) = prod2 (C.ConstTerm k) (q!t)
+        termFromSrc (C.ConstTerm 1, t) = q!t
+        termFromSrc (k, t) = prod2 k (q!t)
         rhsTerms = S.fromList $ map fst reducts
         reducts = mergeTerms
                   . reduceTerms subst $ S.toList (terms q)
 
 -- dont forget that the flips the templates
-mergeTerms :: [(ResourceTerm, ResourceTerm)] -> [(ResourceTerm, [(Rational, ResourceTerm)])]
+mergeTerms :: [(ResourceTerm, ResourceTerm)] -> [(ResourceTerm, [(ArithExpr, ResourceTerm)])]
 mergeTerms xs = M.toList
   $ M.fromListWith (++) [origin (src, tgt) | (src, tgt) <- xs]
-  where origin (src, RTScale k tgt) = (tgt, [(k, src)])
-        origin (src, tgt) = (tgt, [(1, src)])
+  where origin (src, RTScale k tgt) = (tgt, [(C.ConstTerm k, src)])
+        origin (src, RTCoeffScale i idx tgt) = (tgt, [(CoeffTerm (Coeff i idx), src)])
+        origin (src, tgt) = (tgt, [(C.ConstTerm 1, src)])
 
 reduceTerms :: (Id, SubstValue) -> [ResourceTerm] -> [(ResourceTerm, ResourceTerm)]
 reduceTerms subst = concatMap go
@@ -227,8 +226,7 @@ reduceTerm subst (RTSize x) = let sizes = reduceSizeSum subst (sizeVar x) in
 reduceTerm subst (RTLog ss) = [RTLog $ reduceSizeSum subst ss]
 reduceTerm (x,  ExpandCtor pat mEnv) t@(RTPhi y)
   | x == y = case emPotentialMeasure mEnv of
-      Just (Left potAlg) -> apply potAlg pat
-      Just (Right _) -> error "not implemented"
+      Just potAlg -> apply potAlg pat
       Nothing -> error $ "missing potential measure for " ++ T.unpack x
   | otherwise = [t]
 reduceTerm (x,  _) t@(RTPhi _) = [t]
