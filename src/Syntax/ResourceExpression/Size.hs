@@ -42,6 +42,7 @@ sizeSubst (x, v) sum
   | otherwise = sum
 
 data SizeTerm = VarTerm Id Int | ConstTerm Int
+  deriving Show
 
 addSizeTerm :: SizeTerm -> SizeSum -> SizeSum
 addSizeTerm (VarTerm x k) = ssCoeffs %~ M.insertWith (+) x k

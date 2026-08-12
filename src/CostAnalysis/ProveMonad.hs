@@ -42,6 +42,7 @@ import Control.Monad (forM)
 import Control.Arrow (Arrow(second))
 import Data.List (uncons)
 import Control.Monad.Extra (whenM)
+import Data.Monoid (Last)
 
 
 type Derivation = Tree RuleApp
@@ -160,8 +161,19 @@ isCostFree :: JudgementType -> Bool
 isCostFree Standard = False
 isCostFree _ = True
 
+newtype OptBound = OptBound String
+  deriving Show
 
-type Solution = (Map Coeff Rational, String)
+instance Semigroup OptBound where
+  (<>) (OptBound "") b2 = b2
+  (<>) b1 (OptBound "") = b1
+  (<>) (OptBound b1) (OptBound b2) = OptBound $ b1 ++ ", " ++ b2
+  
+instance Monoid OptBound where
+  mempty = OptBound ""
+
+
+type Solution = (Map Coeff Rational, OptBound)
 
 type ProveMonad a = ExceptT ProofErr (RWST ProofEnv Solution ProofState IO) a
 

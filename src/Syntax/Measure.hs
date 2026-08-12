@@ -31,10 +31,14 @@ type family Carrier (m :: Measure) :: Type
 type instance Carrier 'Size = SizeSum
 type instance  Carrier 'Potential = [ResourceTerm]
 
+data Relation = Ge
+              | Eq
+              deriving (Show)
 
-data SizeTransform = SizeTransform {
-  stLhs :: [Id]
+data SizeTransform = SizeTransform
+  { stLhs :: [Id]
   , stRhs :: SizeSum
+  , stRelation :: Relation
   } deriving Show
 
 applyST :: SizeTransform -> [Id] -> SizeSum

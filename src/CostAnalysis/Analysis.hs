@@ -15,17 +15,17 @@ import Lens.Micro.Platform
 
 import System.Exit (die)
 
-import Primitive(Id, prettyPrint)
+import Primitive(Id, prettyPrint, dbg)
 import Syntax.Ast
 import CostAnalysis.Solving (solve)
 import CostAnalysis.Constraint hiding (and, sum)
 import SourceError
 -- import CostAnalysis.Rules
-import Control.Monad.Except (MonadError (throwError))
+import Control.Monad.Except (MonadError (throwError, catchError))
 import CostAnalysis.Deriv
 import Typing.Type
 import Typing.Scheme (tFunArgs, Scheme(..))
-import Syntax.Measure (SizeTransform, ConstPat)
+import Syntax.Measure (SizeTransform, ConstPat, Relation)
 -- import CostAnalysis.Potential(PotFnMap, Potential (cExternal), auxSigs)
 -- import CostAnalysis.Potential.Kind (fromKind)
 
@@ -37,7 +37,9 @@ import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Order (computeStratifiedCosts)
 import CostAnalysis.Constraint (sum)
 import CostAnalysis.Coeff (Coeff(Coeff))
-import Control.Monad.Extra (whenM, filterM)
+import Control.Monad.Extra (whenM, filterM, concatMapM)
+import qualified Syntax.Measure (Relation(..))
+import Data.Monoid (Last(Last))
 
 
 data AnalysisResult = AnalysisResult {
@@ -101,10 +103,27 @@ analyzeSize prog = do
   tLang .= sizeTLang
   initSizeSig prog
   constrainSigForSize prog
-  optimizeSig prog
-  analyzeProg Cf prog
+  
+  mapM_ analyzeScc ( prog^.pMutRecGroups)
 
-  obtainSizeTransforms
+  where analyzeScc scc = do
+          optimizeScc scc prog
+          (do
+              strictPass scc
+              trackSolution
+              obtainSizeTransforms scc Syntax.Measure.Eq
+           ) `catchError` (\(UnsatErr _) -> do
+              constraints .= []
+              upperBoundPass scc
+              trackSolution
+              obtainSizeTransforms scc Syntax.Measure.Ge)
+           
+        strictPass = analyzeBindingGroup CfEq prog 
+        upperBoundPass = analyzeBindingGroup Cf prog
+        trackSolution = do
+          (Just coeffs) <- use solution
+          tellSigCs $ concatMap (\(q, v) -> eq (CoeffTerm q) (ConstTerm v)) (M.toList coeffs)
+
 
 analyzeCost :: Program Positioned -> ProveMonad ()
 analyzeCost prog = do
@@ -152,7 +171,7 @@ analyzeProg mode prog = do
   if incr then
     mapM_ (analyzeBindingGroup mode prog) ( prog^.pMutRecGroups)
   else
-    analyzeBindingGroup mode prog (concat $ prog^.pMutRecGroups)
+    analyzeBindingGroup mode prog (concat (prog^.pMutRecGroups))
 
 analyzeBindingGroup :: JudgementType -> Program Positioned -> [Id]  -> ProveMonad ()
 analyzeBindingGroup mode prog fns = do
@@ -177,10 +196,16 @@ constrainSigForSize prog = do
             let sizeOne = BoundTemplate $ M.singleton (RTSize (fs^.fsBinder)) 1
             tellSigCs $ assertEq sizeOne (fs^.fsTo)
         
-optimizeSig :: Program Positioned -> ProveMonad ()
-optimizeSig prog = mapM_ go . M.toList =<< use sig
-  where go :: (Id, FreeSig) -> ProveMonad ()
-        go (fn, fsSig) = do
+optimizeSigs :: Program Positioned -> ProveMonad ()
+optimizeSigs prog = mapM_ (optimizeSig prog) . M.toList =<< use sig
+
+optimizeScc :: [Id] -> Program Positioned -> ProveMonad ()
+optimizeScc scc prog = do
+  sig' <- (`M.restrictKeys` S.fromList scc) <$> use sig
+  mapM_ (optimizeSig prog) $ M.toList sig'
+
+optimizeSig :: Program Positioned -> (Id, FreeSig) -> ProveMonad () 
+optimizeSig prog (fn, fsSig) = do
           whenM (sizeTransformable prog fn) $
             optiTargets %= (costTerm:)
           where
@@ -198,7 +223,7 @@ constrainSig prog = do
     Check -> assertSigMatchesAnn prog
     Infer -> do
       assertPotential
-      optimizeSig prog
+      optimizeSigs prog
 
 assertPotential :: ProveMonad ()
 assertPotential = mapM_ go . M.toList =<< use sig
@@ -226,25 +251,43 @@ assertSigMatchesAnn prog = do
               go fn fsig = case fsig^.costSig of
                 Just cs -> do
                   fs <- (M.! fn) <$> use sig
-                  tellSigCs $ assertEqVarsSubst (args (fs^.fsFrom)) (args (csFrom cs))  (fs^.fsFrom) (csFrom cs) 
+                  
+                  tellSigCs $ assertEqVarsSubst (args (fs^.fsFrom)) (csArgs cs)  (fs^.fsFrom) (csFrom cs) 
                   tellSigCs $ assertEqVarsSubst [fs^.fsBinder] [csBinder cs]  (fs^.fsTo) (csTo cs) 
                 Nothing -> throwError $ ProofErr ("Missing resource annotation for function"
                                                   ++ " '" ++ show fn ++ "'"
                                                   ++ " in check mode.")
 
-obtainSizeTransforms :: ProveMonad ()
-obtainSizeTransforms = do
+-- obtainSizeTransforms :: Relation -> ProveMonad ()
+-- obtainSizeTransforms rel = do
+--   fsSig <- use sig
+--   mapM_ go $ M.toList fsSig
+--   where go :: (Id, FreeSig) -> ProveMonad ()
+--         go (fn, fs) = do
+--           sol <- use solution
+--           case sol of
+--             Just sol -> do
+--               let boundTempl = bindTemplate (fs^.fsFrom) sol
+--               let transform = sizeTransformFromTempl (fs^.fsFormArgs) boundTempl rel
+--               sizeSig . at fn .= Just transform
+--             Nothing -> error "cannot obtain size transforms without a solution."
+
+obtainSizeTransforms :: [Id] -> Relation -> ProveMonad ()
+obtainSizeTransforms scc rel = do
   fsSig <- use sig
-  mapM_ go $ M.toList fsSig
+  
+  mapM_ go $ M.toList (M.restrictKeys fsSig (S.fromList scc))
+  
   where go :: (Id, FreeSig) -> ProveMonad ()
         go (fn, fs) = do
           sol <- use solution
           case sol of
             Just sol -> do
               let boundTempl = bindTemplate (fs^.fsFrom) sol
-              let transform = sizeTransformFromTempl (fs^.fsFormArgs) boundTempl
+              let transform = sizeTransformFromTempl (fs^.fsFormArgs) boundTempl rel
               sizeSig . at fn .= Just transform
             Nothing -> error "cannot obtain size transforms without a solution."
+
   
 
 appendDeriv :: Id -> Derivation -> ProveMonad ()

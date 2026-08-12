@@ -84,10 +84,10 @@ data TopLevel
 
 pTopLevel :: Parser TopLevel
 pTopLevel = 
-  TLData    <$> pDataDef
-  <|> TLMeasure <$> pMeasureDef
-  <|> TLSig     <$> try pFunSig
-  <|> TLClause     <$> pSurfaceClause
+  TLData         <$> try pDataDef
+  <|> TLMeasure  <$> pMeasureDef
+  <|> TLSig      <$> try pFunSig
+  <|> TLClause   <$> pSurfaceClause
   <|> TLFnPragma <$> pPragmaStrict "ANALYSIS" pCostMode
 
 pCostMode :: Parser (Id, CostMode)
@@ -152,20 +152,23 @@ pProgram = scn *> do
 --------------------------------------------------------------------------------
 
 pDataDef :: Parser DataDecl
-pDataDef = do
+pDataDef = L.lineFold scn $ \sc' -> do
   pos <- getSourcePos
   symbol "data"
   name <- pUpperIdentifier
   params <- many pIdentifier
   symbol "="
-  ctors <- sepBy pConstructorDecl (symbol "|")
+  ctors <- sepBy (pConstructorDecl sc') (symbol "|")
+  scn
   return $ DataDecl pos name params ctors
 
-pConstructorDecl :: Parser CtorDecl
-pConstructorDecl = do
+pConstructorDecl :: Parser () -> Parser CtorDecl
+pConstructorDecl sc' = do
   name <- pUpperIdentifier
-  args <- many (pParens scn pType <|> try pType)
+  args <- sepEndBy (pType sc) (try sc')
   return $ CtorDecl name args
+
+  -- sepEndBy1 (pAtom sc) (try sc')
 
   
 --------------------------------------------------------------------------------
@@ -183,7 +186,7 @@ pMeasureDef = L.indentBlock sc $ do
   symbol "measure"
   measure <-   (symbol "Size" $> Size)
            <|> (symbol "Potential" $> Potential)
-  ty <- pType
+  ty <- (pType scn)
   hSymbol "where"
   return $ L.IndentSome Nothing (buildMeasure ty measure) pSurfaceClause
 
@@ -196,7 +199,7 @@ pBindings = try (pParens sc pBindInner)
   <|> pBindInner
 
 pBindInner :: Parser [(Id, Type)]
-pBindInner = sepBy ((,) <$> pIdentifier <* symbol ":" <*> pType) (symbol ",")
+pBindInner = sepBy ((,) <$> pIdentifier <* symbol ":" <*> pTypeSafe) (symbol ",")
 
 pResultBinding :: Parser (Id, Type)
 pResultBinding = try (pParens sc single) <|> single
@@ -204,7 +207,7 @@ pResultBinding = try (pParens sc single) <|> single
     single = do
       x  <- pIdentifier
       _  <- symbol ":"
-      ty <- pType
+      ty <- pTypeSafe
       return (x, ty)
 
 pFunSig :: Parser (Id, SurfaceFunSig)
@@ -249,21 +252,33 @@ pSurfaceClause = L.lineFold scn $ \sc' -> do
 -- Types
 --------------------------------------------------------------------------------
 
-pType :: Parser Type
-pType = do
+pTypeSafe :: Parser Type
+pTypeSafe = do
   TVar <$> pIdentifier
-  <|> pProdType
-  <|> pTypeApp
+  <|> pProdType scn
+  <|> pTypeApp scn
+  
+pType :: Parser () -> Parser Type
+pType sc' = do
+  TVar <$> pIdentifier' sc'
+  <|> try (pProdType sc')
+  <|> pParens sc' (pTypeApp scn)
+  <|> pZeroAryTypeApp
 
-pTypeApp :: Parser Type
-pTypeApp = do
+pZeroAryTypeApp :: Parser Type
+pZeroAryTypeApp = do
   c <- pUpperIdentifier
-  args <- many pType
+  return (TAp c [])
+
+pTypeApp :: Parser () -> Parser Type
+pTypeApp sc' = do
+  c <- pUpperIdentifier
+  args <- sepEndBy (pType sc) (try sc')
   return (TAp c args)
 
-pProdType :: Parser Type
-pProdType = do
-  ts <- pParens sc (sepBy1 pType pCross)
+pProdType :: Parser () -> Parser Type
+pProdType sc' = do
+  ts <- pParens sc (sepBy1 (pType sc') pCross)
   return (prod ts)
 
 --------------------------------------------------------------------------------

@@ -86,7 +86,8 @@ data Expr a
 --------------------------------------------------------------------------------
 
 data CostSig = CostSig {
-  csFrom :: BoundTemplate, 
+  csFrom :: BoundTemplate,
+  csArgs :: [Id],
   csTo :: BoundTemplate,
   csBinder :: Id
 } deriving (Eq, Show)

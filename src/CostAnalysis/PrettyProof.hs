@@ -31,7 +31,8 @@ import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Size hiding (ConstTerm, VarTerm)
 import CostAnalysis.Analysis (AnalysisResult (..))
 import Syntax.Measure (SizeTransform (SizeTransform), MeasureAlgebra, Measure(..), ConstPat(..))
-import Typing.Scheme (Scheme) 
+import Typing.Scheme (Scheme)
+import qualified Syntax.Measure(Relation(..))
 
 css = renderCss ([lucius|
 
@@ -267,14 +268,18 @@ $forall arg <- args
 |]
 
 hamSizeTransform :: Id -> SizeTransform -> Html
-hamSizeTransform fn (SizeTransform lhs rhs) = [shamlet|
+hamSizeTransform fn (SizeTransform lhs rhs rel) = [shamlet|
 <mo rspace=0>|
 <mo lspace=0>#{fn}
 $forall arg <- lhs
   <mo>&ApplyFunction;
   <mi>#{arg}
 <mo lspace=0 rspace=0>|  
-<mo>≤
+$case rel
+  $of Syntax.Measure.Ge
+     <mo>≤
+  $of Syntax.Measure.Eq
+     <mo>=
 ^{hamSizeSum rhs}
 |]
                   
@@ -660,9 +665,10 @@ $if coeff < 0
     <mn>#{abs coeff}
   <mi>^{hamSize varId}
 $else
-  $if showLeadingPlus
-    <mo>+
-  $if coeff > 1
-    <mn>#{abs coeff}  
-  <mi>^{hamSize varId}
+    $if coeff > 0
+      $if showLeadingPlus
+        <mo>+
+      $if coeff > 1  
+        <mn>#{abs coeff}  
+      <mi>^{hamSize varId}
 |]

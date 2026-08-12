@@ -24,6 +24,7 @@ import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
 import Data.Maybe (isNothing, isJust)
+import Data.Monoid (Last(Last))
 
 
 class Encodeable a where
@@ -131,7 +132,7 @@ solveZ3 tracker coeffs opti = do
       bound <- if opti
         then astToString =<< optimizeGetLower 0
         else return "n.a."
-      Right . (,bound) <$> evalCoeffs model coeffs
+      Right . (, OptBound bound) <$> evalCoeffs model coeffs
     Unsat -> do
       unsatCore <- optimizeGetUnsatCore
       astStrings <- mapM astToString unsatCore

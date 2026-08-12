@@ -24,7 +24,7 @@ toScheme :: Type -> Scheme
 toScheme = Forall 0
 
 tFunArgs :: Scheme -> [Type]
-tFunArgs (Forall 0 (TFun args _)) = unprod args
+tFunArgs (Forall _ (TFun args _)) = unprod args
 
 tFunResult :: Scheme -> Type
 tFunResult (Forall 0 (TFun _ result)) = result

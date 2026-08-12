@@ -31,7 +31,7 @@ import Syntax.Ast
 import Parsing.Tactic
 import CostAnalysis.Coeff
 import CostAnalysis.Analysis
-import CostAnalysis.ProveMonad (ProofEnv(..))
+import CostAnalysis.ProveMonad (ProofEnv(..), OptBound (OptBound))
 import CostAnalysis.Tactic
 import CostAnalysis.PrettyProof
 
@@ -91,7 +91,7 @@ run Options{..} AnalyzeOptions{..} = do
       let core' = S.fromList unsatCore in do
           hPutStrLn stderr "solver returned unsat. See unsat-core for details."
           writeHtmlProof "./out" (renderProof result) 
-    (AnalysisResult {_arResult=(Right (solution, objective))}) -> do
+    (AnalysisResult {_arResult=(Right (solution, OptBound objective))}) -> do
         putStr "Done. "
         writeHtmlProof "./out" (renderProof result)
         when switchPrintObjective

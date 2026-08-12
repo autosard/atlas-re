@@ -17,15 +17,14 @@ import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
 import Data.Bifunctor (first)
 
-import Primitive(Id, freeVars, Substitutable(..), substVar, toIntegerExact)
+import Primitive(Id, freeVars, Substitutable(..), substVar, toIntegerExact, dbg)
 import CostAnalysis.Coeff
 import qualified CostAnalysis.Constraint as C
 import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Size
-import Syntax.Measure
+import Syntax.Measure hiding (Eq)
 import CostAnalysis.Constraint hiding (ConstTerm, VarTerm)
 import qualified Data.Text as T
-import Typing.Scheme (Scheme)
 
 --------------------------------------------------------------------------------
 -- General Templates
@@ -133,9 +132,9 @@ bindTemplate q values = BoundTemplate
               | c@(Coeff _ i) <- getCoeffs q,
                 let v = fromMaybe 0 (values M.!? c)])
 
-sizeTransformFromTempl :: [Id] -> BoundTemplate -> SizeTransform
-sizeTransformFromTempl args templ = let rhs = foldr go emptySizeSum $ M.toList (btCoeffs templ) in
-  SizeTransform args rhs
+sizeTransformFromTempl :: [Id] -> BoundTemplate -> Relation -> SizeTransform
+sizeTransformFromTempl args templ rel = let rhs = foldr go emptySizeSum $ M.toList (btCoeffs templ) in
+  SizeTransform args rhs rel
   where go :: (ResourceTerm, Rational) -> SizeSum -> SizeSum
         go (RTSize x, k) = addSizeTerm (VarTerm x (fromRat k)) 
         go (RTId, k) = addSizeTerm (ConstTerm (fromRat k)) 

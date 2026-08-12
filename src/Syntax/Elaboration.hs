@@ -18,11 +18,12 @@ import Text.Megaparsec (SourcePos(SourcePos), pos1)
 import Data.Tuple (swap)
 import qualified Data.Text as T
 import qualified Data.List as L
+import Data.Maybe(mapMaybe)
 
 
-import Primitive (Id, dbg)
+import Primitive (Id)
 import Syntax.Ast
-import Typing.Scheme (Scheme, quantify, quantifyAll)
+import Typing.Scheme (Scheme, quantify, quantifyAll, tFunArgs)
 import Typing.Subst (tv)
 import Typing.Type
 import Syntax.Measure
@@ -101,9 +102,14 @@ elabProg ignorePot sp = do
 elabSig :: SurfaceFunSig -> Elab FunSig
 elabSig sSig = do
   from <- uncurry elabBoundTemplate (scsFrom sCostSig)
+  let fromArgs = fst (scsFrom sCostSig)
+  let argTypes = tFunArgs (sfsType sSig)
+  let rFromArgs = mapMaybe (\(x, t) -> if isResourceRelevant t then Just x else Nothing)
+        $ zip fromArgs argTypes
+    
   let (binder, coeffs) = scsTo sCostSig
   to <- elabBoundTemplate [binder] coeffs
-  return $ FunSig (sfsType sSig) (Just $ CostSig from to binder)
+  return $ FunSig (sfsType sSig) (Just $ CostSig from rFromArgs to binder)
   where sCostSig = sfsCostSig sSig
 
 elabBoundTemplate :: [Id] -> Expr Parsed -> Elab BoundTemplate
