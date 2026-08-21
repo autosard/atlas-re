@@ -18,9 +18,10 @@ import Text.Julius
 import Data.Char(toLower)
 import Data.List(intersperse)
 import Data.Ratio
+import qualified Data.MultiSet as MSet
 
 
-import Primitive(Id, dbg)
+import Primitive(Id)
 import Syntax.Ast
 import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
@@ -30,7 +31,7 @@ import CostAnalysis.Coeff
 import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Size hiding (ConstTerm, VarTerm)
 import CostAnalysis.Analysis (AnalysisResult (..))
-import Syntax.Measure (SizeTransform (SizeTransform), MeasureAlgebra, Measure(..), ConstPat(..))
+import Syntax.Measure (SizeTransform (SizeTransform), ConstPat(..))
 import Typing.Scheme (Scheme)
 import qualified Syntax.Measure(Relation(..))
 
@@ -384,33 +385,6 @@ hamCsList cs inCore = [shamlet|
                           ^{hamConstraint c}
 |]
 
--- hamPredOp :: P.PredOp -> Html
--- hamPredOp P.Le = [shamlet|<mo>≤|]
--- hamPredOp P.Lt = [shamlet|<mo><|]
--- hamPredOp P.Eq = [shamlet|<mo>=|]
--- hamPredOp P.Neq = [shamlet|<mo>≠|]
-
--- hamPredicates :: Set P.Predicate -> Html
--- hamPredicates preds = toHtml $ intersperse
---   [shamlet|<mo separator="true">,|]
---   (map hamPredicate (S.toAscList preds))
-  
--- hamPredicate :: P.Predicate -> Html
--- hamPredicate (P.Predicate m op x y _ _) =
---   [shamlet|
--- <apply>
---   <apply>
---     ^{hamMeasure m x}    
---   ^{hamPredOp op}
---   <apply>
---     ^{hamMeasure m y}|]
-
--- hamMeasure :: Measure -> Id -> Html
--- hamMeasure Weight x = [shamlet|
--- |<mi>#{x}</mi>||]
--- hamMeasure Rank x = [shamlet|
--- †<mi>#{x}</mi>|]
-
 hamPattern :: Pattern a -> Html
 hamPattern (PVar _ x) = [shamlet|
   <mi>#{Text.unpack x}</mi>
@@ -602,22 +576,22 @@ hamSize x = [shamlet|
 hamResourceTerm :: ResourceTerm -> Html
 hamResourceTerm (RTSize s) = hamSize s
 
--- Binomial coefficients: e.g., (x_1 + x_2 \choose k)
-hamResourceTerm (RTBinoms binoms) = toHtml $ intersperse [shamlet|<mo>⋅|] (map hamBinom binoms)
-  where
-    hamBinom (sizes, k) = [shamlet|
-      <mfenced>
-        <mfrac linethickness="0">
-          <mrow>
-            ^{hamSizeSum sizes}
-          <mn>#{k}</mn>
-      |]
+hamResourceTerm (RTBinom ss k) = [shamlet|
+  <mo form="prefix" stretchy="true">(
+  <mfrac linethickness="0">
+    <mrow>
+      ^{hamSizeSum ss}
+    <mn>#{k}
+  <mo form="postfix" stretchy="true">)    
+|]
+hamResourceTerm (RTProd ts) = toHtml $ intersperse [shamlet|<mo>⋅|]
+  (map hamResourceTerm (MSet.toList ts))
       
 hamResourceTerm (RTLog sizes) = [shamlet|
 <mi>log
 <mo form="prefix" stretchy="false">(
 ^{hamSizeSum sizes}
-<mo form="prefix" stretchy="false">)  
+<mo form="postfix" stretchy="false">)  
 |]
 
 -- Potential function: e.g., Φ(x)

@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 
 module Syntax.ResourceExpression.Size where
 
@@ -19,6 +20,7 @@ makeLenses ''SizeSum
 
 emptySizeSum = SizeSum M.empty 0
 
+sizeVars xs = SizeSum (M.fromList $ map (,1) xs) 0
 sizeConst = SizeSum M.empty
 sizeVar x = SizeSum (M.singleton x 1) 0
 sizeScalar x k = SizeSum (M.singleton x k) 0

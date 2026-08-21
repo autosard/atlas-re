@@ -278,7 +278,7 @@ pTypeApp sc' = do
 
 pProdType :: Parser () -> Parser Type
 pProdType sc' = do
-  ts <- pParens sc (sepBy1 (pType sc') pCross)
+  ts <- pParens sc (sepBy1 (pTypeSafe) pCross)
   return (prod ts)
 
 --------------------------------------------------------------------------------

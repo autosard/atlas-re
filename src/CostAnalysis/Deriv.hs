@@ -12,7 +12,7 @@ import Data.Maybe (fromMaybe)
 import Control.Monad (zipWithM)
 
 
-import Primitive(Id, substVar, freeVars, dbg)
+import Primitive(Id, substVar, freeVars)
 import Syntax.Ast
 
 import Syntax.Measure (ConstPat(..))
@@ -20,7 +20,7 @@ import CostAnalysis.Tactic
 import CostAnalysis.Rules (JudgementType(..))
 import qualified CostAnalysis.Rules as R
 import CostAnalysis.Template hiding (assertEqSubst)
-import CostAnalysis.Constraint ( ArithExpr(ConstTerm), sub, sum ) 
+import CostAnalysis.Constraint ( ArithExpr(ConstTerm), sum ) 
                                  
 import CostAnalysis.ProveMonad
 import qualified CostAnalysis.Rules as Rule
@@ -132,8 +132,9 @@ proveApp tactic e@(App fn appArgs) judgeType binder q q' = do
         ++ assertEqVarsSubst [fnSig^.fsBinder] [binder] (fnSig^.fsTo) p'
 
   conclude R.App judgeType q q' (csSplit ++ csRemainder ++ csSig) e []
-  where argToVar (Var x) = x
-        argToVar _ = error "Encoutered non variable argument for function application."
+  where argToVar :: Expr Positioned -> Id
+        argToVar (Var x) = x
+        argToVar expr = error $ "Encoutered non variable argument for function application: " ++ printExprPlain expr
 
   
 proveSub :: Prove PositionedExpr Derivation

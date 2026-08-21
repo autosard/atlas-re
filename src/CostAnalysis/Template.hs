@@ -15,9 +15,8 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
-import Data.Bifunctor (first)
 
-import Primitive(Id, freeVars, Substitutable(..), substVar, toIntegerExact, dbg)
+import Primitive(Id, freeVars, Substitutable(..), substVar, toIntegerExact)
 import CostAnalysis.Coeff
 import qualified CostAnalysis.Constraint as C
 import Syntax.ResourceExpression
@@ -25,6 +24,7 @@ import Syntax.ResourceExpression.Size
 import Syntax.Measure hiding (Eq)
 import CostAnalysis.Constraint hiding (ConstTerm, VarTerm)
 import qualified Data.Text as T
+import qualified Data.MultiSet as MSet
 
 --------------------------------------------------------------------------------
 -- General Templates
@@ -223,14 +223,14 @@ reduceTerm subst (RTSize x) = let sizes = reduceSizeSum subst (sizeVar x) in
    else RTSize x
   | (x, k) <- M.toList (_ssCoeffs sizes) ]
 reduceTerm subst (RTLog ss) = [RTLog $ reduceSizeSum subst ss]
+reduceTerm subst (RTBinom ss k) = [RTBinom (reduceSizeSum subst ss) k]
 reduceTerm (x,  ExpandCtor pat mEnv) t@(RTPhi y)
   | x == y = case emPotentialMeasure mEnv of
       Just potAlg -> apply potAlg pat
       Nothing -> error $ "missing potential measure for " ++ T.unpack x
   | otherwise = [t]
 reduceTerm (x,  _) t@(RTPhi _) = [t]
-reduceTerm subst t@(RTBinoms ss)
-  = [RTBinoms $ map (first (reduceSizeSum subst)) ss]
+reduceTerm subst (RTProd ts) = [RTProd $ MSet.fromList $ concatMap (reduceTerm subst) ts]
 reduceTerm _ RTId = [RTId]
 reduceTerm subst t = error $ "subst: " ++ show subst ++ ", term: " ++ show t
 
@@ -242,29 +242,54 @@ reduceSizeSum (x, ExpandCtor pat mEnv) sum =
 reduceSizeSum (x, TransformApp args st) sum =
   sizeSubst (x, applyST st args) sum
 
-
 normTerm :: ResourceTerm -> [ResourceTerm]
 normTerm (RTLog s) | M.null (s^.ssCoeffs) &&
                      s^.ssConstant == 2 = [RTId]
-normTerm (RTBinoms []) = [RTId]
-normTerm (RTBinoms bs) = foldr (distributeBinoms . normBinom) [] bs
+normTerm (RTProd ts) | all isOne ts = [RTId]
+                     | otherwise    = foldr (distribute . normTerm) [RTId] ts
+normTerm (RTBinom ss k) = normBinom ss k
 normTerm t = [t]
 
-distributeBinoms :: [ResourceTerm] -> [ResourceTerm] -> [ResourceTerm]
-distributeBinoms as [] = as
-distributeBinoms [] bs = bs
-distributeBinoms as bs = [multBinoms a b | a <- as, b <- bs]
+distribute :: [ResourceTerm] -> [ResourceTerm] -> [ResourceTerm]
+distribute as [] = []
+distribute [] bs = []
+distribute as bs = [normalisedProd a b | a <- as, b <- bs]
 
-multBinoms :: ResourceTerm -> ResourceTerm -> ResourceTerm
-multBinoms (RTBinoms as) (RTBinoms bs) = RTBinoms $ as ++ bs
+normProd :: ResourceTerm -> ResourceTerm
+normProd (RTProd ts)
+          | all isOne ts = RTId
+          | otherwise    = RTProd ts
+normProd t               = t
 
-normBinom :: (SizeSum, Int) -> [ResourceTerm]
-normBinom (SizeSum coeffs 1, k) = case M.keys coeffs of
-  [x] -> RTBinoms [(sizeVar x, k)] :
-    [RTBinoms [(sizeVar x, k - 1)] | k - 1 >= 0]
-normBinom (SizeSum coeffs 0, k) = case M.keys coeffs of
-  [x, y]   -> [RTBinoms [(sizeVar x, r),
-                         (sizeVar y, k - r)] | r <- [0..k]]
+normalisedProd :: ResourceTerm -> ResourceTerm -> ResourceTerm
+normalisedProd t s = combine (normProd s) (normProd t)
+  where 
+        combine RTId        s           = s
+        combine t           RTId        = t
+        combine (RTProd ts) (RTProd ss) = RTProd $ MSet.union ts ss
+        combine t           (RTProd ss) = RTProd $ MSet.insert t ss
+        combine (RTProd ts) s           = RTProd $ MSet.insert s ts
+        combine t           s           = RTProd $ MSet.fromList [t, s]
+
+normBinom :: SizeSum -> Int -> [ResourceTerm]
+normBinom _ 0 = [RTId]
+normBinom ss@(SizeSum coeffs c) k = case (M.keys coeffs, c) of
+  ([x], 0) -> [RTBinom (sizeVar x) k]
+  ([x], 1) -> RTBinom (sizeVar x) k :
+              [case k - 1 of
+                 0 -> RTId
+                 _ -> RTBinom (sizeVar x) (k - 1)
+              | k - 1 >= 0]
+  (x : xs, 0)   -> concat
+    [distribute
+      [RTBinom (sizeVar x) r]
+      (case (k - r) of
+         0 -> [RTId]
+         _ -> normBinom (sizeVars xs) (k - r)
+      )
+    | r <- [0..k]]
+  ([], 0)       -> []
+  (xs, c)       ->  error $ "cannot normalise arbitrary sums in binomial coeffients: " ++ show xs ++ show k
 
 --------------------------------------------------------------------------------
 -- Template Operations

@@ -4,10 +4,12 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Map (Map)
 import qualified Data.Map as M
+import qualified Data.MultiSet as MSet
 
 import Primitive(Id)
 import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Size
+
 
 type TemplateLanguageConfig = [AtomicLangConfig]
 
@@ -34,7 +36,7 @@ fromAtomConf SizeLangConf args = S.fromList $ RTId : [RTSize x | x <- args]
 fromAtomConf RankLangConf args = S.fromList $ map RTPhi args
 fromAtomConf (LogLangConf a b) args =
   S.fromList $ RTId : map RTLog (genSizeSums (a,b) args)
-fromAtomConf conf args = error $ show conf ++ show args
+fromAtomConf (BinomLangConf k) args = S.fromList $ genBinoms k args
 
 genSizeSums :: (Int, Int) -> [Id] -> [SizeSum]
 genSizeSums (a,b) xs = [SizeSum vars c
@@ -49,6 +51,24 @@ genSizeSums (a,b) xs = [SizeSum vars c
                       then M.insert x k ys
                       else ys
                      | k <- [0..a], ys <- varSums xs]
+
+genBinoms :: Int -> [Id] -> [ResourceTerm]
+genBinoms k xs = [case bs of
+                    []  -> RTId
+                    [b] -> b
+                    ts -> RTProd (MSet.fromList ts)
+                 | bs <-  genBinomProds xs k]
+  where genBinomProds :: [Id] -> Int -> [[ResourceTerm]]
+        genBinomProds xs 0 = [[]]
+        genBinomProds [] _ = [[]]
+        genBinomProds (x : xs) k =
+          [case a of
+             0 -> bs
+             n -> RTBinom (sizeVar x) n : bs
+          | a <- [0..k]
+          , bs <- genBinomProds xs (k - a)]
+
+
 
 defaultTLang :: TemplateLanguage
 defaultTLang = fromConfig defaultLangConfig

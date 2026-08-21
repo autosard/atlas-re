@@ -38,8 +38,9 @@ nmExpr' app@(AppAnn ann id args) = do
   return (hole, AppAnn ann id args')
 nmExpr' match@(MatchAnn ann e arms) = do
   normedArms <- mapM nmMatchArm arms
-  (hole, e') <- nmBind (idHole, e)
-  return (hole, MatchAnn ann e' normedArms)
+  (hole, e') <- nmExpr' e
+  (hole', e'') <- nmBind (hole, e')
+  return (hole', MatchAnn ann e'' normedArms)
 nmExpr' e@(IteAnn ann e1@(Coin _) e2 e3) = do
   (holeE2, e2') <- nmExpr' e2
   (holeE3, e3') <- nmExpr' e3

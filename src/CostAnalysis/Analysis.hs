@@ -15,7 +15,7 @@ import Lens.Micro.Platform
 
 import System.Exit (die)
 
-import Primitive(Id, prettyPrint, dbg)
+import Primitive(Id, prettyPrint)
 import Syntax.Ast
 import CostAnalysis.Solving (solve)
 import CostAnalysis.Constraint hiding (and, sum)
@@ -37,9 +37,8 @@ import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Order (computeStratifiedCosts)
 import CostAnalysis.Constraint (sum)
 import CostAnalysis.Coeff (Coeff(Coeff))
-import Control.Monad.Extra (whenM, filterM, concatMapM)
+import Control.Monad.Extra (whenM, filterM)
 import qualified Syntax.Measure (Relation(..))
-import Data.Monoid (Last(Last))
 
 
 data AnalysisResult = AnalysisResult {
@@ -112,11 +111,17 @@ analyzeSize prog = do
               strictPass scc
               trackSolution
               obtainSizeTransforms scc Syntax.Measure.Eq
-           ) `catchError` (\(UnsatErr _) -> do
-              constraints .= []
-              upperBoundPass scc
-              trackSolution
-              obtainSizeTransforms scc Syntax.Measure.Ge)
+           ) `catchError` (\e -> case e of
+                (UnsatErr _)  -> do
+                  constraints .= []
+                  catchError (do
+                                 upperBoundPass scc
+                                 trackSolution
+                                 obtainSizeTransforms scc Syntax.Measure.Ge
+                             ) $
+                    \case (UnsatErr _) -> return ()
+   
+                e -> throwError e)
            
         strictPass = analyzeBindingGroup CfEq prog 
         upperBoundPass = analyzeBindingGroup Cf prog
@@ -258,19 +263,6 @@ assertSigMatchesAnn prog = do
                                                   ++ " '" ++ show fn ++ "'"
                                                   ++ " in check mode.")
 
--- obtainSizeTransforms :: Relation -> ProveMonad ()
--- obtainSizeTransforms rel = do
---   fsSig <- use sig
---   mapM_ go $ M.toList fsSig
---   where go :: (Id, FreeSig) -> ProveMonad ()
---         go (fn, fs) = do
---           sol <- use solution
---           case sol of
---             Just sol -> do
---               let boundTempl = bindTemplate (fs^.fsFrom) sol
---               let transform = sizeTransformFromTempl (fs^.fsFormArgs) boundTempl rel
---               sizeSig . at fn .= Just transform
---             Nothing -> error "cannot obtain size transforms without a solution."
 
 obtainSizeTransforms :: [Id] -> Relation -> ProveMonad ()
 obtainSizeTransforms scc rel = do

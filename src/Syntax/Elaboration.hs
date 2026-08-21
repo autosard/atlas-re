@@ -19,6 +19,7 @@ import Data.Tuple (swap)
 import qualified Data.Text as T
 import qualified Data.List as L
 import Data.Maybe(mapMaybe)
+import qualified Data.MultiSet as MSet
 
 
 import Primitive (Id)
@@ -132,15 +133,19 @@ elabScalarComb (App "+" [ss, s]) = do
   return $ ess ++ [es]
 elabScalarComb e = singleton <$> elabScale e 1
 
+prodToTerm :: [ResourceTerm] -> ResourceTerm
+prodToTerm [t] = t
+prodToTerm ts = RTProd $ MSet.fromList ts
+
 elabScale :: Expr Parsed -> Rational -> Elab (ResourceTerm, Rational)
-elabScale (App "*" [q, t]) sign = do
+elabScale (App "*" [q@(Lit _), t]) sign = do
   qr <- elabRatLit q
-  rt <- elabResourceTerm t
+  rt <- prodToTerm <$> elabProdTerm t
   return (rt, sign * qr)
 elabScale (Lit (LRat r)) sign = return (RTId, sign * r)
 elabScale (Lit (LNat n)) sign = return (RTId, sign * fromIntegral n)
 elabScale e sign = do
-  rt <- elabResourceTerm e
+  rt <- prodToTerm <$> elabProdTerm e
   return (rt, sign)
 
 
@@ -153,9 +158,9 @@ elabResourceTerm :: Expr Parsed -> Elab ResourceTerm
 elabResourceTerm e = do
   r <- runMaybeT $
     (RTSize <$> elabSizeAtomM e)
-    <|> (RTBinoms <$> elabProdTermM e)
     <|> elabLogTermM e
     <|> elabPhiM e
+    <|> elabBinom e
   case r of
     Just r -> pure r
     Nothing -> illformedTerm e "Expected a resource term."
@@ -192,16 +197,19 @@ elabIntLit :: Expr Parsed -> Elab Int
 elabIntLit (Lit (LNat n)) = return n 
 elabIntLit e = illformedTerm e "Expected a nat literal."
   
-elabProdTermM :: Expr Parsed -> MaybeT Elab [(SizeSum, Int)]
-elabProdTermM (App "binom" [x,k]) = do
+elabProdTerm :: Expr Parsed -> Elab [ResourceTerm]
+elabProdTerm (App "*" [x, y]) = do
+  tx <- elabResourceTerm x
+  tys <- elabProdTerm y
+  return $ tx : tys
+elabProdTerm e = singleton <$> elabResourceTerm e
+
+elabBinom :: Expr Parsed -> MaybeT Elab ResourceTerm
+elabBinom (App "binom" [x,k]) = do
   sx <- lift $ elabSizeSum x
   ck <- lift $ elabIntLit k
-  return [(sx,ck)]
-elabProdTermM (App "*" [App "binom" [x,k], bs]) = do
-  sx <- lift $ elabSizeSum x
-  ck <- lift $ elabIntLit k
-  ((sx,ck) :) <$> elabProdTermM bs 
-elabProdTermM _ = empty
+  return $ RTBinom sx ck
+elabBinom _ = empty  
 
 elabSizeAtomM :: Expr Parsed -> MaybeT Elab Id
 elabSizeAtomM (App "size" [Var x]) = lift (return x)
