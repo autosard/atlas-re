@@ -1,17 +1,22 @@
-module Syntax.Normalization where
+module Normalization
+  ( normalizeProg
+  , normalizeExpr) where
 
-import Syntax.Ast
+import Syntax (Id, enumId, Typed, Positioned)
+import Syntax.Annotation 
+import Syntax.Program
+import Syntax.Expression
+import Syntax.Pattern
 import Control.Monad.State (State, get, put, evalState)
-import Typing.Type
-import Primitive(Id, enumId)
+import Syntax.Types.Type
 import Control.Monad (foldM)
 
 type Norm = State Int
 
-normalizeProg :: TypedProgram -> TypedProgram
+normalizeProg :: Program Typed -> Program Typed
 normalizeProg m = runNorm $ nmProgram m
 
-normalizeExpr :: TypedExpr -> TypedExpr
+normalizeExpr :: Expr Typed -> Expr Typed
 normalizeExpr e = runNorm $ nmExpr e
 
 runNorm :: Norm a -> a
@@ -26,12 +31,12 @@ newVar = do
 nmProgram :: Program Typed -> Norm (Program Typed)
 nmProgram = pMapM nmExpr
 
-nmExpr :: TypedExpr -> Norm TypedExpr
+nmExpr :: Expr Typed -> Norm (Expr Typed)
 nmExpr e = do
   (hole, e') <- nmExpr' e
   return $ hole (getType e') e'
 
-nmExpr' :: TypedExpr -> Norm (HoleExpr, TypedExpr)
+nmExpr' :: Expr Typed -> Norm (HoleExpr, Expr Typed)
 nmExpr' app@(AppAnn ann id args) = do
   normedArgs <- mapM nmExpr' args
   (hole, args') <- nmBinds normedArgs
@@ -63,24 +68,24 @@ nmExpr' (TickAnn ann c e) = do
   return (hole, TickAnn ann c e')
 nmExpr' e = return (idHole, e)
 
-nmMatchArm :: TypedMatchArm -> Norm TypedMatchArm
+nmMatchArm :: MatchArm Typed -> Norm (MatchArm Typed)
 nmMatchArm (MatchArmAnn ann pat e) = do
   e' <- nmExpr e
   return $ MatchArmAnn ann pat e'
 
-type HoleExpr = Type -> TypedExpr -> TypedExpr
+type HoleExpr = Type -> Expr Typed -> Expr Typed
 
 holeCompose :: HoleExpr -> HoleExpr -> HoleExpr
 holeCompose h1 h2 = hole 
   where hole t e = h1 t (h2 t e)
 
-srcForBind :: TypedExpr -> ExprSrc
+srcForBind :: Expr Typed -> ExprSrc
 srcForBind e = case (teSrc . getAnn) e of
   (Loc pos) -> DerivedFrom pos
   (DerivedFrom pos) -> DerivedFrom pos
 
 
-letHole :: TypedExpr -> Id  -> HoleExpr
+letHole :: Expr Typed -> Id  -> HoleExpr
 letHole e v = hole 
   where src = srcForBind e
         hole t = LetAnn (TypedExprAnn src t) v e
@@ -88,7 +93,7 @@ letHole e v = hole
 idHole :: HoleExpr
 idHole = const id
 
-nmBind :: (HoleExpr, TypedExpr) -> Norm (HoleExpr, TypedExpr)
+nmBind :: (HoleExpr, Expr Typed) -> Norm (HoleExpr, Expr Typed)
 nmBind (holeE, e)
   | isImmediate e = return (idHole, e)
   | otherwise = do
@@ -99,7 +104,7 @@ nmBind (holeE, e)
         where src = srcForBind e
     
 
-nmBinds :: [(HoleExpr, TypedExpr)] -> Norm (HoleExpr, [TypedExpr])
+nmBinds :: [(HoleExpr, Expr Typed)] -> Norm (HoleExpr, [Expr Typed])
 nmBinds exps = foldM go (idHole, []) =<< mapM nmBind exps
   where go (hole, exps) (hole', exp) = return (hole `holeCompose` hole', exps ++ [exp])
 

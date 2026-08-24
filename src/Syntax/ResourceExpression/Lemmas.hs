@@ -1,7 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE StrictData #-}
 
-module Syntax.ResourceExpression.Lemmas where
+module Syntax.ResourceExpression.Lemmas
+  ( LemmaSpec (..)
+  , WeightedPattern (..)
+  , logLemmaSpec
+  ) where
 
 import Data.Ratio ((%))
 import Syntax.ResourceExpression.Pattern

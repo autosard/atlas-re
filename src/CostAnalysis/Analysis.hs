@@ -3,7 +3,10 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DataKinds #-}
 
-module CostAnalysis.Analysis where
+module CostAnalysis.Analysis
+  ( analyzeProgram
+  , AnalysisResult (..)
+  ) where
 
 import Prelude hiding (sum, (!?))
 import Control.Monad.RWS
@@ -15,19 +18,17 @@ import Lens.Micro.Platform
 
 import System.Exit (die)
 
-import Primitive(Id, prettyPrint)
-import Syntax.Ast
+import Syntax (Id, Positioned)
+import Syntax.PrettyPrint (prettyPrint)              
+import Syntax.Program
 import CostAnalysis.Solving (solve)
 import CostAnalysis.Constraint hiding (and, sum)
 import SourceError
--- import CostAnalysis.Rules
 import Control.Monad.Except (MonadError (throwError, catchError))
-import CostAnalysis.Deriv
-import Typing.Type
-import Typing.Scheme (tFunArgs, Scheme(..))
+import CostAnalysis.Deriv ( derivFun )
+import Syntax.Types.Type
+import Syntax.Types.Scheme (tFunArgs, Scheme(..))
 import Syntax.Measure (SizeTransform, ConstPat, Relation)
--- import CostAnalysis.Potential(PotFnMap, Potential (cExternal), auxSigs)
--- import CostAnalysis.Potential.Kind (fromKind)
 
 import CostAnalysis.Template
 import CostAnalysis.TemplateLanguage
@@ -188,7 +189,7 @@ analyzeBindingGroup mode prog fns = do
         go fn = whenM (M.member fn <$> use sig) $ do
           let def = (prog^.pFunDefs) M.! fn
           let sig = (prog^.pSig) M.! fn
-          deriv <- proveFun sig def mode
+          deriv <- derivFun sig def mode
           appendDeriv fn deriv
 
 constrainSigForSize :: Program Positioned -> ProveMonad ()

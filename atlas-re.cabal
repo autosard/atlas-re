@@ -14,7 +14,7 @@ synopsis: Automated Amortized Complexity Analysis
 -- The license under which the package is released.
 -- license:
 author:             Armin Walch
-maintainer:         armin.walch@student.uibk.ac.at
+maintainer:         armin.walch@uibk.ac.at
 
 -- A copyright notice.
 -- copyright:
@@ -22,25 +22,34 @@ maintainer:         armin.walch@student.uibk.ac.at
 extra-source-files: CHANGELOG.md
 
 library
-    exposed-modules:  Syntax.Ast,
-                      Syntax.AstContext,
-                      Syntax.Normalization,
-                      Syntax.Constants,
+    exposed-modules:  Loading,
+                      Parsing.Program,
+                      Parsing.Tactic,
+                      Elaboration,
+                      Typing,
+                      Contextualization,
+                      Normalization,
+                      
+                      Syntax,
+                      Syntax.Annotation,
+                      Syntax.Expression,
+                      Syntax.Pattern,
+                      Syntax.Surface,
+                      Syntax.Program,
+                      Syntax.Types.Type,
+                      Syntax.Types.Subst,
+                      Syntax.Types.Scheme,
+                      Syntax.PrettyPrint,
                       Syntax.ResourceExpression,
                       Syntax.ResourceExpression.Size,
                       Syntax.ResourceExpression.Order,
                       Syntax.ResourceExpression.Pattern,
                       Syntax.ResourceExpression.Lemmas,
                       Syntax.Measure,
-                      Syntax.Elaboration,
-                      Parsing.Program,
-                      Parsing.Tactic,
-                      Loading,
+                      
+                      Builtin,
                       Primitive,
-                      Typing.Type,
-                      Typing.Scheme,
-                      Typing.Subst,
-                      Typing.Inference,
+                      
                       CostAnalysis.Analysis,
                       CostAnalysis.Coeff,
                       CostAnalysis.Template,
@@ -52,9 +61,8 @@ library
                       CostAnalysis.Constraint,
                       CostAnalysis.Solving,
                       CostAnalysis.Subtyping,
-
                       CostAnalysis.PrettyProof,
-                      StaticAnalysis,
+                      
                       SourceError
  
                       

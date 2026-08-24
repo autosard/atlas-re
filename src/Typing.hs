@@ -5,8 +5,9 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
-module Typing.Inference where
+module Typing (inferProgram) where
 
 import Control.Monad.State
 import Control.Monad.Except
@@ -17,25 +18,37 @@ import qualified Data.Array as A
 import Control.Monad.Extra(mapAndUnzipM, foldM)
 import Data.List(uncons)
 import Lens.Micro.Platform
-
 import qualified Data.List as L
 import qualified Data.Text as T
-  
-import Typing.Type(Type(..),fn, unprod, tCurry)
-import Typing.Subst
-import Typing.Scheme
-import Syntax.Ast
-import Primitive(Id, enumId, prettyPrint)
-import Text.Megaparsec(SourcePos(sourceName, sourceLine, sourceColumn))
-import Text.Megaparsec.Pos(unPos)
+import Text.Megaparsec(SourcePos)
+
+import Syntax.Types.Type(Type(..),fn, unprod, tCurry)
+import Syntax.Types.Subst
+import Syntax.Types.Scheme
+import Syntax.Program
+import Syntax.Expression
+import Syntax.Annotation (extendWithType, getType, HasAnnotation (..))
+import Syntax.Pattern
+import Syntax (enumId, Id, Typed, Elaborated)
+import Syntax.PrettyPrint (prettyPrint)
 import SourceError
-import Syntax.Constants
+import qualified Builtin (dataDefs, funTypes)
 
 
 data TiState = TiState {
   idGen :: Int,
   subst :: Subst,
   traceStack :: [Syntax Elaborated]}
+
+data Syntax a
+   = SynExpr (Expr a)
+   | SynArm (MatchArm a)
+   | SynPat (Pattern a)
+
+instance HasAnnotation Syntax a where
+  getAnn (SynExpr e) = getAnn e
+  getAnn (SynArm a) = getAnn a
+  getAnn (SynPat p) = getAnn p
 
 class Traceable a where
   trace :: a -> TI ()
@@ -286,10 +299,6 @@ tiExpr' ctx cEnv (CoinAnn ann p) = do
   let ann' = extendWithType t ann
   return $ CoinAnn ann' p
 
--- funArgTypes :: Type -> [Type]
--- funArgTypes (TFun t _]) = ts
--- funArgTypes _ = error "cannot extract arg types from non-function type."
-
 data TypedFunResult = TypedFunResult
   { _tfrId   :: Id
   , _tfrArgs  :: [Id]
@@ -326,7 +335,7 @@ tiFun ctx cEnv fun = do
 
   
 
-tiApply :: Infer TypedExpr TypedExpr
+tiApply :: Infer (Expr Typed) (Expr Typed)
 tiApply ctx _ e = do
   s <- gets subst
   return $ apply s e
@@ -351,7 +360,7 @@ generalizeFunResult fs tfr =
   
 tiProg :: Infer (Program Elaborated) (Program Typed)
 tiProg ctx tEnv prog = do
-  ctx' <- M.union <$> initCtx prog <*> return builtInFunTypes
+  ctx' <- M.union <$> initCtx prog <*> return Builtin.funTypes
   results <- mapM (tiFun ctx' tEnv) (fns prog)
   s <- gets subst
   let fs = tv (apply s ctx')
@@ -377,13 +386,6 @@ initCtx prog = traverse assumeType (prog^.pFunDefs)
                 toScheme <$> instScheme sc
               Nothing -> toScheme <$> newTVar
 
-showSrcPos :: SourcePos -> String
-showSrcPos pos = let name = sourceName pos
-                     line = unPos $ sourceLine pos
-                     column = unPos $ sourceColumn pos
-                 in 
-                   name ++ ":" ++ show line ++ ":" ++ show column ++ ":"
-
 currentExpLoc :: TiState -> SourcePos
 currentExpLoc s = case uncons (traceStack s) of
   Nothing -> error "pop from empty syntax stack"
@@ -393,9 +395,8 @@ currentExpLoc s = case uncons (traceStack s) of
 runTI :: TiState -> TI a -> (Either TypeError a, TiState)
 runTI s ti = runState (runExceptT ti) s
 
-evalTI :: TiState -> TI a -> Either TypeError a
-evalTI s = fst . runTI s
-
+-- evalTI :: TiState -> TI a -> Either TypeError a
+-- evalTI s = fst . runTI s
 
 infer :: TI a -> Either (SourceError TypeError) a
 infer ti = case runTI initState ti of
@@ -408,7 +409,7 @@ inferProgram p = (infer . tiProg M.empty (cTorEnvForProg p)) p
 
 -- | left-biased union (does not overide builtins)
 cTorEnvForProg :: Program a -> CtorEnv
-cTorEnvForProg p = buildCtorEnv $ M.union builtInDataDefs (p^.pDataEnv)
+cTorEnvForProg p = buildCtorEnv $ M.union Builtin.dataDefs (p^.pDataEnv)
 
 -- inferExpr :: TypedProgram -> ParsedExpr -> Either SourceError TypedExpr
 -- inferExpr p expr = infer $ tiApply M.empty cEnv =<< tiExpr initCtx cEnv expr

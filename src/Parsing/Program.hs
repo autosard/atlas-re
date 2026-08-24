@@ -2,7 +2,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
 
-module Parsing.Program(parseExpr, parseProgram, initialPos, SourcePos) where
+module Parsing.Program
+  ( parseExpr
+  , parseProgram
+  , initialPos
+  , SourcePos
+  ) where
 
 import Control.Monad 
 import Control.Applicative hiding (many, some)
@@ -26,10 +31,13 @@ import Text.Megaparsec
 import Text.Megaparsec.Char ( space1, upperChar, lowerChar, hspace1, char, printChar )
 import qualified Text.Megaparsec.Char.Lexer as L
 
-import Syntax.Ast
-import Typing.Type
-import Typing.Scheme
-import Primitive(Id)
+import Syntax (Id, Parsed)
+import Syntax.Surface
+import Syntax.Program (CostMode (..), ProgramConfig (..))
+import Syntax.Expression
+import Syntax.Pattern
+import Syntax.Types.Type
+import Syntax.Types.Scheme
 import CostAnalysis.TemplateLanguage
 import Syntax.Measure (Measure(Size, Potential))
 

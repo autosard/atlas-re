@@ -1,8 +1,12 @@
 {-# LANGUAGE StrictData #-}
 
-module Syntax.ResourceExpression where
+module Syntax.ResourceExpression
+  ( ResourceTerm (..)
+  , isZero
+  , isOne
+  , isPotential
+  ) where
 
-import Primitive(Id, HasVars(..), Substitutable(..), PrettyPrint(..))
 import qualified Data.Set as S
 import Data.List (intercalate)
 import qualified Data.Text as T
@@ -10,6 +14,8 @@ import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MSet
 
 
+import Syntax (Id, HasVars(..), Substitutable(..))
+import Syntax.PrettyPrint (PrettyPrint(..))
 import Syntax.ResourceExpression.Size
 
 data ResourceTerm
@@ -25,9 +31,6 @@ data ResourceTerm
   | RTCoeffScale Int ResourceTerm ResourceTerm
   deriving (Eq, Ord, Show)
 
-isOne :: ResourceTerm -> Bool
-isOne RTId = True
-isOne other = False
 
 
 instance Substitutable ResourceTerm where
@@ -68,3 +71,7 @@ isZero otherTerm = False
 
 isPotential (RTPhi _) = True
 isPotential _ = False
+
+isOne :: ResourceTerm -> Bool
+isOne RTId = True
+isOne other = False

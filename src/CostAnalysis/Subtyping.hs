@@ -1,4 +1,4 @@
-module CostAnalysis.Subtyping where
+module CostAnalysis.Subtyping (templLe) where
 
 import Prelude hiding (sum)
 import Data.Set(Set)
@@ -17,15 +17,8 @@ import CostAnalysis.Rules
 import Syntax.ResourceExpression.Order ( GuardMatrix, resourceLe )
 import Syntax.ResourceExpression.Lemmas
 import Syntax.ResourceExpression.Pattern ( findMatches ) 
-import Primitive (dbg, prettyPrint)
-import Data.List (intercalate)
 
 type LeMatrix = V.Vector (V.Vector Rational)
-
-newtype ExpertKnowledge = ExpertKnowledge {
-  matrix :: LeMatrix}
---  rows :: !(V.Vector (ResourceTerm, ArithExpr)),
---  cols :: !(V.Vector (ResourceTerm, ArithExpr))}
 
 farkas :: LeMatrix -> V.Vector ArithExpr -> V.Vector ArithExpr -> ProveMonad [Formula]
 farkas as ps qs | V.length ps == V.length qs = do
@@ -46,13 +39,10 @@ templLe subArgs p q = do
   farkas ks ps qs
   where ps = V.fromList . map CoeffTerm $ getCoeffs p
         qs = V.fromList $ [q!?t | t <- S.toList $ terms p]
-
-
   
 merge :: [LeMatrix] -> LeMatrix
 merge = V.concat 
 
--- dbg "le" (\r -> show r ++ " " ++ prettyPrint t1 ++ " <= " ++ prettyPrint t2)
 
 termOrderConstraints :: GuardMatrix -> S.Set ResourceTerm -> LeMatrix
 termOrderConstraints guards terms = merge . catMaybes $

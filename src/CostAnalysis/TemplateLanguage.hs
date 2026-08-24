@@ -1,4 +1,11 @@
-module CostAnalysis.TemplateLanguage where
+module CostAnalysis.TemplateLanguage
+  ( TemplateLanguage
+  , TemplateLanguageConfig
+  , AtomicLangConfig (..)
+  , defaultTLang
+  , sizeTLang
+  , fromConfig
+  ) where
 
 import Data.Set(Set)
 import qualified Data.Set as S
@@ -6,7 +13,7 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import qualified Data.MultiSet as MSet
 
-import Primitive(Id)
+import Syntax (Id)
 import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Size
 

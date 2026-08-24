@@ -1,11 +1,20 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module CostAnalysis.Rules where
+module CostAnalysis.Rules
+  ( Rule (..)
+  , JudgementType (..)
+  , RuleAppInfo (..)
+  , RuleApp (..)
+  , SubArg (..)
+  )where
 
 import Lens.Micro.Platform
 
-import Syntax.Ast
+import Syntax (Positioned)
+import Syntax.Expression (Expr)
+import Syntax.Pattern (Pattern)
+import Syntax.Program
 import CostAnalysis.Constraint
 import CostAnalysis.Template
 
@@ -14,9 +23,6 @@ data JudgementType = Standard | CfEq | Cf
 
 data SubArg = Mono | L2xy 
   deriving (Eq, Ord, Show)
-
--- data LetArg = NegE
---   deriving (Eq, Ord, Show)
 
 data Rule 
   = Const
@@ -37,7 +43,7 @@ data RuleAppInfo = RuleAppInfo {
   , _raQ :: FreeTemplate
   , _raQ' :: FreeTemplate
   , _raCs :: [Formula]
-  , _raExpr :: PositionedExpr
+  , _raExpr :: Expr Positioned
   } deriving Show
 
 makeLenses ''RuleAppInfo

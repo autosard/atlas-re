@@ -1,11 +1,17 @@
-module Typing.Subst where
+module Syntax.Types.Subst
+  ( Types (..)
+  , Subst
+  , nullSubst
+  , (+->)
+  , (@@)
+  )where
 
 import Data.Map(Map)
 import qualified Data.Map.Strict as M
 import Data.List(union)
 
-import Primitive(Id)
-import Typing.Type
+import Syntax (Id)
+import Syntax.Types.Type
 
 type Subst = Map Id Type
 

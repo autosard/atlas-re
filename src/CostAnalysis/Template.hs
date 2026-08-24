@@ -5,7 +5,30 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module CostAnalysis.Template where
+module CostAnalysis.Template
+  ( Template (..)
+  , FreeTemplate (..)
+  , ftId
+  , ftTerms 
+  , BoundTemplate (..)
+  , bindTemplate
+  , EnrichedMeasureEnv (..)
+  , FreeSig (..)
+  , fsFrom
+  , fsTo
+  , fsBinder
+  , fsFormArgs
+  , assertEq
+  , assertEqSubst
+  , assertEqVarSubst
+  , assertEqVarsSubst
+  , assertEqExceptTerm
+  , SubstValue (..)
+  , defineFrom
+  , add
+  , scale
+  , sizeTransformFromTempl
+  ) where
 
 import Prelude hiding (sum, or, and)
 
@@ -16,11 +39,12 @@ import qualified Data.Set as S
 import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
 
-import Primitive(Id, freeVars, Substitutable(..), substVar, toIntegerExact)
+import Syntax (Id, freeVars, Substitutable(..), substVar)
+import Primitive (toIntegerExact)
 import CostAnalysis.Coeff
 import qualified CostAnalysis.Constraint as C
 import Syntax.ResourceExpression
-import Syntax.ResourceExpression.Size
+import Syntax.ResourceExpression.Size hiding (add, scale)
 import Syntax.Measure hiding (Eq)
 import CostAnalysis.Constraint hiding (ConstTerm, VarTerm)
 import qualified Data.Text as T

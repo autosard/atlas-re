@@ -1,7 +1,7 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Loading where
+module Loading (loadProgram) where
 
 import qualified Data.Map as M
 import Data.Map(Map)
@@ -16,13 +16,14 @@ import qualified System.FilePath.Glob as Glob
 import System.Environment(lookupEnv)
 import SourceError (printSrcError)
 
-import Primitive(Id, dbg)
-import Syntax.Ast
+import Syntax (Id, Positioned)
+import Syntax.Surface
+import Syntax.Program
 import Parsing.Program(parseProgram)
-import Typing.Inference (inferProgram)
-import Syntax.Normalization (normalizeProg)
-import Syntax.AstContext (contextualizeProg)
-import Syntax.Elaboration (elabProgram)
+import Typing (inferProgram)
+import Normalization (normalizeProg)
+import Contextualization (contextualizeProg)
+import Elaboration (elabProgram)
 
 extension = ".atl"
 

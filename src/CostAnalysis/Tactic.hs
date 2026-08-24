@@ -1,8 +1,12 @@
 {-# LANGUAGE StrictData #-}
 
-module CostAnalysis.Tactic where
+module CostAnalysis.Tactic
+  ( Tactic (..)
+  , subTactics
+  )where
 
 import CostAnalysis.Rules
+import Syntax.PrettyPrint 
 
 data Tactic
   = Rule Rule [Tactic]
@@ -15,6 +19,6 @@ subTactics _ (Rule _ subs) = subs
 subTactics n Auto = replicate n Auto
 subTactics n Hole = replicate n Hole
 
-printTacticHead :: Tactic -> String
-printTacticHead (Rule r _) = "(" ++ show r ++ " ...)"
-printTacticHead t = show t
+instance PrettyPrint Tactic where
+  prettyPrint (Rule r _) = "(" ++ show r ++ " ...)"
+  prettyPrint t = show t

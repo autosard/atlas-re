@@ -1,20 +1,23 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms #-}
 
-module Syntax.Constants where
+module Builtin
+  ( dataDefs,
+    funTypes,
+    measures
+  ) where
 
-import Primitive(Id)
-import Typing.Scheme
-import Typing.Type
-import Syntax.Ast
+import Syntax (Id)
+import Syntax.Types.Scheme
+import Syntax.Types.Type
+import Syntax.Program
 
 import Data.Map as M
 import Syntax.Measure (MeasureEnv (..), ConstPat(..), MeasureAlgebra(..))
 import Syntax.ResourceExpression.Size (emptySizeSum)
 
 
-builtInDataDefs :: DataEnv
-builtInDataDefs = M.fromList
+dataDefs :: DataEnv
+dataDefs = M.fromList
   [("()", DataInfo {
        diParams=[],
        diCtors=[
@@ -65,8 +68,8 @@ builtInDataDefs = M.fromList
 
 tNat = TAp "Nat" []
 
-builtInFunTypes :: Map Id Scheme
-builtInFunTypes = M.fromList
+funTypes :: Map Id Scheme
+funTypes = M.fromList
   [
     ("error", Forall 1 $ [TAp "String" []] `fn` TGen 0)
   , ("+", Forall 0 $ [tNat, tNat] `fn` tNat)
@@ -78,8 +81,8 @@ builtInFunTypes = M.fromList
   , ("==", Forall 1 $ [TGen 0, TGen 0] `fn` TAp "Bool" [])
   ]
 
-builtInMeasures :: Map Scheme MeasureEnv
-builtInMeasures = M.fromList [
+measures :: Map Scheme MeasureEnv
+measures = M.fromList [
   (Forall 0 (TAp "Bool" []), MeasureEnv {
      sizeMeasure = Equations [
        (ConstPat "True" [], emptySizeSum),

@@ -4,8 +4,52 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE FlexibleContexts #-}
 
-module CostAnalysis.ProveMonad where
+
+module CostAnalysis.ProveMonad
+  ( ProveMonad
+  , Solution (..)
+  , ProofState (..)
+  , sig
+  , sizeSig
+  , tLang
+  , sigCs 
+  , optiTargets
+  , annIdGen 
+  , varIdGen 
+  , constraints
+  , fnDerivs 
+  , solution 
+  , measureSig
+  , ProofEnv (..)
+  , tactics
+  , analysisMode
+  , incremental
+  , costModes 
+  , inferPotential
+  , ProofErr (..)
+  , AnalysisMode (..)
+  , OptBound (..)
+  , Derivation (..)
+  , freshVar
+  , errorFrom
+  , conclude
+  , defineByShift
+  , isCostFree
+  , freshTempl
+  , assertEqSubst
+  , freshFrom
+  , concludeArm
+  , defEqSubst
+  , measureEnvForType
+  , tellSigCs
+  , sizeTransformable
+  , enrichMeasureSig
+  , resetAnalysis
+  , potentials
+  , runProof
+  )where
 
 import Prelude hiding (sum)
 import Control.Monad.RWS
@@ -19,16 +63,19 @@ import qualified Data.Tree as T
 import qualified Data.Text as Text
 
 
-import Primitive(Id)
+import Syntax (Id, Positioned)
 import CostAnalysis.Template hiding (assertEqSubst)
 import qualified CostAnalysis.Template as Templ
 import CostAnalysis.Rules
 import CostAnalysis.Tactic
 import SourceError
 import CostAnalysis.Constraint
-import Typing.Type
-import Typing.Scheme (Scheme (Forall), findByType, tFunResult)
-import Syntax.Ast hiding (AnalysisMode)
+import Syntax.Expression
+import Syntax.Pattern
+import Syntax.Types.Type
+import Syntax.Types.Scheme (Scheme (Forall), findByType, tFunResult)
+import Syntax.Program hiding (AnalysisMode)
+import Syntax.Annotation
 import CostAnalysis.Coeff
 import Syntax.Measure (SizeTransform,
                        Measure(..),
@@ -42,7 +89,6 @@ import Control.Monad (forM)
 import Control.Arrow (Arrow(second))
 import Data.List (uncons)
 import Control.Monad.Extra (whenM)
-import Data.Monoid (Last)
 
 
 type Derivation = Tree RuleApp
@@ -77,13 +123,13 @@ data ProofEnv = ProofEnv {
   _inferPotential :: Bool
   }
 
+makeLenses ''ProofEnv
+
 data ProofErr
   = DerivErr (SourceError String)
   | UnsatErr [Formula]
   | MissingMeasure Type Measure
   | ProofErr String
-
-makeLenses ''ProofEnv
 
 enrichMeasureSig :: Program a -> ProveMonad (Map Scheme EnrichedMeasureEnv)
 enrichMeasureSig prog = M.traverseWithKey go (prog^.pMeasureSig)
@@ -211,7 +257,7 @@ tellCs cs = constraints %= (++cs)
 tellSigCs :: [Formula] -> ProveMonad ()
 tellSigCs cs = sigCs %= (++cs)
 
-errorFrom :: Syntax Positioned -> String -> ProveMonad a
+errorFrom :: (HasAnnotation b Positioned) => b Positioned -> String -> ProveMonad a
 errorFrom e msg = throwError $ DerivErr $ SourceError loc msg
   where loc = case (peSrc . getAnn) e of
           (Loc pos) -> pos

@@ -1,7 +1,11 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE DataKinds #-}
 
-module CostAnalysis.PrettyProof where
+module CostAnalysis.PrettyProof
+  ( renderProof
+  , css
+  , js
+  ) where
 
 import Data.Text.Lazy(Text)
 import Data.Set(Set)
@@ -14,15 +18,19 @@ import Text.Lucius
 import qualified Data.Tree as T
 import qualified Data.Set as S
 import qualified Data.Text as Text
-import Text.Julius
+import Text.Julius hiding (js)
 import Data.Char(toLower)
 import Data.List(intersperse)
 import Data.Ratio
 import qualified Data.MultiSet as MSet
 
 
-import Primitive(Id)
-import Syntax.Ast
+import Syntax (Id)
+import Syntax.Annotation
+import Syntax.PrettyPrint
+import Syntax.Program
+import Syntax.Expression
+import Syntax.Pattern
 import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
 import CostAnalysis.Rules
@@ -32,7 +40,7 @@ import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Size hiding (ConstTerm, VarTerm)
 import CostAnalysis.Analysis (AnalysisResult (..))
 import Syntax.Measure (SizeTransform (SizeTransform), ConstPat(..))
-import Typing.Scheme (Scheme)
+import Syntax.Types.Scheme (Scheme)
 import qualified Syntax.Measure(Relation(..))
 
 css = renderCss ([lucius|
@@ -345,7 +353,7 @@ hamRuleApp result (ExprRuleApp rule RuleAppInfo{_raJt=jt
       ^{hamTemplUnderResult result q}
       <mo>⊢
       <mtext>
-          <code>#{printExprHead e}
+          <code>#{prettyPrint e}
           (#{printPos srcPos})  
       <mo lspace="0.22em" rspace="0.22em" stretchy="false">|
       ^{hamTemplUnderResult result q'}

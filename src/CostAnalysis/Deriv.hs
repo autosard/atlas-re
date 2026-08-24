@@ -1,7 +1,7 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module CostAnalysis.Deriv where
+module CostAnalysis.Deriv (derivFun) where
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -12,8 +12,12 @@ import Data.Maybe (fromMaybe)
 import Control.Monad (zipWithM)
 
 
-import Primitive(Id, substVar, freeVars)
-import Syntax.Ast
+import Syntax (Id, substVar, freeVars, Positioned)
+import Syntax.PrettyPrint (prettyPrint)
+import Syntax.Program
+import Syntax.Expression
+import Syntax.Pattern
+import Syntax.Annotation
 
 import Syntax.Measure (ConstPat(..))
 import CostAnalysis.Tactic
@@ -31,13 +35,13 @@ import CostAnalysis.Subtyping
 type Prove e a = Tactic -> e -> JudgementType -> Id -> FreeTemplate -> FreeTemplate -> ProveMonad a
 
 
-proveVar :: Prove PositionedExpr Derivation
+proveVar :: Prove (Expr Positioned) Derivation
 proveVar _ e@(Var x) judgeType binder q q' = do
   let cs = assertEqVarSubst binder x q' q
   conclude R.Var judgeType q q' cs e []
 
 
-proveConst :: Prove PositionedExpr Derivation
+proveConst :: Prove (Expr Positioned) Derivation
 proveConst _ e@(Const name args) judgeType binder q q' = do
   mEnv <- measureEnvForType (getType e)
   let subst = ExpandCtor (ConstPat name (map argToVar args)) mEnv
@@ -47,7 +51,7 @@ proveConst _ e@(Const name args) judgeType binder q q' = do
         argToVar _ = error "Encoutered non variable argument for constructor application."
 
 
-proveIte :: Prove PositionedExpr Derivation
+proveIte :: Prove (Expr Positioned) Derivation
 proveIte tactic e@(Ite (Coin p) e1 e2) judgeType binder q q' = do
   let [t1, t2] = subTactics 2 tactic
   q1 <- freshFrom q
@@ -69,10 +73,10 @@ simplifyPattern :: Pattern Positioned -> ProveMonad ConstPat
 simplifyPattern p@(PConst _ id ps) = ConstPat id <$> mapM toVar ps
   where toVar (PVar _ x) = return x
         toVar (PWildcard _) = return "_"
-        toVar _ = errorFrom (SynPat p) $ "Analysis does not support nested patterns."
+        toVar _ = errorFrom p $ "Analysis does not support nested patterns."
 
 
-proveMatchArm :: Id -> Prove PositionedMatchArm Derivation
+proveMatchArm :: Id -> Prove (MatchArm Positioned) Derivation
 proveMatchArm x tactic arm@(MatchArm pat@(PVar _ y) body) judgeType binder q q' = do
   p <- freshFrom (substVar x y q)
   let cs = assertEqVarSubst x y q p 
@@ -85,10 +89,10 @@ proveMatchArm x tactic (MatchArm pat body) judgeType binder q q' = do
   (p, cs) <- defEqSubst (x, subst) q
   deriv <- proveExpr tactic body judgeType binder p q'
   concludeArm pat judgeType q q' cs body [deriv]
-proveMatchArm _ _ arm _ _ _ _ = errorFrom (SynArm arm) "unsupported pattern in rule (match)."
+proveMatchArm _ _ arm _ _ _ _ = errorFrom arm "unsupported pattern in rule (match)."
 
 
-proveMatch :: Prove PositionedExpr Derivation
+proveMatch :: Prove (Expr Positioned) Derivation
 proveMatch tactic e@(Match (Var x) arms) judgeType binder q q' = do
   let tactics = subTactics (length arms) tactic
   derivs <- zipWithM proveArmWithTactic tactics arms
@@ -96,7 +100,7 @@ proveMatch tactic e@(Match (Var x) arms) judgeType binder q q' = do
   where proveArmWithTactic tactic arm = proveMatchArm x tactic arm judgeType binder q q'
   
 
-proveLet :: Prove PositionedExpr Derivation
+proveLet :: Prove (Expr Positioned) Derivation
 proveLet tactic e@(Let x e1 e2) judgeType binder q q' = do
   let [t1, t2] = subTactics 2 tactic
       argsO = S.fromList (args q) S.\\ (freeVars e1 S.\\ freeVars e2)
@@ -106,7 +110,7 @@ proveLet tactic e@(Let x e1 e2) judgeType binder q q' = do
   conclude R.Let judgeType q q' [] e [deriv1, deriv2]
   
 
-proveApp :: Prove PositionedExpr Derivation
+proveApp :: Prove (Expr Positioned) Derivation
 proveApp tactic e@(App "error" _) judgeType binder q q' = do
   conclude R.App judgeType q q' [] e []
 proveApp tactic e@(App fn appArgs) judgeType binder q q' = do
@@ -134,10 +138,10 @@ proveApp tactic e@(App fn appArgs) judgeType binder q q' = do
   conclude R.App judgeType q q' (csSplit ++ csRemainder ++ csSig) e []
   where argToVar :: Expr Positioned -> Id
         argToVar (Var x) = x
-        argToVar expr = error $ "Encoutered non variable argument for function application: " ++ printExprPlain expr
+        argToVar expr = error $ "Encoutered non variable argument for function application: " ++ prettyPrint expr
 
   
-proveSub :: Prove PositionedExpr Derivation
+proveSub :: Prove (Expr Positioned) Derivation
 proveSub tactic@(Rule (Rule.Sub sArgs) _) e judgeType binder q q' = do
   let [t] = subTactics 1 tactic
   p <- freshTempl (args q)
@@ -146,7 +150,7 @@ proveSub tactic@(Rule (Rule.Sub sArgs) _) e judgeType binder q q' = do
   conclude (R.Sub sArgs) judgeType q q' cs e [deriv]
 
 
-proveShift :: Prove PositionedExpr Derivation
+proveShift :: Prove (Expr Positioned) Derivation
 proveShift tactic e judgeType binder q q' = do
   let [subTactic] = subTactics 1 tactic
   k <- freshVar
@@ -157,7 +161,7 @@ proveShift tactic e judgeType binder q q' = do
   conclude R.Shift judgeType q q' (cs1 ++ cs2) e [deriv]
   
 
-proveTick :: Prove PositionedExpr Derivation
+proveTick :: Prove (Expr Positioned) Derivation
 proveTick tactic e@(Tick c e1) judgeType binder q q' = do
   let [subTactic] = subTactics 1 tactic
   if isCostFree judgeType then do
@@ -170,7 +174,7 @@ proveTick tactic e@(Tick c e1) judgeType binder q q' = do
     conclude R.Tick judgeType q q' cs e [deriv]
 
 
-proveLit :: Prove PositionedExpr Derivation
+proveLit :: Prove (Expr Positioned) Derivation
 proveLit tactic e@(Lit _) judgeType binder q q' = do
   let cs = assertEq q q'
   conclude R.Lit judgeType q q' cs e []
@@ -190,10 +194,10 @@ proveExpr tactic@(Rule R.App _)     e@(App id _) jt = proveApp tactic e jt
 proveExpr tactic@(Rule R.Lit [])    e@(Lit _)    jt = proveLit tactic e jt
 -- auto tactic
 proveExpr Auto e judgeType = proveExpr (genTactic judgeType e) e judgeType
-proveExpr tactic e _ = \_ _ _ -> errorFrom (SynExpr e) $ "Could not apply tactic to given "
-  ++ printExprHead e ++ " expression. Tactic: '" ++ printTacticHead tactic ++ "'"
+proveExpr tactic e _ = \_ _ _ -> errorFrom e $ "Could not apply tactic to given "
+  ++ prettyPrint e ++ " expression. Tactic: '" ++ prettyPrint tactic ++ "'"
 
-genTactic :: JudgementType -> PositionedExpr -> Tactic
+genTactic :: JudgementType -> (Expr Positioned) -> Tactic
 genTactic judgeType e@(Var {}) = autoSub judgeType e (Rule R.Var [])
 genTactic judgeType e@(Const {}) = autoSub judgeType e (Rule R.Const [])
 genTactic judgeType (Match _ arms) = Rule R.Match $ map (genTactic judgeType . armExpr) arms
@@ -216,9 +220,9 @@ genTactic judgeType e@(Let _ binding body) =
   autoSub judgeType e $ Rule R.Let [tBinding, tBody]
 genTactic judgeType (Tick _ e) = Rule R.Tick [genTactic judgeType e]
 genTactic judgeType e@(Lit _) = Rule R.Lit []
-genTactic _ e = error $ "genTactic: " ++ printExprHead e 
+genTactic _ e = error $ "genTactic: " ++ prettyPrint e 
 
-autoSub :: JudgementType -> PositionedExpr -> Tactic -> Tactic
+autoSub :: JudgementType -> Expr Positioned -> Tactic -> Tactic
 autoSub judgeType e tactic = case subArgsForExpr e judgeType of
   [] -> tactic
   wArgs -> Rule (R.Sub wArgs) [tactic]
@@ -240,8 +244,8 @@ subArgMap Standard =
 subArgMap Cf = [([FirstAfterMatch], [R.Mono])]
 subArgMap CfEq = []
  
-proveFun :: FunSig -> PositionedFunDef -> JudgementType -> ProveMonad Derivation
-proveFun fnTSig funDef judgeType = do
+derivFun :: FunSig -> FunDef Positioned -> JudgementType -> ProveMonad Derivation
+derivFun fnTSig funDef judgeType = do
   fnSig <- (M.! (funDef^.funName)) <$> use sig
   tactic <- fromMaybe Auto . M.lookup (funDef^.funName) <$> view tactics
   

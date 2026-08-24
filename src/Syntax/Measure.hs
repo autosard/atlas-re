@@ -6,13 +6,24 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE StrictData #-}
 
-module Syntax.Measure where
+module Syntax.Measure
+  ( ConstPat (..)
+  , Carrier
+  , Measure (..)
+  , MeasureAlgebra (..)
+  , Relation (..)
+  , SizeTransform (..)
+  , MeasureEnv (..)
+  , SMeasure (..)
+  , apply
+  , applyST
+  ) where
 
 import Data.Kind (Type)
 import Data.List (find)
 import qualified Data.Set as S
 
-import Primitive(Id, Substitutable(..), HasVars(..), substVars)
+import Syntax (Id, Substitutable(..), HasVars(..), substVars)
 import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Size
 

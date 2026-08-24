@@ -1,19 +1,21 @@
-module Syntax.AstContext where
+module Contextualization (contextualizeProg) where
 
 import Data.Set(Set)
 import qualified Data.Set as S
 
-import Primitive(Id)
-import StaticAnalysis(calledFunctions')
-import Syntax.Ast
+import Syntax (Id, Typed, Positioned)
+import Syntax.Annotation (ExprCtx (..), extendWithCtx)
+import Syntax.Program
+import Syntax.Expression
+import Syntax.Pattern 
 
 contextualizeProg :: Program Typed -> Program Positioned
 contextualizeProg = pMapFn contextualizeExpr
 
-contextualizeExpr :: Id -> TypedExpr -> PositionedExpr
+contextualizeExpr :: Id -> Expr Typed -> Expr Positioned
 contextualizeExpr fn = contextualizeExpr' fn $ S.fromList [PseudoLeaf, OutermostLet]
 
-contextualizeExpr' :: Id -> Set ExprCtx -> TypedExpr -> PositionedExpr
+contextualizeExpr' :: Id -> Set ExprCtx -> Expr Typed -> Expr Positioned
 contextualizeExpr' fn ctx (VarAnn ann id) = VarAnn (extendWithCtx (S.delete OutermostLet ctx) ann) id
 contextualizeExpr' fn ctx (ConstAnn ann id args) = ConstAnn (extendWithCtx ctx ann) id args'
   where args' = map (contextualizeExpr' fn ctx) args
@@ -33,7 +35,7 @@ contextualizeExpr' fn ctx (LetAnn ann id e1 e2) = LetAnn (extendWithCtx letCtx a
         bindsApp = [BindsAppOrTick | appOrTick e1]
         bindsAppRec = [BindsAppOrTickRec
                       | appOrTick e1,
-                        S.member fn (calledFunctions' e1)]
+                        S.member fn (calledFunctions e1)]
         firstAfterMatch = [FirstAfterMatch | S.member FirstAfterMatch ctx]
         firstAfterApp = [FirstAfterApp | S.member FirstAfterApp ctx]
         letCtx = S.fromList $ outermost ++ bindsApp ++ bindsAppRec ++ firstAfterMatch ++ firstAfterApp
@@ -65,12 +67,12 @@ appOrTick (Tick {}) = True
 appOrTick (App {}) = True
 appOrTick _ = False
 
-contextualizeArm :: Id -> Set ExprCtx -> TypedMatchArm -> PositionedMatchArm
+contextualizeArm :: Id -> Set ExprCtx -> MatchArm Typed -> MatchArm Positioned
 contextualizeArm fn ctx (MatchArmAnn ann pat e) = MatchArmAnn (extendWithCtx S.empty ann) pat' e'
   where pat' = contextualizePattern pat
         e' = contextualizeExpr' fn ctx e
 
-contextualizePattern :: TypedPattern -> PositionedPattern
+contextualizePattern :: Pattern Typed -> Pattern Positioned
 contextualizePattern (PConst ann id args) = PConst (extendWithCtx S.empty ann) id args'
   where args' = map contextualizePattern args
 contextualizePattern (PVar ann id)  = PVar (extendWithCtx S.empty ann) id

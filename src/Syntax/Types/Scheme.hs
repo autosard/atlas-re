@@ -1,11 +1,21 @@
-module Typing.Scheme where
+module Syntax.Types.Scheme
+  ( Scheme (..)
+  , quantify
+  , quantifyAll
+  , tFunArgs
+  , toScheme
+  , toType
+  , findByType
+  , tFunResult
+  )where
 
 import qualified Data.Map as M
 import Data.Map (Map)
 
-import Primitive(Id, PrettyPrint(..))
-import Typing.Type(Type(TGen, TFun), unprod, match)
-import Typing.Subst(Types(apply, tv))
+import Syntax (Id)
+import Syntax.PrettyPrint (PrettyPrint(..))
+import Syntax.Types.Type(Type(TGen, TFun), unprod, match)
+import Syntax.Types.Subst(Types(apply, tv))
 import Data.List (intercalate)
 import Data.Foldable (asum)
 
@@ -16,9 +26,6 @@ instance Types Scheme where
 
 data Scheme = Forall !Int !Type
   deriving (Eq, Ord, Show)
-
--- instance Show Scheme where
---   show (Forall _ t) = show t
 
 toScheme :: Type -> Scheme
 toScheme = Forall 0

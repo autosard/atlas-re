@@ -10,7 +10,7 @@ module Cli(Options(..),
            BenchOptions(..),
            cliP) where
 
-import Syntax.Ast(Fqn)
+import Syntax (Fqn)
 
 import Options.Applicative
 import qualified Data.Text as T

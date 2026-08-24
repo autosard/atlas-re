@@ -3,7 +3,7 @@
 {-# LANGUAGE DataKinds #-}
 
 
-module Syntax.Elaboration where
+module Elaboration (elabProgram) where
 
 import Data.Map(Map)
 import qualified Data.Map as M
@@ -22,18 +22,21 @@ import Data.Maybe(mapMaybe)
 import qualified Data.MultiSet as MSet
 
 
-import Primitive (Id)
-import Syntax.Ast
-import Typing.Scheme (Scheme, quantify, quantifyAll, tFunArgs)
-import Typing.Subst (tv)
-import Typing.Type
+import Syntax (Id, Parsed, Elaborated)
+import Syntax.Surface
+import Syntax.Program
+import Syntax.Expression
+import Syntax.Pattern
+import Syntax.Annotation (mapAnn, getAnn)
+import Syntax.Types.Scheme (Scheme, quantify, quantifyAll, tFunArgs)
+import Syntax.Types.Subst (tv)
+import Syntax.Types.Type
 import Syntax.Measure
 import SourceError
 import CostAnalysis.Template (BoundTemplate(..))
 import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Size
-import StaticAnalysis ( groupFuns )
-import Syntax.Constants (builtInMeasures)
+import qualified Builtin (measures)
 
 
 
@@ -323,7 +326,7 @@ elabClause _ (SurfaceClause pos _ _) =
       throwError $ SourceError pos (ElabError "Measure definitions must use constructor patterns.")
       
 elabMeasureSig :: Bool -> [MeasureDef] -> Elab (Map Scheme MeasureEnv)
-elabMeasureSig ignorePot = foldM insertMeasure builtInMeasures
+elabMeasureSig ignorePot = foldM insertMeasure Builtin.measures
   where
     insertMeasure :: Map Scheme MeasureEnv -> MeasureDef -> Elab (Map Scheme MeasureEnv)
     insertMeasure envMap mDef = do

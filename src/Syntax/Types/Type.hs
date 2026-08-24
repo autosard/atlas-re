@@ -1,14 +1,24 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Typing.Type where
+module Syntax.Types.Type
+  ( Type (..)
+  , prod
+  , unprod
+  , tCurry
+  , fn
+  , match
+  , isResourceRelevant
+  , funTArgs
+  )where
 
 import qualified Data.Text as T
 import Data.Map (Map)
 import qualified Data.Map as M
 
 
-import Primitive(Id, PrettyPrint(..))
+import Syntax (Id)
+import Syntax.PrettyPrint (PrettyPrint (..))
 import Data.Maybe (isJust)
 import Control.Monad (zipWithM, foldM)
 

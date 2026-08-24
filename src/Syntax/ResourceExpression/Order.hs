@@ -1,10 +1,14 @@
-module Syntax.ResourceExpression.Order where
+module Syntax.ResourceExpression.Order
+  ( GuardMatrix
+  , resourceLe
+  , computeStratifiedCosts
+  )where
 
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Set (Set)
 
-import Primitive (Id)
+import Syntax (Id)
 import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Size
 import Data.List (partition)

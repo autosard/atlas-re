@@ -1,9 +1,16 @@
-module Syntax.ResourceExpression.Pattern where
+module Syntax.ResourceExpression.Pattern
+  ( PatVar (..)
+  , SizeVar (..)
+  , SizePattern (..)
+  , TermPattern (..)
+  , unify
+  , findMatches
+  )where
 
 import qualified Data.Map.Strict as M
 import Control.Monad (guard)
 
-import Primitive(Id)
+import Syntax (Id)
 import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Size
 

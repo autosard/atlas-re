@@ -1,6 +1,9 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module SourceError where
+module SourceError
+  ( SourceError(..)
+  , printSrcError
+  )where
 
 import qualified Data.Text as T
 import Text.Megaparsec.Pos

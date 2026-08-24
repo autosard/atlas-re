@@ -26,8 +26,9 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
 
-
-import Syntax.Ast
+import Syntax (Id)
+import Syntax.PrettyPrint (prettyPrint)
+import Syntax.Program
 import Parsing.Tactic
 import CostAnalysis.Coeff
 import CostAnalysis.Analysis
@@ -36,7 +37,7 @@ import CostAnalysis.Tactic
 import CostAnalysis.PrettyProof
 
 
-import Primitive(Id, dbg)
+
 
 import Cli(Options(..),
            AnalyzeOptions(..),
@@ -68,7 +69,7 @@ run Options{..} AnalyzeOptions{..} = do
         (Left mod) -> (mod, Nothing)
         (Right (mod, fn)) -> (mod, Just fn)
   prog <- loadProgram switchInferPotential searchPath modName fn
-  when switchPrintProg $ liftIO $ putStrLn (printProg prog)
+  when switchPrintProg $ liftIO $ putStrLn (prettyPrint prog)
 
   unless (case fn of 
             Just name -> M.member name (_pFunDefs prog)
@@ -76,7 +77,7 @@ run Options{..} AnalyzeOptions{..} = do
          ) $ do
     fail "Module does not define the requested function."
   tactics <- case tacticsPath of
-    Just path -> loadTactics (T.unpack modName) (M.keys (_pFunDefs (dbg "templ" (show .templateConfig . _pConfig )prog))) path
+    Just path -> loadTactics (T.unpack modName) (M.keys (_pFunDefs prog)) path
     Nothing -> return M.empty
   let env = ProofEnv {
         _tactics=tactics

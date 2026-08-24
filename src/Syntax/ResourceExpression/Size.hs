@@ -1,7 +1,23 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 
-module Syntax.ResourceExpression.Size where
+module Syntax.ResourceExpression.Size
+  ( SizeSum(..)
+  , ssCoeffs
+  , ssConstant
+  , emptySizeSum
+  , sizeConst
+  , sizeVars
+  , sizeVar
+  , sizeScalar
+  , add
+  , scale
+  , sizeSubst
+  , addSizeTerm
+  , sizeFromList
+  , coeffSum
+  , SizeTerm(..)
+  ) where
 
 import qualified Data.Map as M
 import Data.Map (Map)
@@ -9,7 +25,8 @@ import Lens.Micro.Platform
 import Data.List (intercalate)
 import qualified Data.Text as T
 
-import Primitive (Id, HasVars(..), Substitutable(..), PrettyPrint(..))
+import Syntax (Id, HasVars (..), Substitutable (..))
+import Syntax.PrettyPrint (PrettyPrint (..))
 
 data SizeSum = SizeSum {
   _ssCoeffs :: Map Id Int,

@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Parsing.Tactic where
+module Parsing.Tactic (parseTactic) where
 
 import CostAnalysis.Tactic
 import CostAnalysis.Rules

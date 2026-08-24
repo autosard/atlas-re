@@ -5,7 +5,7 @@
 {-# LANGUAGE TupleSections #-}
 
 
-module CostAnalysis.Solving where
+module CostAnalysis.Solving (solve) where
 
 import Prelude hiding (sum)
 import Data.Ratio(numerator, denominator)
@@ -19,12 +19,11 @@ import qualified Data.Set as S
 import Data.Foldable (foldrM)
 import Lens.Micro.Platform
 
-import Primitive(Id)
+import Syntax (Id)
 import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
 import Data.Maybe (isNothing, isJust)
-import Data.Monoid (Last(Last))
 
 
 class Encodeable a where
