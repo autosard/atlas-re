@@ -191,7 +191,7 @@ zeroTemplate = ArithTemplate M.empty
 
 data EnrichedMeasureEnv = EnrichedMeasureEnv {
   emSizeMeasure :: MeasureAlgebra Size, 
-  emPotentialMeasure :: Maybe (MeasureAlgebra Potential)
+  emPotentialMeasure :: MeasureAlgebra Potential
 } deriving (Eq, Show)
 
 
@@ -238,14 +238,11 @@ reduceTerm subst (RTSize x) = fromSizeExpr $ reduceSizeExpr subst (FM.singleton 
 reduceTerm subst (RTLog ss) = FM.singleton (RTLog $ reduceSizeExpr subst ss)
 reduceTerm subst (RTBinom ss k) = FM.singleton $ RTBinom (reduceSizeExpr subst ss) k
 reduceTerm (x,  ExpandCtor pat mEnv) t@(RTPhi y)
-  | x == y = case emPotentialMeasure mEnv of
-      Just potAlg -> apply potAlg pat
-      Nothing -> error $ "missing potential measure for " ++ T.unpack x
+  | x == y = apply (emPotentialMeasure mEnv) pat
   | otherwise = FM.singleton t
 reduceTerm (x,  _) t@(RTPhi _) = FM.singleton t
 reduceTerm subst (RTProd ts) = FM.prod . MSet.toList $ MSet.map (reduceTerm subst) ts
 reduceTerm _ RTId = FM.singleton RTId
--- reduceTerm subst t = error $ "subst: " ++ show subst ++ ", term: " ++ show t
 
 
 reduceSizeExpr :: (Id, SubstValue) -> SizeExpr -> SizeExpr

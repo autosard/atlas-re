@@ -36,7 +36,7 @@ import Syntax.Measure
 import SourceError
 import CostAnalysis.Template (BoundTemplate(..))
 import Syntax.ResourceExpression
-import qualified Builtin (measures)
+import qualified Builtin (measures, dataDefs)
 import qualified Syntax.FreeModule as FM
 
 
@@ -80,17 +80,18 @@ freshMatchVar = do
 -- Programs
 --------------------------------------------------------------------------------
 
-elabProgram :: Bool -> SurfaceProgram -> Either (SourceError ElabError) (Program Elaborated)
-elabProgram ignorePot sp = evalState (runExceptT (elabProg ignorePot sp)) initState
+elabProgram :: SurfaceProgram -> Either (SourceError ElabError) (Program Elaborated)
+elabProgram sp = evalState (runExceptT (elabProg sp)) initState
   
   where initState = ElabState 0
 
-elabProg :: Bool -> SurfaceProgram -> Elab (Program Elaborated)
-elabProg ignorePot sp = do
+elabProg :: SurfaceProgram -> Elab (Program Elaborated)
+elabProg sp = do
   sig <- mapM elabSig (sfSig sp)
   funDefs <- mapM elabFunDef $ sfFunDefs sp
-  dataEnv <- elabDataDefs (sfDataDefs sp)
-  measureSig <- elabMeasureSig ignorePot (sfMeasureDefs sp)
+  parsedDataEnv <- elabDataDefs (sfDataDefs sp)
+  let dataEnv = M.union Builtin.dataDefs parsedDataEnv
+  measureSig <- elabMeasureSig (sfMeasureDefs sp)
   return $ Program {
     _pSig = sig
     , _pConfig = sfConfig sp
@@ -332,8 +333,8 @@ elabClause mKind (SurfaceClause _ [PConst _ cPat pVars] body) = do
 elabClause _ (SurfaceClause pos _ _) = 
       throwError $ SourceError pos (ElabError "Measure definitions must use constructor patterns.")
       
-elabMeasureSig :: Bool -> [MeasureDef] -> Elab (Map Scheme MeasureEnv)
-elabMeasureSig ignorePot = foldM insertMeasure Builtin.measures
+elabMeasureSig :: [MeasureDef] -> Elab (Map Scheme MeasureEnv)
+elabMeasureSig = foldM insertMeasure Builtin.measures
   where
     insertMeasure :: Map Scheme MeasureEnv -> MeasureDef -> Elab (Map Scheme MeasureEnv)
     insertMeasure envMap mDef = do
@@ -349,9 +350,7 @@ elabMeasureSig ignorePot = foldM insertMeasure Builtin.measures
           alg <- elabAlgebra SSize (mClauses mDef)
           return $ existingEnv { sizeMeasure = alg }
           
-        Potential -> if ignorePot
-          then return existingEnv
-          else do
+        Potential -> do
             alg <- elabAlgebra SPotential (mClauses mDef)
             return $ existingEnv { potentialMeasure = Just alg }
           

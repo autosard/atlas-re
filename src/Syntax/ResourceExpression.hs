@@ -19,13 +19,11 @@ import qualified Data.Text as T
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MSet
 
-
 import Syntax (Id, HasVars(..), Substitutable(..))
 import Syntax.PrettyPrint (PrettyPrint(..))
 import qualified Syntax.FreeModule as FM
 import Syntax.FreeModule (FreeModule)
 import Primitive (unionMap)
-
 
 data SizeTerm = SVar Id | SId
   deriving (Eq, Ord, Show)
@@ -52,7 +50,9 @@ instance Num RScalar where
   (+) = RSAdd
   (*) = RSMul
   negate = RSMul (RSConst (-1))
-  fromInteger = RSConst . fromIntegral 
+  fromInteger = RSConst . fromIntegral
+  abs (RSConst k) = RSConst (abs k)
+  abs q@(RSCoeff _ _) = q
   
 
 type ResourceExpr = FreeModule ResourceTerm RScalar
@@ -141,3 +141,5 @@ isPotential _ = False
 isOne :: ResourceTerm -> Bool
 isOne RTId = True
 isOne other = False
+
+        

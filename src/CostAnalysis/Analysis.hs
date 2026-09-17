@@ -40,7 +40,6 @@ import CostAnalysis.Constraint (sum)
 import CostAnalysis.Coeff (Coeff(Coeff))
 import Control.Monad.Extra (whenM, filterM)
 import qualified Syntax.Measure (Relation(..))
-import Primitive (dbg)
 
 
 data AnalysisResult = AnalysisResult {
@@ -49,7 +48,7 @@ data AnalysisResult = AnalysisResult {
   , _arSigCs :: [Formula]
   , _arSizeSig :: Map Id SizeTransform
   , _arResult :: Either [Formula] Solution
-  , _arPotSig :: Map Scheme [(ConstPat, FreeTemplate)]
+  , _arPotSig :: Map Scheme [(ConstPat, ResourceExpr)]
   } deriving Show
 
 analyzeProgram :: ProofEnv -> Program Positioned
@@ -85,7 +84,7 @@ analyzeProgram env prog = do
                      result
                      (potentials $ state^.measureSig)
 
-          
+
 
 analyzeStages :: Program Positioned -> ProveMonad ()
 analyzeStages prog = do

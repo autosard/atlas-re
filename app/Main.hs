@@ -68,7 +68,7 @@ run Options{..} AnalyzeOptions{..} = do
   let (modName, fn) = case target of
         (Left mod) -> (mod, Nothing)
         (Right (mod, fn)) -> (mod, Just fn)
-  prog <- loadProgram switchInferPotential searchPath modName fn
+  prog <- loadProgram searchPath modName fn
   when switchPrintProg $ liftIO $ putStrLn (prettyPrint prog)
 
   unless (case fn of 

@@ -88,8 +88,8 @@ findModule loadPath moduleName = do
 
 
 
-loadProgram :: Bool -> Maybe FilePath -> Text -> Maybe Id -> IO (Program Positioned)
-loadProgram ignorePot pathSearch modName fn = do
+loadProgram :: Maybe FilePath -> Text -> Maybe Id -> IO (Program Positioned)
+loadProgram pathSearch modName fn = do
   searchPathfromEnv <- lookupEnv "ATLAS_SEARCH"
   let path = (`fromMaybe` pathSearch) . (`fromMaybe` searchPathfromEnv) $ "."
   surfaceProg <- loadSurfaceProgram path modName
@@ -99,4 +99,4 @@ loadProgram ignorePot pathSearch modName fn = do
   contextualizeProg
     . normalizeProg
     <$> (run inferProgram
-         =<< run (elabProgram ignorePot) surfaceProg)
+         =<< run elabProgram surfaceProg)

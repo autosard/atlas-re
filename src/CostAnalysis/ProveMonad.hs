@@ -89,7 +89,7 @@ import Data.Maybe (isJust, mapMaybe)
 import Control.Monad (forM)
 import Control.Arrow (Arrow(second))
 import Data.List (uncons)
-import Control.Monad.Extra (whenM)
+import Control.Monad.Extra (whenM, ifM)
 import qualified Syntax.FreeModule as FM
 
 
@@ -137,55 +137,60 @@ enrichMeasureSig :: Program a -> ProveMonad (Map Scheme EnrichedMeasureEnv)
 enrichMeasureSig prog = M.traverseWithKey go (prog^.pMeasureSig)
   where go :: Scheme -> MeasureEnv -> ProveMonad EnrichedMeasureEnv
         go t mEnv = do
-          potMeasure <- case potentialMeasure mEnv of
-                Just pm -> return pm
-                Nothing -> genPotMeasure (prog ^. pDataEnv) t
+          potMeasure <- ifM (view inferPotential) 
+            (genPotMeasure (prog ^. pDataEnv) t genFreePotExpr)
+            (case potentialMeasure mEnv of
+               Just pm -> return pm
+               Nothing -> genPotMeasure (prog ^. pDataEnv) t genZeroPotExpr)
                   
           return $ EnrichedMeasureEnv {
             emSizeMeasure = sizeMeasure mEnv
-            , emPotentialMeasure = Just potMeasure
+            , emPotentialMeasure = potMeasure
             }
           
-potentials :: Map Scheme EnrichedMeasureEnv -> Map Scheme [(ConstPat, FreeTemplate)]
-potentials = M.mapMaybe go
-  where go env = do
-          (Equations eqs) <- emPotentialMeasure env
-          return $ map (second toTempl) eqs
-        toTempl :: ResourceExpr -> FreeTemplate
-        toTempl terms = let ts = mapMaybe go (M.toList terms) in
-                            case uncons ts of
-                              Just ((i, _), _) -> FreeTemplate i (S.fromList (map snd ts))
-                              Nothing -> FreeTemplate 0 S.empty
-          where go (t, RSCoeff i idx) = Just (i, idx)
-                go _ = Nothing
+potentials :: Map Scheme EnrichedMeasureEnv -> Map Scheme [(ConstPat, ResourceExpr)]
+potentials = M.map go
+  where go :: EnrichedMeasureEnv -> [(ConstPat, ResourceExpr)]
+        go env = let (Equations eqs) = emPotentialMeasure env in eqs
 
-
-genPotMeasure :: DataEnv -> Scheme -> ProveMonad (MeasureAlgebra Potential)
-genPotMeasure env (Forall _ (TAp tName _)) = do
+genPotMeasure :: DataEnv
+  -> Scheme
+  -> (Id -> [(Id, Type)] -> ProveMonad (ConstPat, ResourceExpr))
+  -> ProveMonad (MeasureAlgebra Potential)
+genPotMeasure env (Forall _ (TAp tName _)) genRhs = do
   let ctors = diCtors $ env M.! tName
-
+  
   let ctorInputs = [(cName, args')
                    | CtorInfo cName cType <- ctors
-                   ,  let (Forall _ t) = cType
-                          args' = [(Text.pack $ "_pArg" ++ show i, t)
-                                  | (t, i) <- zip (funTArgs t) [1..]
-                                  ]
+                   , let (Forall _ t) = cType
+                         args' = [(Text.pack $ "_pArg" ++ show i, t)
+                                 | (t, i) <- zip (funTArgs t) [1..]
+                                 ]
                    ]
-                   
-  eqs <- forM ctorInputs $ \(cName, args') -> do 
-      let templArgs = map fst $ filter (\(_,t) -> isResourceRelevant t) args'
-      let patArgs = map fst args'
+  eqs <- forM ctorInputs (uncurry genRhs)
+  return $ Equations eqs
 
-      templ <- freshTempl templArgs
+genZeroPotExpr :: Id -> [(Id, Type)] -> ProveMonad (ConstPat, ResourceExpr)
+genZeroPotExpr cName args = do 
+  let patArgs = map fst args
+  let rhs = FM.empty
+  return (ConstPat cName patArgs, rhs)
+  
+
+genFreePotExpr :: Id -> [(Id, Type)] -> ProveMonad (ConstPat, ResourceExpr)
+genFreePotExpr cName args = do
+  let templArgs = map fst $ filter (\(_,t) -> isResourceRelevant t) args
+  let patArgs = map fst args
+
+  templ <- freshTempl templArgs
       
-      whenM ((== Infer) <$> view analysisMode)
-        (do
-            abs <- sequence [coeffAbs (templ!t) | t <- S.toList (terms templ)]
---          let negCoeffs = [minus (templ!t) | t <- S.toList (terms templ)]
-            optiTargets %= (sum abs :)
-        )
+  whenM ((== Infer) <$> view analysisMode)
+    (do
+        abs <- sequence [coeffAbs (templ!t) | t <- S.toList (terms templ)]
+        optiTargets %= (sum abs :)
+    )
         
-      let rhs = FM.fromList' $
+  let rhs = FM.fromList' $
             [(t, RSCoeff (templ^.ftId) t)
             | t <- S.toList $ terms templ
             , not (isPotential t)]
@@ -193,9 +198,9 @@ genPotMeasure env (Forall _ (TAp tName _)) = do
             [(t, 1) 
             | t <- S.toList $ terms templ
             , isPotential t]
-      return (ConstPat cName patArgs, rhs)
+  return (ConstPat cName patArgs, rhs)
 
-  return $ Equations eqs
+  
 
 coeffAbs :: ArithExpr -> ProveMonad ArithExpr
 coeffAbs q = do

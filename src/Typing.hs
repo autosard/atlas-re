@@ -405,11 +405,8 @@ infer ti = case runTI initState ti of
   where initState = TiState 0 nullSubst []
 
 inferProgram :: Program Elaborated -> Either (SourceError TypeError) (Program Typed)
-inferProgram p = (infer . tiProg M.empty (cTorEnvForProg p)) p
+inferProgram p = (infer . tiProg M.empty (buildCtorEnv (p^.pDataEnv))) p
 
--- | left-biased union (does not overide builtins)
-cTorEnvForProg :: Program a -> CtorEnv
-cTorEnvForProg p = buildCtorEnv $ M.union Builtin.dataDefs (p^.pDataEnv)
 
 -- inferExpr :: TypedProgram -> ParsedExpr -> Either SourceError TypedExpr
 -- inferExpr p expr = infer $ tiApply M.empty cEnv =<< tiExpr initCtx cEnv expr

@@ -1,5 +1,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module CostAnalysis.PrettyProof
   ( renderProof
@@ -12,7 +13,7 @@ import Data.Set(Set)
 import Data.Map(Map)
 import qualified Data.Map as M
 import Text.Blaze.Html.Renderer.Text(renderHtml)
-import Text.Blaze.Html(Html, toHtml)
+import Text.Blaze.Html(Html, toHtml, ToMarkup (toMarkup))
 import Text.Hamlet (shamlet)
 import Text.Lucius 
 import qualified Data.Tree as T
@@ -39,6 +40,8 @@ import CostAnalysis.Analysis (AnalysisResult (..))
 import Syntax.Measure (SizeTransform (SizeTransform), ConstPat(..))
 import Syntax.Types.Scheme (Scheme)
 import qualified Syntax.Measure(Relation(..))
+import qualified Syntax.FreeModule as FM
+import Syntax.FreeModule (FreeModule)
 
 css = renderCss ([lucius|
 
@@ -238,7 +241,7 @@ hamSizeSig sig = [shamlet|
 |]
   where sigs = M.toList sig
 
-hamPotentialFunctions :: Result -> Map Scheme [(ConstPat, FreeTemplate)] -> Html
+hamPotentialFunctions :: Result -> Map Scheme [(ConstPat, ResourceExpr)] -> Html
 hamPotentialFunctions result env = [shamlet|
 <ul>
     $forall (t, e) <- pots
@@ -250,20 +253,23 @@ hamPotentialFunctions result env = [shamlet|
 |]
   where pots = M.toList env
 
-hamPotentialFunction :: Result -> [(ConstPat, FreeTemplate)] -> Html
+hamPotentialFunction :: Result -> [(ConstPat, ResourceExpr)] -> Html
 hamPotentialFunction result clauses = [shamlet|
 <ul class="fn">
    $forall (lhs, rhs) <- clauses
-     <li class="fn">
+     <li>
        <math display="inline">
          <mrow>
            <mi>𝜙
            <mo form="prefix" stretchy="false">(
-           <mi>^{hamConstPattern lhs}
+           ^{hamConstPattern lhs}
            <mo form="postfix" stretchy="false">)
            <mo form="infix">=
-           ^{hamTemplUnderResult result rhs}
+           ^{hamFreeModule (exprUnderResult rhs) RTId}
 |]
+  where exprUnderResult expr = case result of
+          Left _     -> expr
+          Right vals -> instCoeffs vals expr
 
 hamConstPattern :: ConstPat -> Html
 hamConstPattern (ConstPat name args) = [shamlet|
@@ -286,7 +292,7 @@ $case rel
      <mo>≤
   $of Syntax.Measure.Eq
      <mo>=
-^{hamSizeExpr rhs}
+^{hamFreeModule rhs SId}
 |]
                   
 hamDerivs :: Result -> Map Id [Derivation] -> Html
@@ -500,6 +506,9 @@ hamRat r = [shamlet|
    <mn>#{numerator r}
    <mn>#{denominator r}
 |]
+
+instance ToMarkup Rational where
+  toMarkup = hamRat
   
 hamOpTerm :: Html -> [ArithExpr] -> Html
 hamOpTerm op [] = [shamlet|
@@ -577,6 +586,10 @@ hamSize x = [shamlet|
 <mo form="postfix" stretchy="false">|
 |]
 
+instance ToMarkup SizeTerm where
+  toMarkup (SVar x) = hamSize x
+  toMarkup SId = hamRat 1
+
 
 hamResourceTerm :: ResourceTerm -> Html
 hamResourceTerm (RTSize s) = hamSize s
@@ -585,7 +598,7 @@ hamResourceTerm (RTBinom ss k) = [shamlet|
   <mo form="prefix" stretchy="true">(
   <mfrac linethickness="0">
     <mrow>
-      ^{hamSizeExpr ss}
+      ^{hamFreeModule ss SId}
     <mn>#{k}
   <mo form="postfix" stretchy="true">)    
 |]
@@ -595,7 +608,7 @@ hamResourceTerm (RTProd ts) = toHtml $ intersperse [shamlet|<mo>⋅|]
 hamResourceTerm (RTLog sizes) = [shamlet|
 <mi>log
 <mo form="prefix" stretchy="false">(
-^{hamSizeExpr sizes}
+^{hamFreeModule sizes SId}
 <mo form="postfix" stretchy="false">)  
 |]
 
@@ -610,38 +623,47 @@ hamResourceTerm (RTPhi x) = [shamlet|
 -- Constant 1 term
 hamResourceTerm RTId = [shamlet|<mn>1</mn>|]
 
+instance ToMarkup ResourceTerm where
+  toMarkup = hamResourceTerm
 
-hamSizeExpr :: SizeExpr -> Html
-hamSizeExpr s = case (M.toList s, M.findWithDefault 0 SId s) of
+hamRScalar :: RScalar -> Html
+hamRScalar (RSConst k) = hamRat k
+hamRScalar (RSCoeff i idx) = hamCoeff (Coeff i idx)
+
+instance ToMarkup RScalar where
+  toMarkup = hamRScalar
+
+hamFreeModule :: (ToMarkup a, Eq a, Eq b, Ord b, Ord a, ToMarkup b, Num b) => FreeModule a b -> a -> Html
+hamFreeModule m id = case (M.toList m, M.findWithDefault 0 id m) of
   ([], 0) -> [shamlet|<mn>0|]
-  ([], k) -> [shamlet|<mn>^{hamRat k}|]
-  (s:ss, k) -> [shamlet|
-  ^{hamSizeTermSigned False s}
-  $forall term <- ss
-    ^{hamSizeTermSigned True term}
-|]
-    
-hamSizeTermSigned :: Bool -> (SizeTerm, Rational) -> Html
-hamSizeTermSigned showLeadingPlus (SId, k) = [shamlet|
+  ([], k) -> [shamlet|<mn>#{k}|]
+  (a:as, k) -> [shamlet|
+  ^{hamSignedTerm False id a}
+  $forall term <- as
+    ^{hamSignedTerm True id term}
+|]  
+
+hamSignedTerm :: (Num b, ToMarkup a, Eq a, Ord b, ToMarkup b) => Bool -> a -> (a, b) -> Html
+hamSignedTerm showLeadingPlus id (a, k) | a == id = [shamlet|
 $if k > 0
   $if showLeadingPlus
     <mo>+
-  <mn>^{hamRat k}
+  <mn>#{k}
 $if k < 0
   <mo>-
-  <mn>^{hamRat (abs k)}
+  <mn>#{(abs k)}
 |]
-hamSizeTermSigned showLeadingPlus (SVar varId, coeff) = [shamlet|
-$if coeff < 0
+hamSignedTerm showLeadingPlus id (a, k) | otherwise = [shamlet|
+$if k < 0
   <mo>-
-  $if coeff > 1
-    <mn>^{hamRat (abs coeff)}
-  <mi>^{hamSize varId}
+  $if k > 1
+    <mn>#{(abs k)}
+  <mi>#{a}
 $else
-    $if coeff > 0
+    $if k > 0
       $if showLeadingPlus
         <mo>+
-      $if coeff > 1  
-        <mn>^{hamRat (abs coeff)}  
-      <mi>^{hamSize varId}
-|]
+      $if k > 1  
+        <mn>#{(abs k)}  
+      <mi>#{a}
+|]                                     
