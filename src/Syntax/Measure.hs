@@ -25,7 +25,6 @@ import qualified Data.Set as S
 
 import Syntax (Id, Substitutable(..), HasVars(..), substVars)
 import Syntax.ResourceExpression
-import Syntax.ResourceExpression.Size
 
 data ConstPat = ConstPat Id [Id]
   deriving (Eq, Show)
@@ -39,8 +38,8 @@ data Measure = Size | Potential
 
 type family Carrier (m :: Measure) :: Type 
 
-type instance Carrier 'Size = SizeSum
-type instance  Carrier 'Potential = [ResourceTerm]
+type instance Carrier 'Size = SizeExpr
+type instance  Carrier 'Potential = ResourceExpr
 
 data Relation = Ge
               | Eq
@@ -48,11 +47,11 @@ data Relation = Ge
 
 data SizeTransform = SizeTransform
   { stLhs :: [Id]
-  , stRhs :: SizeSum
+  , stRhs :: SizeExpr
   , stRelation :: Relation
   } deriving Show
 
-applyST :: SizeTransform -> [Id] -> SizeSum
+applyST :: SizeTransform -> [Id] -> SizeExpr
 applyST st args = substVars (stLhs st) args (stRhs st)
 
 newtype MeasureAlgebra (m :: Measure) = Equations [(ConstPat, Carrier m)]

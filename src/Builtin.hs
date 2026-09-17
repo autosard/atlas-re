@@ -13,8 +13,7 @@ import Syntax.Program
 
 import Data.Map as M
 import Syntax.Measure (MeasureEnv (..), ConstPat(..), MeasureAlgebra(..))
-import Syntax.ResourceExpression.Size (emptySizeSum)
-
+import qualified Syntax.FreeModule as FM
 
 dataDefs :: DataEnv
 dataDefs = M.fromList
@@ -85,12 +84,12 @@ measures :: Map Scheme MeasureEnv
 measures = M.fromList [
   (Forall 0 (TAp "Bool" []), MeasureEnv {
      sizeMeasure = Equations [
-       (ConstPat "True" [], emptySizeSum),
-       (ConstPat "False" [], emptySizeSum)
+       (ConstPat "True" [], FM.empty),
+       (ConstPat "False" [], FM.empty)
        ]
    , potentialMeasure = Just $ Equations [
-       (ConstPat "True" [], []),
-       (ConstPat "False" [], [])
+       (ConstPat "True" [], FM.empty),
+       (ConstPat "False" [], FM.empty)
        ]
    })
   ]

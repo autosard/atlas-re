@@ -74,6 +74,7 @@ pAtomicLangConf =
   <|> symbol "log" *> pParens sc (LogLangConf <$> pInt <* symbol "," <*> pInt)
   <|> BinomLangConf <$ symbol "binom" <*> pParens sc pInt
   <|> RankLangConf <$ symbol "rank"
+  <|> LinLogConf <$ symbol "nlog"
 
 pTemplateLanguageConfig :: Parser (Maybe TemplateLanguageConfig)
 pTemplateLanguageConfig = pPragma "TEMPLATE" (pSqParens (sepBy pAtomicLangConf (symbol ",")))
@@ -552,12 +553,12 @@ lexeme = L.lexeme scn
 sc :: Parser ()
 sc = L.space
   hspace1
-  (L.skipLineComment "(*)")       
+  (L.skipLineComment "--")       
   (L.skipBlockComment "(*" "*)")
 
 scn :: Parser ()
 scn = L.space
   space1                        
-  (L.skipLineComment "(*)")       
+  (L.skipLineComment "--")       
   (L.skipBlockComment "(*" "*)")
 

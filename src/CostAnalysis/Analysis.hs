@@ -27,7 +27,7 @@ import SourceError
 import Control.Monad.Except (MonadError (throwError, catchError))
 import CostAnalysis.Deriv ( derivFun )
 import Syntax.Types.Type
-import Syntax.Types.Scheme (tFunArgs, Scheme(..))
+import Syntax.Types.Scheme (tFunArgs, Scheme(..), fnArgType, tFunResult)
 import Syntax.Measure (SizeTransform, ConstPat, Relation)
 
 import CostAnalysis.Template
@@ -40,6 +40,7 @@ import CostAnalysis.Constraint (sum)
 import CostAnalysis.Coeff (Coeff(Coeff))
 import Control.Monad.Extra (whenM, filterM)
 import qualified Syntax.Measure (Relation(..))
+import Primitive (dbg)
 
 
 data AnalysisResult = AnalysisResult {
@@ -88,7 +89,7 @@ analyzeProgram env prog = do
 
 analyzeStages :: Program Positioned -> ProveMonad ()
 analyzeStages prog = do
-  tLang .= fromConfig (templateConfig (prog^.pConfig))
+  tLang .= fromConfig (templateConfig $ prog^.pConfig)
   initMeasureSig prog
   potOptiTgts <- use optiTargets
   
@@ -228,20 +229,25 @@ constrainSig prog = do
   case mode of
     Check -> assertSigMatchesAnn prog
     Infer -> do
-      assertPotential
+      assertPotential prog
       optimizeSigs prog
 
-assertPotential :: ProveMonad ()
-assertPotential = mapM_ go . M.toList =<< use sig
+assertPotential :: Program Positioned -> ProveMonad ()
+assertPotential p = mapM_ go . M.toList =<< use sig
   where go :: (Id, FreeSig) -> ProveMonad ()
         go (fn, fs) = do
           costMode <- M.findWithDefault Amortized fn <$> view costModes
 
+          let tFun = p ^. pSig . singular (ix fn) . typeSig
+          let returnType = tFunResult tFun
           let pot = case costMode of
                 WorstCase -> ConstTerm 0
                 Amortized -> ConstTerm 1
                 
-          let fromCs = concat [(fs^.fsFrom)!?RTPhi x `eq` pot | x <- args (fs^.fsFrom)]
+          let fromCs = concat [(fs^.fsFrom)!?RTPhi x `eq` pot
+                              | x <- args (fs^.fsFrom),
+                                let tx = fnArgType x (args (fs^.fsFrom)) tFun,
+                                tx == returnType]
           let toCs = concat [case t of
                                i@(RTPhi _) -> (fs^.fsTo)!i `eq` pot
                                i -> zero ((fs^.fsTo)!i)

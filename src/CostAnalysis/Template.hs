@@ -40,15 +40,15 @@ import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
 
 import Syntax (Id, freeVars, Substitutable(..), substVar)
-import Primitive (toIntegerExact)
 import CostAnalysis.Coeff
 import qualified CostAnalysis.Constraint as C
 import Syntax.ResourceExpression
-import Syntax.ResourceExpression.Size hiding (add, scale)
+import qualified Syntax.FreeModule as FM
 import Syntax.Measure hiding (Eq)
-import CostAnalysis.Constraint hiding (ConstTerm, VarTerm)
+import CostAnalysis.Constraint hiding (ConstTerm, VarTerm, fromRScalar)
 import qualified Data.Text as T
 import qualified Data.MultiSet as MSet
+import CostAnalysis.TemplateLanguage (genBinoms)
 
 --------------------------------------------------------------------------------
 -- General Templates
@@ -157,16 +157,12 @@ bindTemplate q values = BoundTemplate
                 let v = fromMaybe 0 (values M.!? c)])
 
 sizeTransformFromTempl :: [Id] -> BoundTemplate -> Relation -> SizeTransform
-sizeTransformFromTempl args templ rel = let rhs = foldr go emptySizeSum $ M.toList (btCoeffs templ) in
+sizeTransformFromTempl args templ rel = let rhs = foldr go FM.empty $ M.toList (btCoeffs templ) in
   SizeTransform args rhs rel
-  where go :: (ResourceTerm, Rational) -> SizeSum -> SizeSum
-        go (RTSize x, k) = addSizeTerm (VarTerm x (fromRat k)) 
-        go (RTId, k) = addSizeTerm (ConstTerm (fromRat k)) 
+  where go :: (ResourceTerm, Rational) -> SizeExpr -> SizeExpr
+        go (RTSize x, k) = FM.add (FM.singleton' (SVar x) k)
+        go (RTId, k) = FM.add (FM.singleton' SId k) 
         go _ = \_ -> error $ "given template contains non size term: " ++ show templ
-        
-        fromRat k = case toIntegerExact k of
-          Just n -> fromIntegral n
-          Nothing -> error "encountered rational coeffient in size transform."
 
 --------------------------------------------------------------------------------
 -- TermTemplate
@@ -220,100 +216,67 @@ assertEqSubst checkTarget subst q p = (rhsTerms, constrain reducts)
                           else CoeffTerm (Coeff (p^.ftId) tgt))
                          (sum (map termFromSrc srcs))
                        | (tgt, srcs) <- rs, (not . isZero) tgt] 
-        termFromSrc (C.ConstTerm 1, t) = q!t
-        termFromSrc (k, t) = prod2 k (q!t)
+        termFromSrc (t, C.ConstTerm 1) = q!t
+        termFromSrc (t, k) = prod2 k (q!t)
         rhsTerms = S.fromList $ map fst reducts
         reducts = mergeTerms
                   . reduceTerms subst $ S.toList (terms q)
 
 -- dont forget that the flips the templates
-mergeTerms :: [(ResourceTerm, ResourceTerm)] -> [(ResourceTerm, [(ArithExpr, ResourceTerm)])]
+mergeTerms :: [(ResourceTerm, (ResourceTerm, RScalar))] -> [(ResourceTerm, [(ResourceTerm, ArithExpr)])]
 mergeTerms xs = M.toList
-  $ M.fromListWith (++) [origin (src, tgt) | (src, tgt) <- xs]
-  where origin (src, RTScale k tgt) = (tgt, [(C.ConstTerm k, src)])
-        origin (src, RTCoeffScale i idx tgt) = (tgt, [(CoeffTerm (Coeff i idx), src)])
-        origin (src, tgt) = (tgt, [(C.ConstTerm 1, src)])
+  $ M.fromListWith (++) [origin src tgt | (src, tgt) <- xs]
+  where origin src (tgt, k) = (tgt, [(src, C.fromRScalar k)])
 
-reduceTerms :: (Id, SubstValue) -> [ResourceTerm] -> [(ResourceTerm, ResourceTerm)]
+reduceTerms :: (Id, SubstValue) -> [ResourceTerm] -> [(ResourceTerm, (ResourceTerm, RScalar))]
 reduceTerms subst = concatMap go
   where 
-    go t = [(t, t') | t' <- concatMap normTerm (reduceTerm subst t)]
+    go t = [(t, t') | t' <- M.toList $ normExpr (reduceTerm subst t)]
 
-reduceTerm :: (Id, SubstValue) -> ResourceTerm -> [ResourceTerm]
-reduceTerm subst (RTSize x) = let sizes = reduceSizeSum subst (sizeVar x) in
-  RTScale (fromIntegral $ _ssConstant sizes) RTId :
-  [if k > 1
-   then RTScale (toRational k) (RTSize x)
-   else RTSize x
-  | (x, k) <- M.toList (_ssCoeffs sizes) ]
-reduceTerm subst (RTLog ss) = [RTLog $ reduceSizeSum subst ss]
-reduceTerm subst (RTBinom ss k) = [RTBinom (reduceSizeSum subst ss) k]
+reduceTerm :: (Id, SubstValue) -> ResourceTerm -> ResourceExpr
+reduceTerm subst (RTSize x) = fromSizeExpr $ reduceSizeExpr subst (FM.singleton (SVar x))
+reduceTerm subst (RTLog ss) = FM.singleton (RTLog $ reduceSizeExpr subst ss)
+reduceTerm subst (RTBinom ss k) = FM.singleton $ RTBinom (reduceSizeExpr subst ss) k
 reduceTerm (x,  ExpandCtor pat mEnv) t@(RTPhi y)
   | x == y = case emPotentialMeasure mEnv of
       Just potAlg -> apply potAlg pat
       Nothing -> error $ "missing potential measure for " ++ T.unpack x
-  | otherwise = [t]
-reduceTerm (x,  _) t@(RTPhi _) = [t]
-reduceTerm subst (RTProd ts) = [RTProd $ MSet.fromList $ concatMap (reduceTerm subst) ts]
-reduceTerm _ RTId = [RTId]
-reduceTerm subst t = error $ "subst: " ++ show subst ++ ", term: " ++ show t
+  | otherwise = FM.singleton t
+reduceTerm (x,  _) t@(RTPhi _) = FM.singleton t
+reduceTerm subst (RTProd ts) = FM.prod . MSet.toList $ MSet.map (reduceTerm subst) ts
+reduceTerm _ RTId = FM.singleton RTId
+-- reduceTerm subst t = error $ "subst: " ++ show subst ++ ", term: " ++ show t
 
 
-reduceSizeSum :: (Id, SubstValue) -> SizeSum -> SizeSum
-reduceSizeSum (x, ExpandCtor pat mEnv) sum =
+reduceSizeExpr :: (Id, SubstValue) -> SizeExpr -> SizeExpr
+reduceSizeExpr (x, ExpandCtor pat mEnv) sum =
   let sizeAlg = emSizeMeasure mEnv in
-    sizeSubst (x, apply sizeAlg pat) sum
-reduceSizeSum (x, TransformApp args st) sum =
-  sizeSubst (x, applyST st args) sum
+    FM.linSubst (SVar x) (apply sizeAlg pat) sum
+reduceSizeExpr (x, TransformApp args st) sum =
+  FM.linSubst (SVar x) (applyST st args) sum
 
-normTerm :: ResourceTerm -> [ResourceTerm]
-normTerm (RTLog s) | M.null (s^.ssCoeffs) &&
-                     s^.ssConstant == 2 = [RTId]
-normTerm (RTProd ts) | all isOne ts = [RTId]
-                     | otherwise    = foldr (distribute . normTerm) [RTId] ts
+  
+normExpr :: ResourceExpr -> ResourceExpr
+normExpr = FM.linMap normTerm
+
+normTerm :: ResourceTerm -> ResourceExpr
+normTerm (RTLog s) | s == FM.singleton' SId 2 = FM.singleton RTId
+--normTerm (RTProd ts) | all isOne ts = [RTId]
+--                     | otherwise    = foldr (distribute . normTerm) [RTId] ts
 normTerm (RTBinom ss k) = normBinom ss k
-normTerm t = [t]
+normTerm t = FM.singleton t
 
-distribute :: [ResourceTerm] -> [ResourceTerm] -> [ResourceTerm]
-distribute as [] = []
-distribute [] bs = []
-distribute as bs = [normalisedProd a b | a <- as, b <- bs]
-
-normProd :: ResourceTerm -> ResourceTerm
-normProd (RTProd ts)
-          | all isOne ts = RTId
-          | otherwise    = RTProd ts
-normProd t               = t
-
-normalisedProd :: ResourceTerm -> ResourceTerm -> ResourceTerm
-normalisedProd t s = combine (normProd s) (normProd t)
-  where 
-        combine RTId        s           = s
-        combine t           RTId        = t
-        combine (RTProd ts) (RTProd ss) = RTProd $ MSet.union ts ss
-        combine t           (RTProd ss) = RTProd $ MSet.insert t ss
-        combine (RTProd ts) s           = RTProd $ MSet.insert s ts
-        combine t           s           = RTProd $ MSet.fromList [t, s]
-
-normBinom :: SizeSum -> Int -> [ResourceTerm]
-normBinom _ 0 = [RTId]
-normBinom ss@(SizeSum coeffs c) k = case (M.keys coeffs, c) of
-  ([x], 0) -> [RTBinom (sizeVar x) k]
-  ([x], 1) -> RTBinom (sizeVar x) k :
-              [case k - 1 of
-                 0 -> RTId
-                 _ -> RTBinom (sizeVar x) (k - 1)
-              | k - 1 >= 0]
-  (x : xs, 0)   -> concat
-    [distribute
-      [RTBinom (sizeVar x) r]
-      (case (k - r) of
-         0 -> [RTId]
-         _ -> normBinom (sizeVars xs) (k - r)
-      )
-    | r <- [0..k]]
-  ([], 0)       -> []
-  (xs, c)       ->  error $ "cannot normalise arbitrary sums in binomial coeffients: " ++ show xs ++ show k
+normBinom :: SizeExpr -> Int -> ResourceExpr
+normBinom _ 0 = FM.singleton RTId
+normBinom ss k = case (M.keys ss, ss M.!? SId) of
+  ([x], Nothing) -> FM.singleton $ RTBinom (FM.singleton x) k
+  ([x], Just 1) -> FM.fromList $ RTBinom (FM.singleton x) k :
+    [case k - 1 of
+       0 -> RTId
+       _ -> RTBinom (FM.singleton x) (k - 1)
+    | k - 1 >= 0]
+  (xs, Nothing) -> FM.fromList $ genBinoms k (S.toList $ freeVars xs)
+  (xs, Just c) -> error $ "cannot normalise arbitrary sums in binomial coeffients: " ++ show xs ++ show k
 
 --------------------------------------------------------------------------------
 -- Template Operations

@@ -40,6 +40,7 @@ module CostAnalysis.ProveMonad
   , freshTempl
   , assertEqSubst
   , freshFrom
+  , freshTemplExtend
   , concludeArm
   , defEqSubst
   , measureEnvForType
@@ -83,12 +84,13 @@ import Syntax.Measure (SizeTransform,
                        MeasureAlgebra(..),
                        ConstPat(..))
 import CostAnalysis.TemplateLanguage
-import Syntax.ResourceExpression ( ResourceTerm(..), isPotential )
+import Syntax.ResourceExpression ( ResourceTerm(..), isPotential, ResourceExpr, RScalar (..) )
 import Data.Maybe (isJust, mapMaybe)
 import Control.Monad (forM)
 import Control.Arrow (Arrow(second))
 import Data.List (uncons)
 import Control.Monad.Extra (whenM)
+import qualified Syntax.FreeModule as FM
 
 
 type Derivation = Tree RuleApp
@@ -149,12 +151,12 @@ potentials = M.mapMaybe go
   where go env = do
           (Equations eqs) <- emPotentialMeasure env
           return $ map (second toTempl) eqs
-        toTempl :: [ResourceTerm] -> FreeTemplate
-        toTempl terms = let ts = mapMaybe go terms in
+        toTempl :: ResourceExpr -> FreeTemplate
+        toTempl terms = let ts = mapMaybe go (M.toList terms) in
                             case uncons ts of
                               Just ((i, _), _) -> FreeTemplate i (S.fromList (map snd ts))
                               Nothing -> FreeTemplate 0 S.empty
-          where go (RTCoeffScale i idx _) = Just (i, idx)
+          where go (t, RSCoeff i idx) = Just (i, idx)
                 go _ = Nothing
 
 
@@ -183,12 +185,14 @@ genPotMeasure env (Forall _ (TAp tName _)) = do
             optiTargets %= (sum abs :)
         )
         
-      let rhs = [RTCoeffScale (templ^.ftId) t t
-              | t <- S.toList $ terms templ
-              , not (isPotential t)]
-              ++ [RTScale 1 t 
-                 | t <- S.toList $ terms templ
-                 , isPotential t]
+      let rhs = FM.fromList' $
+            [(t, RSCoeff (templ^.ftId) t)
+            | t <- S.toList $ terms templ
+            , not (isPotential t)]
+            ++
+            [(t, 1) 
+            | t <- S.toList $ terms templ
+            , isPotential t]
       return (ConstPat cName patArgs, rhs)
 
   return $ Equations eqs
@@ -316,6 +320,15 @@ freshTempl args = do
     _ftId = i
     , _ftTerms = tl args
     }
+
+freshTemplExtend :: FreeTemplate -> ProveMonad FreeTemplate
+freshTemplExtend q = do
+  i <- genAnnId
+  tl <- use tLang
+  return $ FreeTemplate {
+    _ftId = i
+    , _ftTerms = tl (args q) `S.union` terms q
+  }
 
 measureEnvForType :: Type -> ProveMonad EnrichedMeasureEnv
 measureEnvForType t = do

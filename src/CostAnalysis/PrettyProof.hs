@@ -28,8 +28,6 @@ import qualified Data.MultiSet as MSet
 import Syntax (Id)
 import Syntax.Annotation
 import Syntax.PrettyPrint
-import Syntax.Program
-import Syntax.Expression
 import Syntax.Pattern
 import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
@@ -37,7 +35,6 @@ import CostAnalysis.Rules
 import CostAnalysis.Template(FreeTemplate(..), BoundTemplate (BoundTemplate), bindTemplate)
 import CostAnalysis.Coeff
 import Syntax.ResourceExpression
-import Syntax.ResourceExpression.Size hiding (ConstTerm, VarTerm)
 import CostAnalysis.Analysis (AnalysisResult (..))
 import Syntax.Measure (SizeTransform (SizeTransform), ConstPat(..))
 import Syntax.Types.Scheme (Scheme)
@@ -289,7 +286,7 @@ $case rel
      <mo>≤
   $of Syntax.Measure.Eq
      <mo>=
-^{hamSizeSum rhs}
+^{hamSizeExpr rhs}
 |]
                   
 hamDerivs :: Result -> Map Id [Derivation] -> Html
@@ -588,7 +585,7 @@ hamResourceTerm (RTBinom ss k) = [shamlet|
   <mo form="prefix" stretchy="true">(
   <mfrac linethickness="0">
     <mrow>
-      ^{hamSizeSum ss}
+      ^{hamSizeExpr ss}
     <mn>#{k}
   <mo form="postfix" stretchy="true">)    
 |]
@@ -598,7 +595,7 @@ hamResourceTerm (RTProd ts) = toHtml $ intersperse [shamlet|<mo>⋅|]
 hamResourceTerm (RTLog sizes) = [shamlet|
 <mi>log
 <mo form="prefix" stretchy="false">(
-^{hamSizeSum sizes}
+^{hamSizeExpr sizes}
 <mo form="postfix" stretchy="false">)  
 |]
 
@@ -613,44 +610,38 @@ hamResourceTerm (RTPhi x) = [shamlet|
 -- Constant 1 term
 hamResourceTerm RTId = [shamlet|<mn>1</mn>|]
 
--- Scaled resource terms: e.g., 3/2 * RT
-hamResourceTerm (RTScale r term) = [shamlet|
-^{hamRat r}
-<mo>⋅
-<mo form="prefix" stretchy="false">(
-^{hamResourceTerm term}
-<mo form="postfix" stretchy="false">)
-|]
 
-
-hamSizeSum :: SizeSum -> Html
-hamSizeSum (SizeSum cs k) = case (M.toList cs, k) of
+hamSizeExpr :: SizeExpr -> Html
+hamSizeExpr s = case (M.toList s, M.findWithDefault 0 SId s) of
   ([], 0) -> [shamlet|<mn>0|]
-  ([], k) -> [shamlet|<mn>#{k}|]
+  ([], k) -> [shamlet|<mn>^{hamRat k}|]
   (s:ss, k) -> [shamlet|
   ^{hamSizeTermSigned False s}
   $forall term <- ss
     ^{hamSizeTermSigned True term}
-  $if k > 0
-    <mo>+
-    <mn>#{k}
-  $if k < 0
-    <mo>-
-    <mn>#{abs k}
 |]
     
-hamSizeTermSigned :: Bool -> (Id, Int) -> Html
-hamSizeTermSigned showLeadingPlus (varId, coeff) = [shamlet|
+hamSizeTermSigned :: Bool -> (SizeTerm, Rational) -> Html
+hamSizeTermSigned showLeadingPlus (SId, k) = [shamlet|
+$if k > 0
+  $if showLeadingPlus
+    <mo>+
+  <mn>^{hamRat k}
+$if k < 0
+  <mo>-
+  <mn>^{hamRat (abs k)}
+|]
+hamSizeTermSigned showLeadingPlus (SVar varId, coeff) = [shamlet|
 $if coeff < 0
   <mo>-
   $if coeff > 1
-    <mn>#{abs coeff}
+    <mn>^{hamRat (abs coeff)}
   <mi>^{hamSize varId}
 $else
     $if coeff > 0
       $if showLeadingPlus
         <mo>+
       $if coeff > 1  
-        <mn>#{abs coeff}  
+        <mn>^{hamRat (abs coeff)}  
       <mi>^{hamSize varId}
 |]

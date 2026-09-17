@@ -7,11 +7,12 @@ module Syntax.ResourceExpression.Order
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Set (Set)
+import qualified Data.MultiSet as MSet
 
-import Syntax (Id)
+import Syntax (Id, HasVars (..))
 import Syntax.ResourceExpression
-import Syntax.ResourceExpression.Size
 import Data.List (partition)
+import qualified Syntax.FreeModule as FM
 
 -- | A canonical linear combination: Map of (Variable -> Coefficient) and a constant offset.
 -- Represents: c + sum_{x} coeff(x) * x
@@ -25,25 +26,25 @@ data LinearCombo = LinearCombo
 -- returns:
 -- 1. A Map representing the coefficient differences vector p = a - b
 -- 2. The constant difference beta = d - c
-diffSums :: SizeSum -> SizeSum -> (M.Map Id Int, Int)
-diffSums (SizeSum qCoeffs c) (SizeSum pCoeffs d) = (p, beta)
+diffSums :: SizeExpr -> SizeExpr -> (M.Map Id Rational, Rational)
+diffSums s1 s2 = (p, beta)
   where
-    -- p = a - b (where a is from q, b is from p)
-    -- We match keys from both, using 0 as a default if a variable is missing on one side.
-    allVars = M.keysSet qCoeffs `S.union` M.keysSet pCoeffs -- Assumes S is Data.Set
-    p = M.fromSet (\var -> M.findWithDefault 0 var qCoeffs - M.findWithDefault 0 var pCoeffs) allVars
-    
-    -- beta = d - c
+    allVars = freeVars s1 `S.union` freeVars s2 -- Assumes S is Data.Set
+    p = M.fromSet (\x -> M.findWithDefault 0 (SVar x) s1
+                    - M.findWithDefault 0 (SVar x) s2) allVars
+    c = M.findWithDefault 0 SId s1
+    d = M.findWithDefault 0 SId s2
     beta = d - c
+    
 
 -- | Represents a list of guard constraints of the form (C-D)x <= 0.
 -- Each Map in the list maps variable Ids to their coefficient in that constraint row.
-type GuardMatrix = [M.Map Id Int]
+type GuardMatrix = [M.Map Id Rational]
 
 -- | Checks if (sum qTerms) <= (sum pTerms) under the given guard constraints
 -- using the dual certificate (v = 0 or v = 1).
-sizeSumLe :: GuardMatrix -> SizeSum -> SizeSum -> Bool
-sizeSumLe guards qTerms pTerms = checkCertificate zeroV || checkCertificate oneV
+sizeExprLe :: GuardMatrix -> SizeExpr -> SizeExpr -> Bool
+sizeExprLe guards qTerms pTerms = checkCertificate zeroV || checkCertificate oneV
   where
     -- Extract p = a - b and beta = d - c
     (pMap, beta) = diffSums qTerms pTerms
@@ -55,7 +56,7 @@ sizeSumLe guards qTerms pTerms = checkCertificate zeroV || checkCertificate oneV
     oneV      = replicate numGuards 1
 
     -- 2. Validation check for a specific v choice (zeroV or oneV)
-    checkCertificate :: [Int] -> Bool
+    checkCertificate :: [Rational] -> Bool
     checkCertificate v = cond1 && cond2
       where
         -- Condition 1: (C-D)^T * v >= p
@@ -91,18 +92,22 @@ resourceLe :: GuardMatrix -> ResourceTerm -> ResourceTerm -> Bool
 resourceLe guards RTId (RTSize s) = True
   --sizeSumLe guards [SConst 1] [s]
   
-resourceLe guards (RTSize s) RTId = 
-  sizeSumLe guards (sizeVar s) (sizeConst 1)
+resourceLe guards (RTSize x) RTId = 
+  sizeExprLe guards (FM.singleton (SVar x)) (FM.singleton SId)
 
 -- 2. Pure Sizes (Linear Terms)
-resourceLe guards (RTSize s1) (RTSize s2) = 
-  sizeSumLe guards (sizeVar s1) (sizeVar s2)
+resourceLe guards (RTSize x) (RTSize y) = 
+  sizeExprLe guards (FM.singleton (SVar x)) (FM.singleton (SVar y))
 
 -- 3. Logarithmic Terms
 resourceLe guards (RTLog qTerms) (RTLog pTerms) = 
-  sizeSumLe guards qTerms pTerms
-  
-resourceLe guards RTId (RTLog s) = coeffSum s >= 2
+  sizeExprLe guards qTerms pTerms
+
+-- 4. Products  
+resourceLe guards (RTProd qTerms) (RTProd pTerms) =
+   all (uncurry (resourceLe guards)) (zip (MSet.toList qTerms) (MSet.toList pTerms))
+
+resourceLe guards RTId (RTLog s) = FM.coeffSum s >= 2
 -- 4. Logarithmic Terms vs Linear Terms (Asymptotic Dominance)
 -- Logarithmic terms are always bounded by linear terms (e.g., log(x) <= x)
 resourceLe _ (RTLog _) (RTSize _) = True

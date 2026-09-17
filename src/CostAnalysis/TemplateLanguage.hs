@@ -5,6 +5,7 @@ module CostAnalysis.TemplateLanguage
   , defaultTLang
   , sizeTLang
   , fromConfig
+  , genBinoms
   ) where
 
 import Data.Set(Set)
@@ -15,7 +16,7 @@ import qualified Data.MultiSet as MSet
 
 import Syntax (Id)
 import Syntax.ResourceExpression
-import Syntax.ResourceExpression.Size
+import qualified Syntax.FreeModule as FM
 
 
 type TemplateLanguageConfig = [AtomicLangConfig]
@@ -25,6 +26,7 @@ data AtomicLangConfig
   | LogLangConf Int Int
   | BinomLangConf Int
   | RankLangConf
+  | LinLogConf 
   deriving (Eq, Show)
 
 defaultLangConfig = [LogLangConf 1 2, BinomLangConf 2, RankLangConf]
@@ -44,18 +46,22 @@ fromAtomConf RankLangConf args = S.fromList $ map RTPhi args
 fromAtomConf (LogLangConf a b) args =
   S.fromList $ RTId : map RTLog (genSizeSums (a,b) args)
 fromAtomConf (BinomLangConf k) args = S.fromList $ genBinoms k args
+fromAtomConf LinLogConf args = S.fromList $ RTId :
+  [RTProd $ MSet.fromList [RTSize x, RTLog sx]
+  | x   <- args,
+    sx <- genSizeSums (1,1) [x]]
 
-genSizeSums :: (Int, Int) -> [Id] -> [SizeSum]
-genSizeSums (a,b) xs = [SizeSum vars c
+genSizeSums :: (Int, Int) -> [Id] -> [SizeExpr]
+genSizeSums (a,b) xs = [FM.add (FM.singleton' SId (fromIntegral c)) vars
                        | vars <- varSums xs,
                          c <- [-1..b],                
-                         foldr (+) 0 vars + c >= 1,
+                         sum vars + fromIntegral c >= 1,
                          not (M.null vars && c == 2)] -- log(2) covered by RTId
   where
-    varSums :: [Id] -> [Map Id Int]
+    varSums :: [Id] -> [Map SizeTerm Rational]
     varSums [] = [M.empty]
     varSums (x:xs) = [if k > 0
-                      then M.insert x k ys
+                      then M.insert (SVar x) (fromIntegral k) ys
                       else ys
                      | k <- [0..a], ys <- varSums xs]
 
@@ -71,10 +77,9 @@ genBinoms k xs = [case bs of
         genBinomProds (x : xs) k =
           [case a of
              0 -> bs
-             n -> RTBinom (sizeVar x) n : bs
+             n -> RTBinom (FM.singleton (SVar x)) n : bs
           | a <- [0..k]
           , bs <- genBinomProds xs (k - a)]
-
 
 
 defaultTLang :: TemplateLanguage

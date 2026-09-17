@@ -52,9 +52,9 @@ buildProgram (p:ps) = foldr go p ps
           sfDataDefs = sfDataDefs p1 ++ sfDataDefs p2,
           sfMeasureDefs = sfMeasureDefs p1 ++ sfMeasureDefs p2}
         mergeConfigs cfg1 cfg2 = ProgConfig
-          { templateConfig = case templateConfig cfg1 of
-              [] -> templateConfig cfg2
-              nonEmpty -> templateConfig cfg1,
+          { templateConfig = case templateConfig cfg2 of
+              [] -> templateConfig cfg1
+              nonEmpty -> templateConfig cfg2,
             analysisModes = M.union (analysisModes cfg1) (analysisModes cfg2)
           }
     

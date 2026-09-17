@@ -11,11 +11,13 @@ module CostAnalysis.Constraint
   , minus
   , prod2
   , zero
+  , fromRScalar
   )where
 
 import Prelude hiding (sum, or)
 
 import CostAnalysis.Coeff
+import Syntax.ResourceExpression (RScalar (..))
 
 type Var = Int
 
@@ -28,6 +30,12 @@ data ArithExpr
   | Minus ArithExpr
   | ConstTerm Rational
   deriving (Eq, Ord, Show)
+
+fromRScalar :: RScalar -> ArithExpr
+fromRScalar (RSConst k) = ConstTerm k
+fromRScalar (RSCoeff i t) = CoeffTerm (Coeff i t)
+fromRScalar (RSAdd s1 s2) = sum [fromRScalar s1, fromRScalar s2]
+fromRScalar (RSMul s1 s2) = prod2 (fromRScalar s1) (fromRScalar s2) 
 
 exprIsZero (ConstTerm 0) = True
 exprIsZero _ = False

@@ -144,7 +144,7 @@ proveApp tactic e@(App fn appArgs) judgeType binder q q' = do
 proveSub :: Prove (Expr Positioned) Derivation
 proveSub tactic@(Rule (Rule.Sub sArgs) _) e judgeType binder q q' = do
   let [t] = subTactics 1 tactic
-  p <- freshTempl (args q)
+  p <- freshTemplExtend q
   cs <- templLe (S.fromList sArgs) p q
   deriv <- proveExpr t e judgeType binder p q'
   conclude (R.Sub sArgs) judgeType q q' cs e [deriv]
@@ -213,7 +213,8 @@ genTactic judgeType e@(Ite e1 e2 e3) =
       tactic = Rule R.Ite [t1, t2, t3] in
   autoSub judgeType e tactic
 genTactic judgeType e@(App {}) = autoSub judgeType e $
-  Rule R.Shift [Rule R.App []]
+  --Rule R.Shift [Rule R.App []]
+  Rule R.App []
 genTactic judgeType e@(Let _ binding body) =
   let tBinding = genTactic judgeType binding
       tBody = genTactic judgeType body in

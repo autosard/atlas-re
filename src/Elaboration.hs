@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TupleSections #-}
 
 
 module Elaboration (elabProgram) where
@@ -15,11 +16,11 @@ import Control.Monad.Trans.Maybe
 import Control.Applicative
 import Control.Monad
 import Text.Megaparsec (SourcePos(SourcePos), pos1)
-import Data.Tuple (swap)
 import qualified Data.Text as T
 import qualified Data.List as L
 import Data.Maybe(mapMaybe)
 import qualified Data.MultiSet as MSet
+import Data.Bifunctor (second)
 
 
 import Syntax (Id, Parsed, Elaborated)
@@ -35,9 +36,8 @@ import Syntax.Measure
 import SourceError
 import CostAnalysis.Template (BoundTemplate(..))
 import Syntax.ResourceExpression
-import Syntax.ResourceExpression.Size
 import qualified Builtin (measures)
-
+import qualified Syntax.FreeModule as FM
 
 
 newtype ElabState = ElabState {
@@ -136,20 +136,32 @@ elabScalarComb (App "+" [ss, s]) = do
   return $ ess ++ [es]
 elabScalarComb e = singleton <$> elabScale e 1
 
-prodToTerm :: [ResourceTerm] -> ResourceTerm
-prodToTerm [t] = t
-prodToTerm ts = RTProd $ MSet.fromList ts
-
-elabScale :: Expr Parsed -> Rational -> Elab (ResourceTerm, Rational)
-elabScale (App "*" [q@(Lit _), t]) sign = do
-  qr <- elabRatLit q
-  rt <- prodToTerm <$> elabProdTerm t
-  return (rt, sign * qr)
-elabScale (Lit (LRat r)) sign = return (RTId, sign * r)
-elabScale (Lit (LNat n)) sign = return (RTId, sign * fromIntegral n)
+elabScale :: Expr Parsed -> Rational-> Elab (ResourceTerm, Rational)
 elabScale e sign = do
-  rt <- prodToTerm <$> elabProdTerm e
-  return (rt, sign)
+  (t, k) <- elabProdTerm e
+  return (t, sign * k)
+
+elabProdTerm :: Expr Parsed -> Elab (ResourceTerm, Rational)
+elabProdTerm (Lit (LRat r)) = return (RTId, r)
+elabProdTerm (Lit (LNat n)) = return (RTId, fromIntegral n)
+elabProdTerm (App "*" [q@(Lit _), t]) = do
+  qr <- elabRatLit q
+  (rt, p) <- elabProdTerm t
+  return (rt, qr * p)
+elabProdTerm (App "*" [t, q@(Lit _)]) = do
+  qr <- elabRatLit q
+  (rt, p) <- elabProdTerm t
+  return (rt, qr * p)  
+elabProdTerm (App "*" [x, y]) = do
+  (tx, qx) <- elabProdTerm x
+  (ty, qy) <- elabProdTerm y
+  return (multTerms tx ty, qx * qy)
+elabProdTerm e = (,1) <$> elabResourceTerm e
+
+multTerms (RTProd x) (RTProd y) = RTProd (MSet.union x y)
+multTerms (RTProd x) t = RTProd (MSet.insert t x)
+multTerms t (RTProd y) = RTProd (MSet.insert t y)
+multTerms t s = RTProd (MSet.fromList [t, s])
 
 
 elabRatLit :: Expr Parsed -> Elab Rational
@@ -173,43 +185,37 @@ elabPhiM (App "pot" [Var x]) = lift $ return (RTPhi x)
 elabPhiM _ = empty
 
 elabLogTermM :: Expr Parsed -> MaybeT Elab ResourceTerm
-elabLogTermM (App "log" [s]) = lift $ RTLog <$> elabSizeSum s
+elabLogTermM (App "log" [s]) = lift $ RTLog <$> elabSizeExpr s
 elabLogTermM _ = empty
   --illformedTerm e "Expected log term."
 
-elabSizeSum :: Expr Parsed -> Elab SizeSum
-elabSizeSum (App "-" [ss, s]) = do
+elabSizeExpr :: Expr Parsed -> Elab SizeExpr
+elabSizeExpr (App "-" [ss, s]) = do
   st <- elabSizeTerm s (-1)
-  sts <- elabSizeSum ss
-  return $ add st sts 
-elabSizeSum (App "+" [ss, s]) = do
+  sts <- elabSizeExpr ss
+  return $ FM.add st sts 
+elabSizeExpr (App "+" [ss, s]) = do
   st <- elabSizeTerm s 1
-  sts <- elabSizeSum ss
-  return $ add st sts 
-elabSizeSum e = elabSizeTerm e 1
+  sts <- elabSizeExpr ss
+  return $ FM.add st sts 
+elabSizeExpr e = elabSizeTerm e 1
 
-elabSizeTerm :: Expr Parsed -> Int -> Elab SizeSum
-elabSizeTerm (App "size" [Var x]) _ = return $ sizeVar x
-elabSizeTerm (Lit (LNat b)) sign = return $ sizeConst (sign * b)
+elabSizeTerm :: Expr Parsed -> Int -> Elab SizeExpr
+elabSizeTerm (App "size" [Var x]) _ = return $ FM.singleton (SVar x)
+elabSizeTerm (Lit (LNat b)) sign = return $ FM.singleton' SId (fromIntegral $ sign * b)
 elabSizeTerm (App "*" [k, App "size" [Var x]]) sign = do
   k <- elabIntLit k
-  return $ sizeScalar x (sign * k)
+  return $ FM.singleton' (SVar x) (fromIntegral $ sign * k)
 elabSizeTerm e _ = illformedTerm e "Expected a size term." 
 
 elabIntLit :: Expr Parsed -> Elab Int
 elabIntLit (Lit (LNat n)) = return n 
 elabIntLit e = illformedTerm e "Expected a nat literal."
   
-elabProdTerm :: Expr Parsed -> Elab [ResourceTerm]
-elabProdTerm (App "*" [x, y]) = do
-  tx <- elabResourceTerm x
-  tys <- elabProdTerm y
-  return $ tx : tys
-elabProdTerm e = singleton <$> elabResourceTerm e
 
 elabBinom :: Expr Parsed -> MaybeT Elab ResourceTerm
 elabBinom (App "binom" [x,k]) = do
-  sx <- lift $ elabSizeSum x
+  sx <- lift $ elabSizeExpr x
   ck <- lift $ elabIntLit k
   return $ RTBinom sx ck
 elabBinom _ = empty  
@@ -317,10 +323,11 @@ elabClause :: SMeasure m -> SurfaceClause -> Elab (ConstPat, Carrier m)
 elabClause mKind (SurfaceClause _ [PConst _ cPat pVars] body) = do
   let varNames = map (\(PVar _ x) -> x) pVars
   terms <- case mKind of
-    SSize -> elabSizeSum body
+    SSize -> elabSizeExpr body
     SPotential -> do
       ts <- elabScalarComb body
-      return $ map (uncurry RTScale . swap) ts
+      return $ FM.fromList' $ map (second RSConst) ts
+      
   return (ConstPat cPat varNames, terms)    
 elabClause _ (SurfaceClause pos _ _) = 
       throwError $ SourceError pos (ElabError "Measure definitions must use constructor patterns.")

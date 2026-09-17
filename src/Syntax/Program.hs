@@ -37,11 +37,9 @@ module Syntax.Program
   , groupFuns
   ) where
 
-import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Map(Map)
 import qualified Data.Map as M
-import Data.Set(Set)
 import qualified Data.Set as S
 import Text.Megaparsec(SourcePos)
 import Data.List(intercalate)
@@ -54,13 +52,10 @@ import Syntax
   , Positioned)
 import Syntax.Annotation (XExprAnn)  
 import Syntax.Expression (Expr (..), calledFunctions, printExpr)
-import Syntax.Types.Type (Type)
-import Syntax.Types.Subst(Types(apply, tv))
 import Syntax.Types.Scheme (Scheme)
-import Syntax (Id, HasVars(..))
+import Syntax (Id)
 import Syntax.PrettyPrint (PrettyPrint (..), prettyPrint)
-import Primitive (unionMap)
-import Syntax.Measure(Measure, MeasureEnv)
+import Syntax.Measure(MeasureEnv)
 import Syntax.ResourceExpression(ResourceTerm)
 import CostAnalysis.TemplateLanguage
 import CostAnalysis.Template(BoundTemplate)

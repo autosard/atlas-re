@@ -7,6 +7,7 @@ module Syntax.Types.Scheme
   , toType
   , findByType
   , tFunResult
+  , fnArgType
   )where
 
 import qualified Data.Map as M
@@ -33,6 +34,14 @@ toScheme = Forall 0
 tFunArgs :: Scheme -> [Type]
 tFunArgs (Forall _ (TFun args _)) = unprod args
 
+fnArgType :: Id -> [Id] -> Scheme -> Type
+fnArgType arg args s = go arg args (tFunArgs s)
+  where go x [] [] = error $ "could not find arg " ++ show x ++ " in function type " ++ show s
+        go x (y:ys) (t:ts)
+          | x == y = t
+          | otherwise = go x ys ts
+
+
 tFunResult :: Scheme -> Type
 tFunResult (Forall 0 (TFun _ result)) = result
 
@@ -54,6 +63,7 @@ findByType t m = asum $ map valForKey $ M.toList m
     valForKey (Forall _ k, v) = do
       k `match` t
       return v
+
 
 instance PrettyPrint Scheme where
   prettyPrint (Forall n t) = "forall "

@@ -5,6 +5,7 @@ module Primitive
   ( dbg
   , toIntegerExact
   , unionMap
+  , partitions
   ) where
 
 import Data.Set(Set)
@@ -48,4 +49,12 @@ toIntegerExact r
 unionMap :: (Ord b) => (a -> Set b) -> [a] -> Set b
 unionMap f xs = S.unions $ map f xs
 
-
+partitions :: [a] -> [[[a]]]
+partitions [x] = [[[x]]]
+partitions (x:xs) =
+  let ys = partitions xs in
+    [[x] : y | y <- ys]
+    ++ concatMap (multiply x) ys
+  where multiply :: a -> [[a]] -> [[[a]]]
+        multiply x [y] = [[(x : y)]]
+        multiply x (y:ys) = ((x : y) : ys) : map (y:) (multiply x ys)
