@@ -25,11 +25,11 @@ data AtomicLangConfig
   = SizeLangConf 
   | LogLangConf Int Int
   | BinomLangConf Int
-  | RankLangConf
+  | PotLangConf
   | LinLogConf 
   deriving (Eq, Show)
 
-defaultLangConfig = [LogLangConf 1 2, BinomLangConf 2, RankLangConf]
+defaultLangConfig = [LogLangConf 1 2, BinomLangConf 2, PotLangConf]
 
 type TemplateLanguage = [Id] -> Set ResourceTerm
 
@@ -42,7 +42,7 @@ fromConfig = foldr (mergeLangs . fromAtomConf) (const S.empty)
 
 fromAtomConf :: AtomicLangConfig -> TemplateLanguage
 fromAtomConf SizeLangConf args = S.fromList $ RTId : [RTSize x | x <- args]
-fromAtomConf RankLangConf args = S.fromList $ map RTPhi args
+fromAtomConf PotLangConf args = S.fromList $ map RTPhi args
 fromAtomConf (LogLangConf a b) args =
   S.fromList $ RTId : map RTLog (genSizeSums (a,b) args)
 fromAtomConf (BinomLangConf k) args = S.fromList $ genBinoms k args

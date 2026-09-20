@@ -49,6 +49,7 @@ import CostAnalysis.Constraint hiding (ConstTerm, VarTerm, fromRScalar)
 import qualified Data.Text as T
 import qualified Data.MultiSet as MSet
 import CostAnalysis.TemplateLanguage (genBinoms)
+import Primitive (dbg)
 
 --------------------------------------------------------------------------------
 -- General Templates
@@ -258,14 +259,13 @@ normExpr = FM.linMap normTerm
 
 normTerm :: ResourceTerm -> ResourceExpr
 normTerm (RTLog s) | s == FM.singleton' SId 2 = FM.singleton RTId
---normTerm (RTProd ts) | all isOne ts = [RTId]
---                     | otherwise    = foldr (distribute . normTerm) [RTId] ts
+normTerm (RTProd ts) = FM.prod . MSet.toList $ MSet.map normTerm ts
 normTerm (RTBinom ss k) = normBinom ss k
 normTerm t = FM.singleton t
 
 normBinom :: SizeExpr -> Int -> ResourceExpr
 normBinom _ 0 = FM.singleton RTId
-normBinom ss k = case (M.keys ss, ss M.!? SId) of
+normBinom ss k = case (filter (/= SId) $ M.keys ss, ss M.!? SId) of
   ([x], Nothing) -> FM.singleton $ RTBinom (FM.singleton x) k
   ([x], Just 1) -> FM.fromList $ RTBinom (FM.singleton x) k :
     [case k - 1 of

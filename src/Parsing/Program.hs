@@ -73,7 +73,7 @@ pAtomicLangConf =
   symbol "size" $> SizeLangConf 
   <|> symbol "log" *> pParens sc (LogLangConf <$> pInt <* symbol "," <*> pInt)
   <|> BinomLangConf <$ symbol "binom" <*> pParens sc pInt
-  <|> RankLangConf <$ symbol "rank"
+  <|> PotLangConf <$ symbol "pot"
   <|> LinLogConf <$ symbol "nlog"
 
 pTemplateLanguageConfig :: Parser (Maybe TemplateLanguageConfig)
