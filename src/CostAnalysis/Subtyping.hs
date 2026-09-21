@@ -15,8 +15,12 @@ import CostAnalysis.ProveMonad
 import CostAnalysis.Rules
 
 import Syntax.ResourceExpression.Order ( GuardMatrix, resourceLe )
-import Syntax.ResourceExpression.Lemmas
-import Syntax.ResourceExpression.Pattern ( findMatches ) 
+import Syntax.ResourceExpression.Axioms
+import Syntax.ResourceExpression.Pattern ( findMatches, IneqPattern (..) ) 
+import Data.Bifunctor (Bifunctor(first))
+import Primitive (dbg)
+import Syntax.PrettyPrint (PrettyPrint(prettyPrint))
+import Text.Show.Pretty (pPrint, ppShow)
 
 type LeMatrix = V.Vector (V.Vector Rational)
 
@@ -35,7 +39,7 @@ templLe :: (Template a, Template b, HasCoeffs a, HasCoeffs b) => Set SubArg -> a
 templLe subArgs p q = do
   let ks = merge $
         [termOrderConstraints [] (terms p) | S.member Mono subArgs]
-        ++ [instantiateLemma logLemmaSpec (terms p) | S.member L2xy subArgs]
+        ++ [instantiateAxiom logAxiom (terms p) | S.member L2xy subArgs]
   farkas ks ps qs
   where ps = V.fromList . map CoeffTerm $ getCoeffs p
         qs = V.fromList $ [q!?t | t <- S.toList $ terms p]
@@ -67,22 +71,18 @@ termOrderConstraints guards terms = merge . catMaybes $
       else Nothing
 
 -- | Instantiates all possible applications of a lemma over a set of ResourceTerms.
-instantiateLemma :: LemmaSpec -> S.Set ResourceTerm -> LeMatrix
-instantiateLemma (LemmaSpec weightedPatterns d) termsSet = 
-  V.fromList . concatMap buildRows $ findMatches patterns (S.toList termsSet) M.empty
+instantiateAxiom :: AxiomSpec -> S.Set ResourceTerm -> LeMatrix
+instantiateAxiom (AxiomSpec premises (LeZero conclusion)) termsSet = 
+  V.fromList . concatMap buildRows $ findMatches conclusion (S.toList termsSet) 
   where
-    patterns = map (\(WeightedPattern _ p) -> p) weightedPatterns
     numTerms = S.size termsSet
-    iConst   = S.findIndex RTId termsSet
 
     -- For a successful combination of matched terms, generate the constraint row
-    buildRows :: [ResourceTerm] -> [V.Vector Rational]
-    buildRows matchedTerms = case mapM (`S.lookupIndex` termsSet) matchedTerms of
-      Nothing -> [] -- Skip if some matched term is missing from our active template set
-      Just indices ->
-        let rowAssocs = (iConst, d) : zipWith (\idx (WeightedPattern coeff _) -> (idx, coeff)) indices weightedPatterns
-            rowMap    = M.fromListWith (+) rowAssocs
-        in [V.generate numTerms (\k -> M.findWithDefault 0 k rowMap)]
+    buildRows :: [(ResourceTerm, Rational)] -> [V.Vector Rational]
+    buildRows matchedTerms =
+      let rowAssocs = map (first (`S.findIndex` termsSet)) matchedTerms
+          rowMap    = M.fromListWith (+) rowAssocs 
+      in [V.generate numTerms (\k -> M.findWithDefault 0 k rowMap)]
 
 
 

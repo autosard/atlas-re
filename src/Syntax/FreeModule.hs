@@ -31,6 +31,9 @@ import qualified Primitive as P (partitions)
 
 import Syntax.PrettyPrint (PrettyPrint (..))
 import Data.List (intercalate)
+import Syntax (HasVars (..))
+import Primitive (unionMap)
+import qualified Data.Set as S
 
 -- invariant: never contains entries with zero coeffients
 type FreeModule a b = Map a b
@@ -108,4 +111,7 @@ partitions k m = do
   parts <- Prelude.filter (\p -> length p <= k)
     $ P.partitions $ M.toList m
   return (Prelude.map fromList' parts)
+  
+instance (HasVars a) => HasVars (FreeModule a b) where
+  freeVars = S.unions . S.map freeVars . M.keysSet 
   

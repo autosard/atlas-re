@@ -90,9 +90,7 @@ instance Monoid ResourceTerm where
 instance HasVars SizeTerm where
   freeVars (SVar x) = S.singleton x
   freeVars SId = S.empty
-
-instance HasVars SizeExpr where
-  freeVars m = unionMap freeVars (S.toList $ FM.basis m)
+  
 instance Substitutable SizeTerm where
   subst env (SVar x) = SVar $ subst env x
   subst env SId = SId

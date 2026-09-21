@@ -44,7 +44,7 @@ library
                       Syntax.ResourceExpression,
                       Syntax.ResourceExpression.Order,
                       Syntax.ResourceExpression.Pattern,
-                      Syntax.ResourceExpression.Lemmas,
+                      Syntax.ResourceExpression.Axioms,
                       Syntax.Measure,
                       
                       Builtin,
