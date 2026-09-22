@@ -28,6 +28,7 @@ module Syntax.Program
   , pFunDefs
   , pMutRecGroups
   , pConfig
+  , pAxioms
   , DataEnv (..)
   , CtorInfo (..)
   , DataInfo (..)
@@ -57,6 +58,7 @@ import Syntax (Id)
 import Syntax.PrettyPrint (PrettyPrint (..), prettyPrint)
 import Syntax.Measure(MeasureEnv)
 import Syntax.ResourceExpression(ResourceTerm)
+import Syntax.ResourceExpression.Axioms (AxiomSpec)
 import CostAnalysis.TemplateLanguage
 import CostAnalysis.Template(BoundTemplate)
 import Lens.Micro.Platform
@@ -122,7 +124,8 @@ data Program a = Program {
   _pMutRecGroups :: [[Id]],
   _pFunDefs :: Map Id (FunDef a),
   _pDataEnv :: DataEnv,
-  _pMeasureSig :: Map Scheme MeasureEnv
+  _pMeasureSig :: Map Scheme MeasureEnv,
+  _pAxioms :: [AxiomSpec]
 }
 
 makeLenses ''Program

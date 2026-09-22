@@ -4,6 +4,7 @@ module Syntax.ResourceExpression.Pattern
   , TermPattern (..)
   , SizeTermPattern (..)
   , IneqPattern (..)
+  , ResourcePattern
   , unify
   , findMatches
   )where
@@ -14,7 +15,7 @@ import Data.MultiSet (MultiSet)
 import qualified Data.Set as S
 import Data.Maybe (mapMaybe)
 
-import Syntax (Id, HasVars (..))
+import Syntax (Id, HasVars (..), HasProduct (..), normalisedProd)
 import Syntax.ResourceExpression
 import qualified Syntax.FreeModule as FM
 import Syntax.FreeModule (FreeModule)
@@ -35,19 +36,31 @@ instance HasVars SizeTermPattern where
 type SizePattern = FreeModule SizeTermPattern Rational
 
 -- | Patterns for full resource terms
-data TermPattern
-  = TPSize SizePattern
+data TermPattern 
+  = TPVar Id
   | TPLog SizePattern
   | TPPhi Id
   | TPBinom SizePattern Int
-  | RTProd (MultiSet TermPattern)
-  | PVar Id
+  | TPProd (MultiSet TermPattern)
   | TPId
   deriving (Eq, Ord, Show)
 
-type ResourceExprPattern = FreeModule TermPattern Rational
+type ResourcePattern = FreeModule TermPattern Rational
 
-newtype IneqPattern = LeZero ResourceExprPattern
+instance HasProduct TermPattern where
+  one = TPId
+  prod = TPProd
+  unprod (TPProd ts) = Just ts
+  unprod otherTerm   = Nothing
+
+instance Semigroup TermPattern where
+  (<>) = normalisedProd
+
+instance Monoid TermPattern where
+  mempty = TPId
+
+newtype IneqPattern = LeZero ResourcePattern
+  deriving (Eq, Show)
 
 -- | Substitutions map pattern variables to a sum of concrete size terms
 type Subst = M.Map Id SizeExpr
@@ -87,7 +100,7 @@ unifySizeVar (v, k) concreteTerms subst =
     Nothing -> return (M.insert v st subst)
 
 -- | Non-deterministically matches a sequence of patterns against the active term set
-findMatches :: ResourceExprPattern -> [ResourceTerm] -> [[(ResourceTerm, Rational)]]
+findMatches :: ResourcePattern -> [ResourceTerm] -> [[(ResourceTerm, Rational)]]
 findMatches rp ts = go (M.toList rp) ts M.empty
   where go [] _ _ = [[]]
         go ((p, k):ps) allTerms subst = do

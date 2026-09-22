@@ -19,11 +19,15 @@ import qualified Data.Text as T
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MSet
 
-import Syntax (Id, HasVars(..), Substitutable(..))
+import Syntax
+  ( Id
+  , HasVars(..)
+  , Substitutable (..)
+  , HasProduct (..)
+  , normalisedProd)
 import Syntax.PrettyPrint (PrettyPrint(..))
 import qualified Syntax.FreeModule as FM
 import Syntax.FreeModule (FreeModule)
-import Primitive (unionMap)
 
 data SizeTerm = SVar Id | SId
   deriving (Eq, Ord, Show)
@@ -64,28 +68,17 @@ fromSizeTerm :: SizeTerm -> ResourceTerm
 fromSizeTerm (SVar x) = RTSize x
 fromSizeTerm SId = RTId
 
+instance HasProduct ResourceTerm where
+  one = RTId
+  prod = RTProd
+  unprod (RTProd ts) = Just ts
+  unprod otherTerm   = Nothing 
+
 instance Semigroup ResourceTerm where
   (<>) = normalisedProd
 
-normProd :: ResourceTerm -> ResourceTerm
-normProd (RTProd ts)
-  | all isOne ts = RTId
-  | otherwise    = RTProd ts
-normProd t               = t
-
-normalisedProd :: ResourceTerm -> ResourceTerm -> ResourceTerm
-normalisedProd t s = combine (normProd s) (normProd t)
-  where combine RTId        s           = s
-        combine t           RTId        = t
-        combine (RTProd ts) (RTProd ss) = RTProd $ MSet.union ts ss
-        combine t           (RTProd ss) = RTProd $ MSet.insert t ss
-        combine (RTProd ts) s           = RTProd $ MSet.insert s ts
-        combine t           s           = RTProd $ MSet.fromList [t, s]  
-
 instance Monoid ResourceTerm where
   mempty = RTId
-  
-
 
 instance HasVars SizeTerm where
   freeVars (SVar x) = S.singleton x
@@ -129,6 +122,8 @@ instance PrettyPrint ResourceTerm where
   prettyPrint (RTProd ts) = intercalate " * " $ map prettyPrint (MSet.toList ts)
   prettyPrint RTId = "1"
 
+
+
 isZero :: ResourceTerm -> Bool
 isZero (RTLog s) = s == FM.singleton SId
 isZero otherTerm = False
@@ -140,4 +135,3 @@ isOne :: ResourceTerm -> Bool
 isOne RTId = True
 isOne other = False
 
-        

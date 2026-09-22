@@ -14,6 +14,8 @@ module Syntax
   , Substitutable (..)
   , substVar
   , substVars
+  , HasProduct (..)
+  , normalisedProd
   ) where
 
 import Data.Set (Set)
@@ -21,6 +23,8 @@ import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.MultiSet (MultiSet)
+import qualified Data.MultiSet as MSet
 
 --------------------------------------------------------------------------------
 -- Stages
@@ -69,3 +73,27 @@ substVar x y = subst (M.singleton x y)
 
 substVars :: (Substitutable a) => [Id] -> [Id] -> a -> a
 substVars xs ys = subst (M.fromList (zip xs ys)) 
+
+class (Eq a) => HasProduct a where
+  one :: a
+  prod :: MultiSet a -> a
+  unprod :: a -> Maybe (MultiSet a)
+
+
+normProd :: (HasProduct a) => a -> a
+normProd t = case unprod t of
+  Just ts 
+    | all (== one) ts -> one
+    | otherwise       -> prod ts
+  Nothing -> t
+
+normalisedProd :: (HasProduct a, Ord a) => a -> a -> a
+normalisedProd t s = combine (normProd s) (normProd t)
+  where combine t s
+          | t == one = t
+          | s == one = s
+          | otherwise = case (unprod t, unprod s) of
+              (Just ts, Just ss) -> prod $ MSet.union ts ss
+              (Nothing, Just ss) -> prod $ MSet.insert t ss
+              (Just ts, Nothing) -> prod $ MSet.insert s ts
+              (Nothing, Nothing) -> prod $ MSet.fromList [t, s]  

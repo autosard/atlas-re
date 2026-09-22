@@ -20,6 +20,7 @@ import Control.Monad.Combinators.Expr
 import Data.Char (isAlphaNum)
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.Ord (Ordering (..))
 
 import Data.Ratio((%))
 import Data.Maybe(fromMaybe)
@@ -40,6 +41,7 @@ import Syntax.Types.Type
 import Syntax.Types.Scheme
 import CostAnalysis.TemplateLanguage
 import Syntax.Measure (Measure(Size, Potential))
+import Text.Megaparsec.Char.Lexer (indentLevel, indentGuard)
 
 --------------------------------------------------------------------------------
 -- Parser Interface
@@ -88,7 +90,8 @@ data TopLevel
   | TLSig (Id, SurfaceFunSig)
   | TLData DataDecl
   | TLMeasure MeasureDef
-  | TLFnPragma (Id, CostMode) 
+  | TLFnPragma (Id, CostMode)
+  | TLAxiom SurfaceAxiom
   deriving Show
 
 pTopLevel :: Parser TopLevel
@@ -98,6 +101,7 @@ pTopLevel =
   <|> TLSig      <$> try pFunSig
   <|> TLClause   <$> pSurfaceClause
   <|> TLFnPragma <$> pPragmaStrict "ANALYSIS" pCostMode
+  <|> TLAxiom    <$> pAxiomDef
 
 pCostMode :: Parser (Id, CostMode)
 pCostMode = do
@@ -154,6 +158,7 @@ pProgram = scn *> do
     , sfFunDefs     = funDefs 
     , sfDataDefs    = [d | TLData d <- tops]
     , sfMeasureDefs = [m | TLMeasure m <- tops]
+    , sfAxioms = [a | TLAxiom a <- tops]
     }, imports)
   
 --------------------------------------------------------------------------------
@@ -198,6 +203,28 @@ pMeasureDef = L.indentBlock sc $ do
   ty <- (pType scn)
   hSymbol "where"
   return $ L.IndentSome Nothing (buildMeasure ty measure) pSurfaceClause
+
+--------------------------------------------------------------------------------
+-- Axiom Definitions
+--------------------------------------------------------------------------------
+
+pAxiom :: Parser () -> Parser SurfaceAxiom
+pAxiom sc = impl <|> plain
+  where impl = do
+          premises <- sepBy1 (pExpr sc) (symbol ",") 
+          symbol "=>"
+          conclusion <- pExpr sc
+          return $ SurfaceAxiom premises conclusion
+        plain = do
+          conclusion <- pExpr sc
+          return $ SurfaceAxiom [] conclusion
+
+pAxiomDef :: Parser SurfaceAxiom
+pAxiomDef = do
+  ident <- indentLevel
+  symbol "axiom"
+  pAxiom (void $ indentGuard scn GT ident)
+  
 
 --------------------------------------------------------------------------------
 -- Function Signatures
@@ -471,7 +498,7 @@ pExpr sc = try (pParenExpr scn)
 -- Identifiers
 --------------------------------------------------------------------------------
 
-keywords = [ "data", "measure", "import", "if", "then", "else", "match", "with", "let", "in"]
+keywords = [ "axiom", "data", "measure", "import", "if", "then", "else", "match", "with", "let", "in"]
   
 pIdentifierLike :: Parser () -> Parser Char -> Parser Text
 pIdentifierLike sc firstChar = try $ do

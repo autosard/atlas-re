@@ -28,6 +28,7 @@ module CostAnalysis.Template
   , add
   , scale
   , sizeTransformFromTempl
+  , fromResourceExpr
   ) where
 
 import Prelude hiding (sum, or, and)
@@ -46,10 +47,9 @@ import Syntax.ResourceExpression
 import qualified Syntax.FreeModule as FM
 import Syntax.Measure hiding (Eq)
 import CostAnalysis.Constraint hiding (ConstTerm, VarTerm, fromRScalar)
-import qualified Data.Text as T
 import qualified Data.MultiSet as MSet
 import CostAnalysis.TemplateLanguage (genBinoms)
-import Primitive (dbg)
+import Syntax.FreeModule (FreeModule)
 
 --------------------------------------------------------------------------------
 -- General Templates
@@ -164,6 +164,9 @@ sizeTransformFromTempl args templ rel = let rhs = foldr go FM.empty $ M.toList (
         go (RTSize x, k) = FM.add (FM.singleton' (SVar x) k)
         go (RTId, k) = FM.add (FM.singleton' SId k) 
         go _ = \_ -> error $ "given template contains non size term: " ++ show templ
+
+fromResourceExpr :: FreeModule ResourceTerm Rational -> BoundTemplate
+fromResourceExpr = BoundTemplate
 
 --------------------------------------------------------------------------------
 -- TermTemplate

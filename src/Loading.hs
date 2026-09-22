@@ -50,7 +50,8 @@ buildProgram (p:ps) = foldr go p ps
           sfConfig = mergeConfigs (sfConfig p1) (sfConfig p2),
           sfFunDefs = M.union (sfFunDefs p1) (sfFunDefs p2),
           sfDataDefs = sfDataDefs p1 ++ sfDataDefs p2,
-          sfMeasureDefs = sfMeasureDefs p1 ++ sfMeasureDefs p2}
+          sfMeasureDefs = sfMeasureDefs p1 ++ sfMeasureDefs p2,
+          sfAxioms = sfAxioms p1 ++ sfAxioms p2}
         mergeConfigs cfg1 cfg2 = ProgConfig
           { templateConfig = case templateConfig cfg2 of
               [] -> templateConfig cfg1

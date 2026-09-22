@@ -18,6 +18,7 @@ data AxiomSpec = AxiomSpec
   { premises :: [IneqPattern]
   , conclusion :: IneqPattern
   }
+  deriving (Eq, Show)
 
 logAxiom :: AxiomSpec
 logAxiom = AxiomSpec

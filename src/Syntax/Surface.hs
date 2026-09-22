@@ -1,3 +1,5 @@
+{-# LANGUAGE StrictData #-}
+
 module Syntax.Surface
   ( SurfaceCostSig (..)
   , SurfaceFunSig (..)
@@ -7,11 +9,11 @@ module Syntax.Surface
   , MeasureDef (..)
   , CtorDecl (..)
   , DataDecl (..)
+  , SurfaceAxiom (..)
   )where
 
 import Text.Megaparsec (SourcePos)
 import Data.Map (Map)
-import qualified Data.Map as M
 
 import Syntax (Id, Parsed)
 import Syntax.Program (ProgramConfig(..))
@@ -55,7 +57,8 @@ data SurfaceProgram = SurfaceProgram {
   sfConfig :: ProgramConfig,
   sfFunDefs :: Map Id SurfaceFunDef,
   sfDataDefs :: [DataDecl],
-  sfMeasureDefs :: [MeasureDef]
+  sfMeasureDefs :: [MeasureDef],
+  sfAxioms :: [SurfaceAxiom]
 } deriving Show
 
 data DataDecl = DataDecl {
@@ -77,3 +80,7 @@ data MeasureDef = MeasureDef {
   mClauses :: [SurfaceClause]
 } deriving Show
 
+data SurfaceAxiom = SurfaceAxiom
+  { saPremises :: [Expr Parsed]
+  , saConclusion :: Expr Parsed}
+  deriving Show

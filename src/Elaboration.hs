@@ -34,10 +34,13 @@ import Syntax.Types.Subst (tv)
 import Syntax.Types.Type
 import Syntax.Measure
 import SourceError
-import CostAnalysis.Template (BoundTemplate(..))
+import CostAnalysis.Template (BoundTemplate(..), fromResourceExpr)
 import Syntax.ResourceExpression
+import Syntax.ResourceExpression.Pattern
 import qualified Builtin (measures, dataDefs)
+import Syntax.FreeModule (FreeModule)
 import qualified Syntax.FreeModule as FM
+import Syntax.ResourceExpression.Axioms (AxiomSpec (..))
 
 
 newtype ElabState = ElabState {
@@ -92,13 +95,15 @@ elabProg sp = do
   parsedDataEnv <- elabDataDefs (sfDataDefs sp)
   let dataEnv = M.union Builtin.dataDefs parsedDataEnv
   measureSig <- elabMeasureSig (sfMeasureDefs sp)
+  axioms <- mapM elabAxiom $ sfAxioms sp
   return $ Program {
     _pSig = sig
     , _pConfig = sfConfig sp
     , _pMutRecGroups = groupFuns (M.elems funDefs)
     , _pFunDefs = funDefs
     , _pDataEnv = dataEnv
-    , _pMeasureSig = measureSig}
+    , _pMeasureSig = measureSig
+    , _pAxioms = axioms}
 
 --------------------------------------------------------------------------------
 -- Signatures
@@ -118,57 +123,91 @@ elabSig sSig = do
   where sCostSig = sfsCostSig sSig
 
 elabBoundTemplate :: [Id] -> Expr Parsed -> Elab BoundTemplate
-elabBoundTemplate args e = do
-  coeffs <- M.fromList <$> elabScalarComb e
-  return $ BoundTemplate coeffs
+elabBoundTemplate args e = fromResourceExpr <$> elabResourceExpr e
+
 
 --------------------------------------------------------------------------------
--- Resource Expressions
+-- Resource Expressions / Patterns
 --------------------------------------------------------------------------------
-
-elabScalarComb :: Expr Parsed -> Elab [(ResourceTerm, Rational)]
-elabScalarComb (App "-" [ss, s]) = do
-  es <- elabScale s (-1)
-  ess <- elabScalarComb ss
-  return $ ess ++ [es]
-elabScalarComb (App "+" [ss, s]) = do
-  es <- elabScale s 1
-  ess <- elabScalarComb ss
-  return $ ess ++ [es]
-elabScalarComb e = singleton <$> elabScale e 1
-
-elabScale :: Expr Parsed -> Rational-> Elab (ResourceTerm, Rational)
-elabScale e sign = do
-  (t, k) <- elabProdTerm e
-  return (t, sign * k)
-
-elabProdTerm :: Expr Parsed -> Elab (ResourceTerm, Rational)
-elabProdTerm (Lit (LRat r)) = return (RTId, r)
-elabProdTerm (Lit (LNat n)) = return (RTId, fromIntegral n)
-elabProdTerm (App "*" [q@(Lit _), t]) = do
-  qr <- elabRatLit q
-  (rt, p) <- elabProdTerm t
-  return (rt, qr * p)
-elabProdTerm (App "*" [t, q@(Lit _)]) = do
-  qr <- elabRatLit q
-  (rt, p) <- elabProdTerm t
-  return (rt, qr * p)  
-elabProdTerm (App "*" [x, y]) = do
-  (tx, qx) <- elabProdTerm x
-  (ty, qy) <- elabProdTerm y
-  return (multTerms tx ty, qx * qy)
-elabProdTerm e = (,1) <$> elabResourceTerm e
-
-multTerms (RTProd x) (RTProd y) = RTProd (MSet.union x y)
-multTerms (RTProd x) t = RTProd (MSet.insert t x)
-multTerms t (RTProd y) = RTProd (MSet.insert t y)
-multTerms t s = RTProd (MSet.fromList [t, s])
-
 
 elabRatLit :: Expr Parsed -> Elab Rational
 elabRatLit (Lit (LRat r)) = return r
 elabRatLit (Lit (LNat n)) = return (fromIntegral n)
 elabRatLit e = illformedTerm e "Expected a rational number."
+
+elabFreeModule :: (Ord a) => (Expr Parsed -> Elab (FreeModule a Rational)) -> Expr Parsed -> Elab (FreeModule a Rational)
+elabFreeModule  elabAtom (App "-" [ss, s]) = do
+  es <- FM.scale (-1) <$> elabAtom s
+  ess <- elabFreeModule  elabAtom ss
+  return $ FM.add es ess
+elabFreeModule elabAtom  (App "+" [ss, s]) = do
+  es <- elabAtom s
+  ess <- elabFreeModule elabAtom ss 
+  return $ FM.add es ess
+elabFreeModule elabAtom e = elabAtom e
+
+elabProd :: (Monoid a, Ord a) => (Expr Parsed -> Elab a) -> Expr Parsed -> Elab (FreeModule a Rational)
+elabProd _ (Lit (LRat r)) = return $ FM.singleton' mempty r
+elabProd _ (Lit (LNat n)) = return $ FM.singleton' mempty (fromIntegral n)
+elabProd elabAtom (App "*" [q@(Lit _), t]) = do
+  qr <- elabRatLit q
+  p <- elabProd elabAtom t
+  return $ FM.scale qr p
+elabProd elabAtom (App "*" [t, q@(Lit _)]) = do
+  qr <- elabRatLit q
+  p <- elabProd elabAtom t
+  return $ FM.scale qr p
+elabProd elabAtom (App "*" [x, y]) = do
+  p1 <- elabProd elabAtom x
+  p2 <- elabProd elabAtom x
+  return (FM.mult p1 p2)
+elabProd elabAtom e = FM.singleton <$> elabAtom e
+
+---
+-- elabScalarComb :: Expr Parsed -> Elab [(ResourceTerm, Rational)]
+-- elabScalarComb (App "-" [ss, s]) = do
+--   es <- elabScale s (-1)
+--   ess <- elabScalarComb ss
+--   return $ ess ++ [es]
+-- elabScalarComb (App "+" [ss, s]) = do
+--   es <- elabScale s 1
+--   ess <- elabScalarComb ss
+--   return $ ess ++ [es]
+-- elabScalarComb e = singleton <$> elabScale e 1
+
+-- elabScale :: Expr Parsed -> Rational-> Elab (ResourceTerm, Rational)
+-- elabScale e sign = do
+--   (t, k) <- elabProdTerm e
+--   return (t, sign * k)
+
+-- elabProdTerm :: Expr Parsed -> Elab (ResourceTerm, Rational)
+-- elabProdTerm (Lit (LRat r)) = return (RTId, r)
+-- elabProdTerm (Lit (LNat n)) = return (RTId, fromIntegral n)
+-- elabProdTerm (App "*" [q@(Lit _), t]) = do
+--   qr <- elabRatLit q
+--   (rt, p) <- elabProdTerm t
+--   return (rt, qr * p)
+-- elabProdTerm (App "*" [t, q@(Lit _)]) = do
+--   qr <- elabRatLit q
+--   (rt, p) <- elabProdTerm t
+--   return (rt, qr * p)  
+-- elabProdTerm (App "*" [x, y]) = do
+--   (tx, qx) <- elabProdTerm x
+--   (ty, qy) <- elabProdTerm y
+--   return (multTerms tx ty, qx * qy)
+-- elabProdTerm e = (,1) <$> elabResourceTerm e
+
+-- multTerms (RTProd x) (RTProd y) = RTProd (MSet.union x y)
+-- multTerms (RTProd x) t = RTProd (MSet.insert t x)
+-- multTerms t (RTProd y) = RTProd (MSet.insert t y)
+-- multTerms t s = RTProd (MSet.fromList [t, s])
+
+--------------------------------------------------------------------------------
+-- Resource Terms
+--------------------------------------------------------------------------------
+
+elabResourceExpr :: Expr Parsed -> Elab (FreeModule ResourceTerm Rational)
+elabResourceExpr = elabFreeModule (elabProd elabResourceTerm)
 
 elabResourceTerm :: Expr Parsed -> Elab ResourceTerm
 elabResourceTerm e = do
@@ -188,31 +227,18 @@ elabPhiM _ = empty
 elabLogTermM :: Expr Parsed -> MaybeT Elab ResourceTerm
 elabLogTermM (App "log" [s]) = lift $ RTLog <$> elabSizeExpr s
 elabLogTermM _ = empty
-  --illformedTerm e "Expected log term."
 
 elabSizeExpr :: Expr Parsed -> Elab SizeExpr
-elabSizeExpr (App "-" [ss, s]) = do
-  st <- elabSizeTerm s (-1)
-  sts <- elabSizeExpr ss
-  return $ FM.add st sts 
-elabSizeExpr (App "+" [ss, s]) = do
-  st <- elabSizeTerm s 1
-  sts <- elabSizeExpr ss
-  return $ FM.add st sts 
-elabSizeExpr e = elabSizeTerm e 1
+elabSizeExpr = elabFreeModule elabSizeTerm
 
-elabSizeTerm :: Expr Parsed -> Int -> Elab SizeExpr
-elabSizeTerm (App "size" [Var x]) _ = return $ FM.singleton (SVar x)
-elabSizeTerm (Lit (LNat b)) sign = return $ FM.singleton' SId (fromIntegral $ sign * b)
-elabSizeTerm (App "*" [k, App "size" [Var x]]) sign = do
-  k <- elabIntLit k
-  return $ FM.singleton' (SVar x) (fromIntegral $ sign * k)
-elabSizeTerm e _ = illformedTerm e "Expected a size term." 
+elabSizeTerm :: Expr Parsed -> Elab SizeExpr
+elabSizeTerm (App "size" [Var x]) = return $ FM.singleton (SVar x)
+elabSizeTerm (Lit (LNat b)) = return $ FM.singleton' SId (fromIntegral b)
+elabSizeTerm e = illformedTerm e "Expected a size term." 
 
 elabIntLit :: Expr Parsed -> Elab Int
 elabIntLit (Lit (LNat n)) = return n 
 elabIntLit e = illformedTerm e "Expected a nat literal."
-  
 
 elabBinom :: Expr Parsed -> MaybeT Elab ResourceTerm
 elabBinom (App "binom" [x,k]) = do
@@ -225,13 +251,50 @@ elabSizeAtomM :: Expr Parsed -> MaybeT Elab Id
 elabSizeAtomM (App "size" [Var x]) = lift (return x)
 elabSizeAtomM _ = empty
 
--- elabSizeAtom :: Expr Parsed -> Elab SizeTerm
--- elabSizeAtom e = do
---   r <- runMaybeT (elabSizeAtomM e)
---   case r of
---     Just sx -> return sx
---     Nothing ->
---       illformedTerm e "Expected a valid atomic size expression (e.g. 'size x')."
+--------------------------------------------------------------------------------
+-- Resource Patterns
+--------------------------------------------------------------------------------
+
+elabResourcePattern :: Expr Parsed -> Elab ResourcePattern
+elabResourcePattern = elabFreeModule (elabProd elabTermPattern)
+
+elabTermPattern :: Expr Parsed -> Elab TermPattern
+elabTermPattern e = do 
+  r <- runMaybeT $
+    (TPVar <$> elabPatVarM e)
+    <|> elabLogPatternM e
+    <|> elabPhiPatternM e
+    <|> elabBinomPattern e
+  case r of
+    Just r -> pure r
+    Nothing -> illformedTerm e "Expected a resource pattern."
+
+elabLogPatternM :: Expr Parsed -> MaybeT Elab TermPattern
+elabLogPatternM (App "log" [s]) = lift $ TPLog <$> elabSizePattern s
+elabLogPatternM _ = empty
+
+elabPhiPatternM :: Expr Parsed -> MaybeT Elab TermPattern
+elabPhiPatternM (App "pot" [Var x]) = lift $ return (TPPhi x)
+elabPhiPatternM _ = empty
+
+elabBinomPattern :: Expr Parsed -> MaybeT Elab TermPattern
+elabBinomPattern (App "binom" [x,k]) = do
+  sx <- lift $ elabSizePattern x
+  ck <- lift $ elabIntLit k
+  return $ TPBinom sx ck
+elabBinomPattern _ = empty
+
+elabPatVarM :: Expr Parsed -> MaybeT Elab Id
+elabPatVarM (Var x) = lift (return x)
+elabPatVarM _ = empty
+
+elabSizePattern :: Expr Parsed -> Elab SizePattern
+elabSizePattern = elabFreeModule elabSizeTermPattern
+
+elabSizeTermPattern :: Expr Parsed -> Elab SizePattern
+elabSizeTermPattern (Var x) = return $ FM.singleton (SPVar x)
+elabSizeTermPattern (Lit (LNat b)) = return $ FM.singleton SPId
+elabSizeTermPattern e = illformedTerm e "Expected a size term pattern." 
 
 --------------------------------------------------------------------------------
 -- Function Clauses
@@ -326,8 +389,8 @@ elabClause mKind (SurfaceClause _ [PConst _ cPat pVars] body) = do
   terms <- case mKind of
     SSize -> elabSizeExpr body
     SPotential -> do
-      ts <- elabScalarComb body
-      return $ FM.fromList' $ map (second RSConst) ts
+      ts <- elabResourceExpr body
+      return $ M.map RSConst ts
       
   return (ConstPat cPat varNames, terms)    
 elabClause _ (SurfaceClause pos _ _) = 
@@ -356,3 +419,23 @@ elabMeasureSig = foldM insertMeasure Builtin.measures
           
       return $ M.insert schemeKey updatedEnv envMap
   
+--------------------------------------------------------------------------------
+-- Axioms
+--------------------------------------------------------------------------------
+
+elabResourceIneq :: Expr Parsed -> Elab IneqPattern
+elabResourceIneq (App "<=" [lhs, rhs]) = do
+  lhsPat <- elabResourcePattern lhs
+  rhsPat <- elabResourcePattern rhs
+  return $ LeZero (FM.add lhsPat (FM.scale (-1) rhsPat))
+elabResourceIneq (App ">=" [lhs, rhs]) = do
+  lhsPat <- elabResourcePattern lhs
+  rhsPat <- elabResourcePattern rhs
+  return $ LeZero (FM.add (FM.scale (-1) lhsPat) rhsPat)
+elabResourceIneq e = illformedTerm e "Expected an inequality."
+
+elabAxiom :: SurfaceAxiom -> Elab AxiomSpec
+elabAxiom sa = do
+  premises <- mapM elabResourceIneq (saPremises sa)
+  conclusion <- elabResourceIneq (saConclusion sa)
+  return $ AxiomSpec premises conclusion
