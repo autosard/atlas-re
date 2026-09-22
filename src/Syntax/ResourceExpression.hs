@@ -51,9 +51,12 @@ data RScalar =
   deriving (Eq, Ord, Show)
 
 instance Num RScalar where
-  (+) = RSAdd
-  (*) = RSMul
-  negate = RSMul (RSConst (-1))
+  (+) (RSConst r1) (RSConst r2) = RSConst (r1 + r2)
+  (+) s1 s2 = RSAdd s1 s2
+  (*) (RSConst r1) (RSConst r2) = RSConst (r1 * r2)
+  (*) s1 s2 = RSMul s1 s2
+  negate (RSConst r) = RSConst (-r)
+  negate s = RSMul (RSConst (-1)) s
   fromInteger = RSConst . fromIntegral
   abs (RSConst k) = RSConst (abs k)
   abs q@(RSCoeff _ _) = q
@@ -134,4 +137,5 @@ isPotential _ = False
 isOne :: ResourceTerm -> Bool
 isOne RTId = True
 isOne other = False
+
 

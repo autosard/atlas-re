@@ -50,7 +50,10 @@ module CostAnalysis.ProveMonad
   , resetAnalysis
   , potentials
   , runProof
-  )where
+  , ResourceContext
+  , addVarConstraints
+  , axioms
+  ) where
 
 import Prelude hiding (sum)
 import Control.Monad.RWS
@@ -75,6 +78,7 @@ import Syntax.Expression
 import Syntax.Pattern
 import Syntax.Types.Type
 import Syntax.Types.Scheme (Scheme (Forall), findByType, tFunResult)
+import Syntax.ResourceExpression.Axioms (AxiomSpec)
 import Syntax.Program hiding (AnalysisMode)
 import Syntax.Annotation
 import CostAnalysis.Coeff
@@ -82,15 +86,17 @@ import Syntax.Measure (SizeTransform,
                        Measure(..),
                        MeasureEnv(..),
                        MeasureAlgebra(..),
-                       ConstPat(..))
+                       ConstPat(..),
+                       sizeGeOne)
 import CostAnalysis.TemplateLanguage
 import Syntax.ResourceExpression ( ResourceTerm(..), isPotential, ResourceExpr, RScalar (..) )
-import Data.Maybe (isJust, mapMaybe)
+import Data.Maybe (isJust)
 import Control.Monad (forM)
-import Control.Arrow (Arrow(second))
-import Data.List (uncons)
-import Control.Monad.Extra (whenM, ifM)
+import Control.Monad.Extra (whenM, ifM, mapMaybeM)
 import qualified Syntax.FreeModule as FM
+import Syntax.ResourceExpression.Inequality (ResourceIneq, sizeGeOneCs)
+import Text.Show.Pretty (ppShow)
+import Primitive (dbg)
 
 
 type Derivation = Tree RuleApp
@@ -122,7 +128,8 @@ data ProofEnv = ProofEnv {
   _analysisMode :: AnalysisMode,
   _incremental :: Bool,
   _costModes :: Map Id CostMode,
-  _inferPotential :: Bool
+  _inferPotential :: Bool,
+  _axioms :: [AxiomSpec]
   }
 
 makeLenses ''ProofEnv
@@ -132,6 +139,8 @@ data ProofErr
   | UnsatErr [Formula]
   | MissingMeasure Type Measure
   | ProofErr String
+
+type ResourceContext = [ResourceIneq]  
 
 enrichMeasureSig :: Program a -> ProveMonad (Map Scheme EnrichedMeasureEnv)
 enrichMeasureSig prog = M.traverseWithKey go (prog^.pMeasureSig)
@@ -341,6 +350,16 @@ measureEnvForType t = do
   case findByType t mSig of
     Just env -> return env
     Nothing -> throwError $ MissingMeasure t Size
+
+addVarConstraints :: [(Id, Type)] -> ResourceContext -> ProveMonad ResourceContext
+addVarConstraints xs rctx = do
+  rctxs <- mapMaybeM go xs
+  return $ rctx ++ concat rctxs
+  where go (x, t) =
+          if isResourceRelevant t then do
+            env <- measureEnvForType t
+            return $ Just [sizeGeOneCs x | sizeGeOne (emSizeMeasure env)]
+          else return Nothing
 
 defEqSubst :: (Id, SubstValue) -> FreeTemplate -> ProveMonad (FreeTemplate, [Formula])
 defEqSubst subst q = do

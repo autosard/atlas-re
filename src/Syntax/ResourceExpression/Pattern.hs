@@ -7,11 +7,14 @@ module Syntax.ResourceExpression.Pattern
   , ResourcePattern
   , unify
   , findMatches
+  , SizeSubst
+  , instResourceIneq
   )where
 
 import qualified Data.Map.Strict as M
 import Control.Monad (guard)
 import Data.MultiSet (MultiSet)
+import qualified Data.MultiSet as MSet
 import qualified Data.Set as S
 import Data.Maybe (mapMaybe)
 
@@ -19,6 +22,7 @@ import Syntax (Id, HasVars (..), HasProduct (..), normalisedProd)
 import Syntax.ResourceExpression
 import qualified Syntax.FreeModule as FM
 import Syntax.FreeModule (FreeModule)
+import qualified Syntax.ResourceExpression.Inequality as ReIneq (ResourceIneq (..))
 
 newtype PatVar = PatVar Id deriving (Eq, Ord, Show)
 
@@ -60,19 +64,19 @@ instance Monoid TermPattern where
   mempty = TPId
 
 newtype IneqPattern = LeZero ResourcePattern
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
 -- | Substitutions map pattern variables to a sum of concrete size terms
-type Subst = M.Map Id SizeExpr
+type SizeSubst = M.Map Id SizeExpr
 
 
-unify :: TermPattern -> ResourceTerm -> Subst -> [Subst]
+unify :: TermPattern -> ResourceTerm -> SizeSubst -> [SizeSubst]
 unify TPId RTId subst = [subst]
 unify (TPLog s1) (RTLog s2) subst = unifySizePattern s1 s2 subst
 unify (TPBinom s1 k1) (RTBinom s2 k2) subst | k1 == k2 = unifySizePattern s1 s2 subst
 unify _ _ _ = []
 
-unifySizePattern :: SizePattern -> SizeExpr -> Subst -> [Subst]
+unifySizePattern :: SizePattern -> SizeExpr -> SizeSubst -> [SizeSubst]
 unifySizePattern p s subst = do
   let c = M.findWithDefault 0 SPId  p
       d = M.findWithDefault 0 SId s
@@ -83,14 +87,14 @@ unifySizePattern p s subst = do
   where toVar (SPVar x, k) = Just (x, k)
         toVar (SPId, _) = Nothing
                          
-unifySizeVars :: [(Id, Rational)] -> [SizeExpr] -> Subst -> [Subst]
+unifySizeVars :: [(Id, Rational)] -> [SizeExpr] -> SizeSubst -> [SizeSubst]
 unifySizeVars [] [] subst = [subst]
 unifySizeVars (p:ps) (r:rs) subst = do
-  nextSubst <- unifySizeVar p r subst
-  unifySizeVars ps rs nextSubst
+  nextSizeSubst <- unifySizeVar p r subst
+  unifySizeVars ps rs nextSizeSubst
 unifySizeVars _ _ _ = []
                            
-unifySizeVar :: (Id, Rational) -> SizeExpr -> Subst -> [Subst]
+unifySizeVar :: (Id, Rational) -> SizeExpr -> SizeSubst -> [SizeSubst]
 unifySizeVar (v, k) concreteTerms subst =
   let st = FM.scale (1/k) concreteTerms in
   case M.lookup v subst of
@@ -100,11 +104,35 @@ unifySizeVar (v, k) concreteTerms subst =
     Nothing -> return (M.insert v st subst)
 
 -- | Non-deterministically matches a sequence of patterns against the active term set
-findMatches :: ResourcePattern -> [ResourceTerm] -> [[(ResourceTerm, Rational)]]
+findMatches :: ResourcePattern -> [ResourceTerm]
+           -> [([(ResourceTerm, Rational)], SizeSubst)]
 findMatches rp ts = go (M.toList rp) ts M.empty
-  where go [] _ _ = [[]]
-        go ((p, k):ps) allTerms subst = do
-          term      <- allTerms
-          nextSubst <- unify p term subst
-          rest      <- go ps allTerms nextSubst
-          return ((term, k) : rest)
+  where
+    go [] _ subst = [([], subst)]
+    go ((p, k):ps) allTerms subst = do
+      term            <- allTerms
+      nextSubst       <- unify p term subst
+      (rest, finalSubst) <- go ps allTerms nextSubst
+      return ((term, k) : rest, finalSubst)
+
+instResourceIneq :: SizeSubst -> IneqPattern -> ReIneq.ResourceIneq
+instResourceIneq s (LeZero rp) =  ReIneq.LeZero (instPattern s rp)
+
+instPattern :: SizeSubst -> ResourcePattern -> ResourceExpr
+instPattern s rp = FM.linMap (instTermPattern s) (FM.bimap id RSConst rp)
+
+instTermPattern :: SizeSubst -> TermPattern -> ResourceExpr
+instTermPattern s (TPVar x) = fromSizeExpr (s M.! x)
+instTermPattern s (TPLog sp) = FM.singleton $ RTLog $ instSizePattern s sp
+instTermPattern s (TPPhi x) = FM.singleton $ RTPhi x
+instTermPattern s (TPBinom sp k) = FM.singleton $ RTBinom (instSizePattern s sp) k
+instTermPattern s (TPProd ts) = FM.prod $ map (instTermPattern s) $ MSet.toList ts
+instTermPattern s TPId = FM.singleton RTId
+
+instSizePattern :: SizeSubst -> SizePattern -> SizeExpr
+instSizePattern s = FM.linMap (instSizeTermPattern s)
+  
+instSizeTermPattern :: SizeSubst -> SizeTermPattern -> SizeExpr
+instSizeTermPattern s SPId = FM.singleton SId
+instSizeTermPattern s (SPVar x) = s M.! x 
+

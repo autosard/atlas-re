@@ -17,6 +17,7 @@ module Syntax.Measure
   , SMeasure (..)
   , apply
   , applyST
+  , sizeGeOne
   ) where
 
 import Data.Kind (Type)
@@ -25,6 +26,7 @@ import qualified Data.Set as S
 
 import Syntax (Id, Substitutable(..), HasVars(..), substVars)
 import Syntax.ResourceExpression
+import qualified Syntax.FreeModule as FM
 
 data ConstPat = ConstPat Id [Id]
   deriving (Eq, Show)
@@ -77,3 +79,7 @@ apply (Equations eqs) cv@(ConstPat _ argsInst) = case find (match cv . fst) eqs 
 match :: ConstPat -> ConstPat -> Bool
 match (ConstPat c2 xs) (ConstPat c1 ys) = c1 == c2 && length xs == length xs 
 
+sizeGeOne :: MeasureAlgebra 'Size -> Bool
+sizeGeOne (Equations eqs) = all eqGeOne eqs
+  where eqGeOne :: (ConstPat, SizeExpr) -> Bool
+        eqGeOne (_, se) = FM.coeffSum se >= 1

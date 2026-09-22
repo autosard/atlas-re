@@ -1,10 +1,11 @@
 module CostAnalysis.Subtyping (templLe) where
 
 import Prelude hiding (sum)
+import qualified Prelude as P (sum)
 import Data.Set(Set)
 import qualified Data.Set as S
 import qualified Data.Map as M
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, mapMaybe)
 import qualified Data.Vector as V
 
 import CostAnalysis.Template (Template(terms,(!?)))
@@ -16,11 +17,11 @@ import CostAnalysis.Rules
 
 import Syntax.ResourceExpression.Order ( GuardMatrix, resourceLe )
 import Syntax.ResourceExpression.Axioms
-import Syntax.ResourceExpression.Pattern ( findMatches, IneqPattern (..) ) 
+import Syntax.ResourceExpression.Pattern ( findMatches, IneqPattern (..), SizeSubst, instResourceIneq ) 
 import Data.Bifunctor (Bifunctor(first))
-import Primitive (dbg)
-import Syntax.PrettyPrint (PrettyPrint(prettyPrint))
-import Text.Show.Pretty (pPrint, ppShow)
+import Syntax.ResourceExpression.Inequality (ResourceIneq )
+import qualified Syntax.ResourceExpression.Inequality as ReIneq (ResourceIneq (LeZero))
+import Lens.Micro.Platform (view)
 
 type LeMatrix = V.Vector (V.Vector Rational)
 
@@ -35,12 +36,16 @@ farkas as ps qs | V.length ps == V.length qs = do
   where prods fs as = zipWith prod2 fs (map ConstTerm as)
         fas fs as i = prods fs ([row V.! i | row <- V.toList as])
 
-templLe :: (Template a, Template b, HasCoeffs a, HasCoeffs b) => Set SubArg -> a -> b -> ProveMonad [Formula]
-templLe subArgs p q = do
-  let ks = merge $
-        [termOrderConstraints [] (terms p) | S.member Mono subArgs]
-        ++ [instantiateAxiom logAxiom (terms p) | S.member L2xy subArgs]
-  farkas ks ps qs
+templLe :: (Template a, Template b, HasCoeffs a, HasCoeffs b) => Set SubArg -> [ResourceIneq] -> a -> b -> ProveMonad [Formula]
+templLe subArgs rctx p q =
+  let rctxBounds = lowerBounds rctx in do
+    axs <- view axioms
+    let ks = merge $
+          [termOrderConstraints [] (terms p) | S.member Mono subArgs]
+          ++ if S.member L2xy subArgs
+             then map (instantiateAxiom rctxBounds (terms p)) axs
+             else []
+    farkas ks ps qs
   where ps = V.fromList . map CoeffTerm $ getCoeffs p
         qs = V.fromList $ [q!?t | t <- S.toList $ terms p]
   
@@ -70,19 +75,42 @@ termOrderConstraints guards terms = merge . catMaybes $
                   else 0))
       else Nothing
 
--- | Instantiates all possible applications of a lemma over a set of ResourceTerms.
-instantiateAxiom :: AxiomSpec -> S.Set ResourceTerm -> LeMatrix
-instantiateAxiom (AxiomSpec premises (LeZero conclusion)) termsSet = 
-  V.fromList . concatMap buildRows $ findMatches conclusion (S.toList termsSet) 
+type LowerBounds = M.Map ResourceTerm Rational
+
+lowerBounds :: [ResourceIneq] -> LowerBounds
+lowerBounds = M.fromList . mapMaybe go 
+  where go :: ResourceIneq -> Maybe (ResourceTerm, Rational)
+        go (ReIneq.LeZero rt) = case M.toList rt of
+          [(t, RSConst (-1)), (RTId, RSConst r)] -> Just (t, 1)
+          [(RTId, RSConst r), (t, RSConst (-1))] -> Just (t, 1)
+          _                                      -> Nothing
+                            
+
+csIsValid :: LowerBounds -> ResourceIneq -> Bool
+csIsValid bounds (ReIneq.LeZero re) = (P.sum . map go) (M.toList re) <= 0
+  where go (RTId, RSConst r) = r
+        go (t, RSConst r) = r * bounds M.! t
+
+
+-- | Instantiates all possible applications of an axiom over a set of ResourceTerms.
+instantiateAxiom :: LowerBounds -> Set ResourceTerm -> AxiomSpec -> LeMatrix
+instantiateAxiom rctx termsSet (AxiomSpec premises (LeZero conclusion)) =
+  let premiseSet = S.fromList premises in 
+    V.fromList . concatMap (buildRow premiseSet) $ findMatches conclusion (S.toList termsSet) 
   where
+    
     numTerms = S.size termsSet
 
     -- For a successful combination of matched terms, generate the constraint row
-    buildRows :: [(ResourceTerm, Rational)] -> [V.Vector Rational]
-    buildRows matchedTerms =
-      let rowAssocs = map (first (`S.findIndex` termsSet)) matchedTerms
-          rowMap    = M.fromListWith (+) rowAssocs 
-      in [V.generate numTerms (\k -> M.findWithDefault 0 k rowMap)]
+    buildRow :: Set IneqPattern -> ([(ResourceTerm, Rational)], SizeSubst) -> [V.Vector Rational]
+    buildRow premiseSet (matchedTerms, subst) =
+      let instPremises = S.map (instResourceIneq subst) premiseSet in
+      if all (csIsValid rctx) instPremises 
+      then 
+        let rowAssocs = map (first (`S.findIndex` termsSet)) matchedTerms
+            rowMap    = M.fromListWith (+) rowAssocs 
+        in [V.generate numTerms (\k -> M.findWithDefault 0 k rowMap)]
+      else []
 
 
 

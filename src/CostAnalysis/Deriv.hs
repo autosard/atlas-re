@@ -29,20 +29,23 @@ import CostAnalysis.Constraint ( ArithExpr(ConstTerm), sum )
 import CostAnalysis.ProveMonad
 import qualified CostAnalysis.Rules as Rule
 import CostAnalysis.Subtyping
+import Text.Show.Pretty (ppShow)
+import Primitive (dbg)
+import Syntax.Types.Type (funTArgs)
+import Syntax.Types.Scheme (tFunArgs)
 
 
-
-type Prove e a = Tactic -> e -> JudgementType -> Id -> FreeTemplate -> FreeTemplate -> ProveMonad a
+type Prove e a = Tactic -> e -> JudgementType -> ResourceContext -> Id -> FreeTemplate -> FreeTemplate -> ProveMonad a
 
 
 proveVar :: Prove (Expr Positioned) Derivation
-proveVar _ e@(Var x) judgeType binder q q' = do
+proveVar _ e@(Var x) judgeType _ binder q q' = do
   let cs = assertEqVarSubst binder x q' q
   conclude R.Var judgeType q q' cs e []
 
 
 proveConst :: Prove (Expr Positioned) Derivation
-proveConst _ e@(Const name args) judgeType binder q q' = do
+proveConst _ e@(Const name args) judgeType _ binder q q' = do
   mEnv <- measureEnvForType (getType e)
   let subst = ExpandCtor (ConstPat name (map argToVar args)) mEnv
   cs <- assertEqSubst (binder, subst) q' q
@@ -52,20 +55,20 @@ proveConst _ e@(Const name args) judgeType binder q q' = do
 
 
 proveIte :: Prove (Expr Positioned) Derivation
-proveIte tactic e@(Ite (Coin p) e1 e2) judgeType binder q q' = do
+proveIte tactic e@(Ite (Coin p) e1 e2) judgeType rctx binder q q' = do
   let [t1, t2] = subTactics 2 tactic
   q1 <- freshFrom q
   q2 <- freshFrom q
   let cs = assertEq q $ add 
         (scale q1 (ConstTerm p))
         (scale q2 (ConstTerm (1-p)))
-  deriv1 <- proveExpr t1 e1 judgeType binder q1 q'
-  deriv2 <- proveExpr t2 e2 judgeType binder q2 q'
+  deriv1 <- proveExpr t1 e1 judgeType rctx binder q1 q'
+  deriv2 <- proveExpr t2 e2 judgeType rctx binder q2 q'
   conclude R.IteCoin judgeType q q' cs e [deriv1, deriv2]
-proveIte tactic e@(Ite e1 e2 e3) judgeType binder q q' = do
+proveIte tactic e@(Ite e1 e2 e3) judgeType rctx binder q q' = do
   let [_, t2, t3] = subTactics 3 tactic
-  deriv2 <- proveExpr t2 e2 judgeType binder q q'
-  deriv3 <- proveExpr t3 e3 judgeType binder q q'
+  deriv2 <- proveExpr t2 e2 judgeType rctx binder q q'
+  deriv3 <- proveExpr t3 e3 judgeType rctx binder q q'
   conclude R.Ite judgeType q q' [] e [deriv2, deriv3]
 
 
@@ -77,43 +80,46 @@ simplifyPattern p@(PConst _ id ps) = ConstPat id <$> mapM toVar ps
 
 
 proveMatchArm :: Id -> Prove (MatchArm Positioned) Derivation
-proveMatchArm x tactic arm@(MatchArm pat@(PVar _ y) body) judgeType binder q q' = do
+proveMatchArm x tactic arm@(MatchArm pat@(PVar _ y) body) judgeType rctx binder q q' = do
   p <- freshFrom (substVar x y q)
-  let cs = assertEqVarSubst x y q p 
-  deriv <- proveExpr tactic body judgeType binder p q'
+  let cs = assertEqVarSubst x y q p
+  let rctx' = substVar x y rctx
+  deriv <- proveExpr tactic body judgeType rctx' binder p q'
   concludeArm pat judgeType q q' cs body [deriv]
-proveMatchArm x tactic (MatchArm pat body) judgeType binder q q' = do
+proveMatchArm x tactic (MatchArm pat body) judgeType rctx binder q q' = do
   let tMatch = getType pat
+  rctx' <- addVarConstraints (pVarsWithType pat) rctx
   mEnv <- measureEnvForType tMatch
   subst <- (`ExpandCtor`  mEnv) <$> simplifyPattern pat
   (p, cs) <- defEqSubst (x, subst) q
-  deriv <- proveExpr tactic body judgeType binder p q'
+  deriv <- proveExpr tactic body judgeType rctx' binder p q'
   concludeArm pat judgeType q q' cs body [deriv]
-proveMatchArm _ _ arm _ _ _ _ = errorFrom arm "unsupported pattern in rule (match)."
+proveMatchArm _ _ arm _ _ _ _ _ = errorFrom arm "unsupported pattern in rule (match)."
 
 
 proveMatch :: Prove (Expr Positioned) Derivation
-proveMatch tactic e@(Match (Var x) arms) judgeType binder q q' = do
+proveMatch tactic e@(Match (Var x) arms) judgeType rctx binder q q' = do
   let tactics = subTactics (length arms) tactic
   derivs <- zipWithM proveArmWithTactic tactics arms
   conclude R.Match judgeType q q' [] e derivs
-  where proveArmWithTactic tactic arm = proveMatchArm x tactic arm judgeType binder q q'
+  where proveArmWithTactic tactic arm = proveMatchArm x tactic arm judgeType rctx binder q q'
   
 
 proveLet :: Prove (Expr Positioned) Derivation
-proveLet tactic e@(Let x e1 e2) judgeType binder q q' = do
+proveLet tactic e@(Let x e1 e2) judgeType rctx binder q q' = do
   let [t1, t2] = subTactics 2 tactic
       argsO = S.fromList (args q) S.\\ (freeVars e1 S.\\ freeVars e2)
   o <- freshTempl (x : S.toList argsO)
-  deriv1 <- proveExpr t1 e1 judgeType x q o
-  deriv2 <- proveExpr t2 e2 judgeType binder o q'
+  rctx' <- addVarConstraints [(x, getType e1)] rctx
+  deriv1 <- proveExpr t1 e1 judgeType rctx x q o
+  deriv2 <- proveExpr t2 e2 judgeType rctx' binder o q'
   conclude R.Let judgeType q q' [] e [deriv1, deriv2]
   
 
 proveApp :: Prove (Expr Positioned) Derivation
-proveApp tactic e@(App "error" _) judgeType binder q q' = do
+proveApp tactic e@(App "error" _) judgeType rctx binder q q' = do
   conclude R.App judgeType q q' [] e []
-proveApp tactic e@(App fn appArgs) judgeType binder q q' = do
+proveApp tactic e@(App fn appArgs) judgeType rctx binder q q' = do
   fnSig <- (M.! fn) <$> use sig
   mSizeSig <- M.lookup fn <$> use sizeSig
   let appVars = map argToVar appArgs
@@ -142,40 +148,40 @@ proveApp tactic e@(App fn appArgs) judgeType binder q q' = do
 
   
 proveSub :: Prove (Expr Positioned) Derivation
-proveSub tactic@(Rule (Rule.Sub sArgs) _) e judgeType binder q q' = do
+proveSub tactic@(Rule (Rule.Sub sArgs) _) e judgeType rctx binder q q' = do
   let [t] = subTactics 1 tactic
   p <- freshTemplExtend q
-  cs <- templLe (S.fromList sArgs) p q
-  deriv <- proveExpr t e judgeType binder p q'
+  cs <- templLe (S.fromList sArgs) rctx p q
+  deriv <- proveExpr t e judgeType rctx binder p q'
   conclude (R.Sub sArgs) judgeType q q' cs e [deriv]
 
 
 proveShift :: Prove (Expr Positioned) Derivation
-proveShift tactic e judgeType binder q q' = do
+proveShift tactic e judgeType rctx binder q q' = do
   let [subTactic] = subTactics 1 tactic
   k <- freshVar
   let shift s = sum [s,k]
   (p, cs1) <- defineByShift shift q
   (p', cs2) <- defineByShift shift q'
-  deriv <- proveExpr subTactic e judgeType binder p p'
+  deriv <- proveExpr subTactic e judgeType rctx binder p p'
   conclude R.Shift judgeType q q' (cs1 ++ cs2) e [deriv]
   
 
 proveTick :: Prove (Expr Positioned) Derivation
-proveTick tactic e@(Tick c e1) judgeType binder q q' = do
+proveTick tactic e@(Tick c e1) judgeType rctx binder q q' = do
   let [subTactic] = subTactics 1 tactic
   if isCostFree judgeType then do
-    deriv <- proveExpr subTactic e1 judgeType binder q q'
+    deriv <- proveExpr subTactic e1 judgeType rctx binder q q'
     conclude R.Tick judgeType q q' [] e [deriv]
   else do
     let shift s = sum [s, ConstTerm (fromMaybe 1 c)]
     (p, cs) <- defineByShift shift q'
-    deriv <- proveExpr subTactic e1 judgeType binder q p
+    deriv <- proveExpr subTactic e1 judgeType rctx binder q p
     conclude R.Tick judgeType q q' cs e [deriv]
 
 
 proveLit :: Prove (Expr Positioned) Derivation
-proveLit tactic e@(Lit _) judgeType binder q q' = do
+proveLit tactic e@(Lit _) judgeType rctx binder q q' = do
   let cs = assertEq q q'
   conclude R.Lit judgeType q q' cs e []
 
@@ -194,7 +200,7 @@ proveExpr tactic@(Rule R.App _)     e@(App id _) jt = proveApp tactic e jt
 proveExpr tactic@(Rule R.Lit [])    e@(Lit _)    jt = proveLit tactic e jt
 -- auto tactic
 proveExpr Auto e judgeType = proveExpr (genTactic judgeType e) e judgeType
-proveExpr tactic e _ = \_ _ _ -> errorFrom e $ "Could not apply tactic to given "
+proveExpr tactic e _ = \_ _ _ _ -> errorFrom e $ "Could not apply tactic to given "
   ++ prettyPrint e ++ " expression. Tactic: '" ++ prettyPrint tactic ++ "'"
 
 genTactic :: JudgementType -> (Expr Positioned) -> Tactic
@@ -249,11 +255,14 @@ derivFun :: FunSig -> FunDef Positioned -> JudgementType -> ProveMonad Derivatio
 derivFun fnTSig funDef judgeType = do
   fnSig <- (M.! (funDef^.funName)) <$> use sig
   tactic <- fromMaybe Auto . M.lookup (funDef^.funName) <$> view tactics
+  let argsWithTypes = zip (funDef^.funArgs) (tFunArgs (fnTSig^.typeSig))
+  rctx <- addVarConstraints argsWithTypes []
   
   proveExpr
     tactic
     (funDef^.funBody)
     judgeType
+    rctx
     (fnSig^.fsBinder)
     (fnSig^.fsFrom)
     (fnSig^.fsTo)

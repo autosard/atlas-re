@@ -13,6 +13,7 @@ import Syntax
   , Positioned
   , Typed)
 import Syntax.Annotation (XExprAnn, MapAnnotation(..), HasType (..), HasAnnotation (..))
+import Syntax.Types.Type (Type)
 
 data Pattern a
   = PVar (XExprAnn a) Id
@@ -27,8 +28,13 @@ instance HasAnnotation Pattern a where
 instance HasType (Pattern Positioned) where
   getType (PVar ann _) = getType ann
   getType(PConst ann _ _) = getType ann
-  getType (PWildcard ann) = getType ann  
-  
+  getType (PWildcard ann) = getType ann
+
+pVarsWithType :: Pattern Positioned -> [(Id, Type)]
+pVarsWithType (PVar ann x) = [(x, getType ann)]
+pVarsWithType (PConst _ _ ps) = concatMap pVarsWithType ps
+pVarsWithType (PWildcard _) = []
+
 --------------------------------------------------------------------------------
 -- Parsed 
 --------------------------------------------------------------------------------

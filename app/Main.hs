@@ -85,6 +85,7 @@ run Options{..} AnalyzeOptions{..} = do
         , _incremental=switchIncremental
         , _costModes=analysisModes . _pConfig $ prog
         , _inferPotential=switchInferPotential
+        , _axioms = _pAxioms prog
         }
   result <- liftIO $ analyzeProgram env prog
   case result of

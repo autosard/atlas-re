@@ -94,7 +94,7 @@ basis = M.keysSet
 map :: (Ord c) => (a -> c) -> FreeModule a b -> FreeModule c b
 map = M.mapKeys
 
-linMap :: (Ord a, Num b, Ord b) => (a -> FreeModule a b) -> FreeModule a b -> FreeModule a b
+linMap :: (Ord a, Ord c, Num b, Ord b) => (a -> FreeModule c b) -> FreeModule a b -> FreeModule c b
 linMap f m = sum . Prelude.map go $ M.toList (map f m)
   where go (n, k) = scale k n
 
