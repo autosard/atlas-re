@@ -5,11 +5,14 @@ module Syntax.ResourceExpression
   ( ResourceTerm (..)
   , SizeTerm (..)
   , ResourceExpr
+  , RatResourceExpr
   , fromSizeExpr
+  , fromSizeTerm
   , RScalar (..)
   , SizeExpr
   , isZero
   , isOne
+  , isSize
   , isPotential
   ) where
 
@@ -105,6 +108,11 @@ instance Substitutable ResourceTerm where
 instance Substitutable ResourceExpr where
   subst env = FM.map (subst env)
 
+type RatResourceExpr = FreeModule ResourceTerm Rational
+
+instance Substitutable RatResourceExpr where
+  subst env = FM.map (subst env)  
+
 instance HasVars ResourceTerm where
   freeVars (RTSize x) = S.singleton x
   freeVars (RTLog ss) = freeVars ss
@@ -131,11 +139,16 @@ isZero :: ResourceTerm -> Bool
 isZero (RTLog s) = s == FM.singleton SId
 isZero otherTerm = False
 
+isPotential :: ResourceTerm -> Bool
 isPotential (RTPhi _) = True
 isPotential _ = False
 
 isOne :: ResourceTerm -> Bool
 isOne RTId = True
 isOne other = False
+
+isSize (RTSize _) = True
+isSize (RTId)     = True
+isSize otherTerm  = False
 
 

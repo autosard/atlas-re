@@ -15,13 +15,15 @@ import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
 import CostAnalysis.Rules
 
-import Syntax.ResourceExpression.Order ( GuardMatrix, resourceLe )
+import Syntax.ResourceExpression.Order ( resourceLe )
 import Syntax.ResourceExpression.Axioms
 import Syntax.ResourceExpression.Pattern ( findMatches, IneqPattern (..), SizeSubst, instResourceIneq ) 
 import Data.Bifunctor (Bifunctor(first))
-import Syntax.ResourceExpression.Inequality (ResourceIneq )
+import Syntax.ResourceExpression.Inequality (ResourceIneq, SizeGuardMatrix, sizeConstraints )
 import qualified Syntax.ResourceExpression.Inequality as ReIneq (ResourceIneq (LeZero))
 import Lens.Micro.Platform (view)
+import Text.Show.Pretty (ppShow)
+import Primitive (dbg)
 
 type LeMatrix = V.Vector (V.Vector Rational)
 
@@ -41,7 +43,7 @@ templLe subArgs rctx p q =
   let rctxBounds = lowerBounds rctx in do
     axs <- view axioms
     let ks = merge $
-          [termOrderConstraints [] (terms p) | S.member Mono subArgs]
+          [termOrderConstraints (sizeConstraints rctx) (terms p) | S.member Mono subArgs]
           ++ if S.member L2xy subArgs
              then map (instantiateAxiom rctxBounds (terms p)) axs
              else []
@@ -53,7 +55,7 @@ merge :: [LeMatrix] -> LeMatrix
 merge = V.concat 
 
 
-termOrderConstraints :: GuardMatrix -> S.Set ResourceTerm -> LeMatrix
+termOrderConstraints :: SizeGuardMatrix -> S.Set ResourceTerm -> LeMatrix
 termOrderConstraints guards terms = merge . catMaybes $
   [ compareTerms idxP idxQ
   | idxP <- termsList,
@@ -81,15 +83,15 @@ lowerBounds :: [ResourceIneq] -> LowerBounds
 lowerBounds = M.fromList . mapMaybe go 
   where go :: ResourceIneq -> Maybe (ResourceTerm, Rational)
         go (ReIneq.LeZero rt) = case M.toList rt of
-          [(t, RSConst (-1)), (RTId, RSConst r)] -> Just (t, 1)
-          [(RTId, RSConst r), (t, RSConst (-1))] -> Just (t, 1)
+          [(t, -1), (RTId, r)] -> Just (t, 1)
+          [(RTId, r), (t, -1)] -> Just (t, 1)
           _                                      -> Nothing
                             
 
 csIsValid :: LowerBounds -> ResourceIneq -> Bool
 csIsValid bounds (ReIneq.LeZero re) = (P.sum . map go) (M.toList re) <= 0
-  where go (RTId, RSConst r) = r
-        go (t, RSConst r) = r * bounds M.! t
+  where go (RTId, r) = r
+        go (t, r) = r * bounds M.! t
 
 
 -- | Instantiates all possible applications of an axiom over a set of ResourceTerms.

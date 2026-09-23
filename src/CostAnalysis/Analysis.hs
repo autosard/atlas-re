@@ -40,6 +40,7 @@ import CostAnalysis.Constraint (sum)
 import CostAnalysis.Coeff (Coeff(Coeff))
 import Control.Monad.Extra (whenM, filterM)
 import qualified Syntax.Measure (Relation(..))
+import Syntax.ResourceExpression.Inequality (sizeConstraints)
 
 
 data AnalysisResult = AnalysisResult {
@@ -212,14 +213,18 @@ optimizeScc scc prog = do
 
 optimizeSig :: Program Positioned -> (Id, FreeSig) -> ProveMonad () 
 optimizeSig prog (fn, fsSig) = do
-          whenM (sizeTransformable prog fn) $
-            optiTargets %= (costTerm:)
-          where
-            templ = fsSig^.fsFrom
-            terms' = S.filter (not . isZero) (templ^.ftTerms)
-            termsWithCost = computeStratifiedCosts [] terms'
-            costTerm = sum [prod2 (ConstTerm (fromIntegral (c*c))) (CoeffTerm (Coeff (templ^.ftId) t))
-                           | (t, c) <- termsWithCost]
+  guards <- sizeConstraints <$> addVarConstraints argsWithTypes []
+  let termsWithCost = computeStratifiedCosts guards terms'
+  let costTerm = sum [prod2 (ConstTerm (fromIntegral (c*c))) (CoeffTerm (Coeff (templ^.ftId) t))
+                 | (t, c) <- termsWithCost]
+  whenM (sizeTransformable prog fn) $
+    optiTargets %= (costTerm:)
+  where
+    templ = fsSig^.fsFrom
+    terms' = S.filter (not . isZero) (templ^.ftTerms)
+    funDef = (prog^.pFunDefs) M.! fn
+    fnTSig = ((prog^.pSig) M.! fn)^.typeSig
+    argsWithTypes = zip (funDef^.funArgs) (tFunArgs fnTSig)
         
 
 constrainSig :: Program Positioned -> ProveMonad ()

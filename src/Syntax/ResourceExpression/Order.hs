@@ -1,6 +1,5 @@
 module Syntax.ResourceExpression.Order
-  ( GuardMatrix
-  , resourceLe
+  ( resourceLe
   , computeStratifiedCosts
   )where
 
@@ -13,6 +12,8 @@ import Syntax (Id, HasVars (..))
 import Syntax.ResourceExpression
 import Data.List (partition)
 import qualified Syntax.FreeModule as FM
+import Syntax.ResourceExpression.Inequality
+import Control.Monad (replicateM)
 
 -- | A canonical linear combination: Map of (Variable -> Coefficient) and a constant offset.
 -- Represents: c + sum_{x} coeff(x) * x
@@ -35,57 +36,44 @@ diffSums s1 s2 = (p, beta)
     c = M.findWithDefault 0 SId s1
     d = M.findWithDefault 0 SId s2
     beta = d - c
-    
-
--- | Represents a list of guard constraints of the form (C-D)x <= 0.
--- Each Map in the list maps variable Ids to their coefficient in that constraint row.
-type GuardMatrix = [M.Map Id Rational]
 
 -- | Checks if (sum qTerms) <= (sum pTerms) under the given guard constraints
 -- using the dual certificate (v = 0 or v = 1).
-sizeExprLe :: GuardMatrix -> SizeExpr -> SizeExpr -> Bool
-sizeExprLe guards qTerms pTerms = checkCertificate zeroV || checkCertificate oneV
+sizeExprLe :: SizeGuardMatrix -> SizeExpr -> SizeExpr -> Bool
+sizeExprLe (mA, b) qTerms pTerms =
+  any checkCertificate (binaryLists numGuards)
   where
+    binaryLists n = replicateM n [0, 1]
     -- Extract p = a - b and beta = d - c
     (pMap, beta) = diffSums qTerms pTerms
-    vars         = M.keys pMap
-    
+    vars         =
+      S.toList $
+      S.unions (map M.keysSet mA)
+      `S.union` M.keysSet pMap
+      
     -- 1. Setup our search space variables based on the constraints
-    numGuards = length guards
-    zeroV     = replicate numGuards 0
-    oneV      = replicate numGuards 1
-
+    numGuards = length mA
     -- 2. Validation check for a specific v choice (zeroV or oneV)
     checkCertificate :: [Rational] -> Bool
     checkCertificate v = cond1 && cond2
       where
-        -- Condition 1: (C-D)^T * v >= p
-        -- For every variable x in our system, the combined constraint coeff must be >= p(x).
+        -- Condition 1: A^T * v >= p
         cond1 = all checkVar vars
         checkVar x = 
           let px = M.findWithDefault 0 x pMap
-              -- Compute column dot product: Sum of (v_i * coeff of x in guard_i)
               colSum = sum [ vi * M.findWithDefault 0 x guard 
-                           | (vi, guard) <- zip v guards 
+                           | (vi, guard) <- zip v mA
                            ]
           in colSum >= px
 
-        -- Condition 2: p^T * 1 - v^T * (C-D) * 1 <= beta
-        -- Because x >= 1, evaluating at 1 means summing the coefficients of each variable.
-        pDot1 = sum (M.elems pMap)
-        
-        -- v^T * (C-D) * 1 is calculated by finding the row-sum of each guard, 
-        -- multiplying by its corresponding v_i, and summing.
-        vDotCD1 = sum [ vi * sum (M.elems guard) 
-                      | (vi, guard) <- zip v guards 
+        -- Condition 2: v^T * b <= beta 
+        vDotB = sum [ vi * bi
+                      | (vi, bi) <- zip v b
                       ]
-                      
-        cond2 = (pDot1 - vDotCD1) <= beta
+        cond2 = vDotB <= beta
 
 -- | Checks if resource term r1 <= r2 under the given guard constraints.
-resourceLe :: GuardMatrix -> ResourceTerm -> ResourceTerm -> Bool
-
-
+resourceLe :: SizeGuardMatrix -> ResourceTerm -> ResourceTerm -> Bool
 -- resourceLe guards RTId (RTPhi _) = True
 -- 1. Constant 1 Term (RTId) vs Sizes
 -- RTId is treated semantically as the constant 1 size term: (SConst 1)
@@ -119,7 +107,7 @@ resourceLe _ r1 r2 = r1 == r2
 
 
 -- | Assigns identical costs to terms that are incomparable or equivalent under resourceLe
-computeStratifiedCosts :: GuardMatrix -> Set ResourceTerm -> [(ResourceTerm, Int)]
+computeStratifiedCosts :: SizeGuardMatrix -> Set ResourceTerm -> [(ResourceTerm, Int)]
 computeStratifiedCosts g terms = go 1 (S.toList terms)
   where
     go :: Int -> [ResourceTerm] -> [(ResourceTerm, Int)]

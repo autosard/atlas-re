@@ -118,11 +118,11 @@ findMatches rp ts = go (M.toList rp) ts M.empty
 instResourceIneq :: SizeSubst -> IneqPattern -> ReIneq.ResourceIneq
 instResourceIneq s (LeZero rp) =  ReIneq.LeZero (instPattern s rp)
 
-instPattern :: SizeSubst -> ResourcePattern -> ResourceExpr
-instPattern s rp = FM.linMap (instTermPattern s) (FM.bimap id RSConst rp)
+instPattern :: SizeSubst -> ResourcePattern -> RatResourceExpr
+instPattern s = FM.linMap (instTermPattern s)
 
-instTermPattern :: SizeSubst -> TermPattern -> ResourceExpr
-instTermPattern s (TPVar x) = fromSizeExpr (s M.! x)
+instTermPattern :: SizeSubst -> TermPattern -> RatResourceExpr
+instTermPattern s (TPVar x) = FM.map fromSizeTerm (s M.! x)
 instTermPattern s (TPLog sp) = FM.singleton $ RTLog $ instSizePattern s sp
 instTermPattern s (TPPhi x) = FM.singleton $ RTPhi x
 instTermPattern s (TPBinom sp k) = FM.singleton $ RTBinom (instSizePattern s sp) k
