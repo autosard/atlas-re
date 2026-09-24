@@ -87,11 +87,15 @@ lowerBounds = M.fromList . mapMaybe go
           [(RTId, r), (t, -1)] -> Just (t, 1)
           _                                      -> Nothing
                             
-
 csIsValid :: LowerBounds -> ResourceIneq -> Bool
-csIsValid bounds (ReIneq.LeZero re) = (P.sum . map go) (M.toList re) <= 0
-  where go (RTId, r) = r
-        go (t, r) = r * bounds M.! t
+csIsValid bounds (ReIneq.LeZero re) =
+  maybe False (\ts -> P.sum ts <= 0) $ traverse go (M.toList re)
+  where
+    go (RTId, r) = Just r
+    go (t, r)
+      | r < 0     = (* r) <$> bounds M.!? t
+      | r == 0    = Just 0
+      | otherwise = Nothing
 
 
 -- | Instantiates all possible applications of an axiom over a set of ResourceTerms.

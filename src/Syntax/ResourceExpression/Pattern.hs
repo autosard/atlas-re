@@ -71,6 +71,7 @@ type SizeSubst = M.Map Id SizeExpr
 
 
 unify :: TermPattern -> ResourceTerm -> SizeSubst -> [SizeSubst]
+unify (TPVar x) (RTSize y) subst = unifySizeVar (x,1) (FM.singleton (SVar y)) subst
 unify TPId RTId subst = [subst]
 unify (TPLog s1) (RTLog s2) subst = unifySizePattern s1 s2 subst
 unify (TPBinom s1 k1) (RTBinom s2 k2) subst | k1 == k2 = unifySizePattern s1 s2 subst

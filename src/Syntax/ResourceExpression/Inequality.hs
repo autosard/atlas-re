@@ -7,7 +7,6 @@ module Syntax.ResourceExpression.Inequality
 
 import Syntax (Id, Substitutable (..))
 import Syntax.ResourceExpression
-import Syntax.FreeModule (FreeModule)
 import qualified Syntax.FreeModule as FM
 import Data.Map (Map)
 import qualified Data.Map as M

@@ -8,7 +8,6 @@ module Elaboration (elabProgram) where
 
 import Data.Map(Map)
 import qualified Data.Map as M
-import Data.List (singleton)
 import Control.Monad.Except
 import Control.Monad.State
     ( MonadState(put, get), State, evalState, MonadTrans(lift) )
@@ -19,8 +18,6 @@ import Text.Megaparsec (SourcePos(SourcePos), pos1)
 import qualified Data.Text as T
 import qualified Data.List as L
 import Data.Maybe(mapMaybe)
-import qualified Data.MultiSet as MSet
-import Data.Bifunctor (second)
 
 
 import Syntax (Id, Parsed, Elaborated)
@@ -159,48 +156,9 @@ elabProd elabAtom (App "*" [t, q@(Lit _)]) = do
   return $ FM.scale qr p
 elabProd elabAtom (App "*" [x, y]) = do
   p1 <- elabProd elabAtom x
-  p2 <- elabProd elabAtom x
+  p2 <- elabProd elabAtom y
   return (FM.mult p1 p2)
 elabProd elabAtom e = FM.singleton <$> elabAtom e
-
----
--- elabScalarComb :: Expr Parsed -> Elab [(ResourceTerm, Rational)]
--- elabScalarComb (App "-" [ss, s]) = do
---   es <- elabScale s (-1)
---   ess <- elabScalarComb ss
---   return $ ess ++ [es]
--- elabScalarComb (App "+" [ss, s]) = do
---   es <- elabScale s 1
---   ess <- elabScalarComb ss
---   return $ ess ++ [es]
--- elabScalarComb e = singleton <$> elabScale e 1
-
--- elabScale :: Expr Parsed -> Rational-> Elab (ResourceTerm, Rational)
--- elabScale e sign = do
---   (t, k) <- elabProdTerm e
---   return (t, sign * k)
-
--- elabProdTerm :: Expr Parsed -> Elab (ResourceTerm, Rational)
--- elabProdTerm (Lit (LRat r)) = return (RTId, r)
--- elabProdTerm (Lit (LNat n)) = return (RTId, fromIntegral n)
--- elabProdTerm (App "*" [q@(Lit _), t]) = do
---   qr <- elabRatLit q
---   (rt, p) <- elabProdTerm t
---   return (rt, qr * p)
--- elabProdTerm (App "*" [t, q@(Lit _)]) = do
---   qr <- elabRatLit q
---   (rt, p) <- elabProdTerm t
---   return (rt, qr * p)  
--- elabProdTerm (App "*" [x, y]) = do
---   (tx, qx) <- elabProdTerm x
---   (ty, qy) <- elabProdTerm y
---   return (multTerms tx ty, qx * qy)
--- elabProdTerm e = (,1) <$> elabResourceTerm e
-
--- multTerms (RTProd x) (RTProd y) = RTProd (MSet.union x y)
--- multTerms (RTProd x) t = RTProd (MSet.insert t x)
--- multTerms t (RTProd y) = RTProd (MSet.insert t y)
--- multTerms t s = RTProd (MSet.fromList [t, s])
 
 --------------------------------------------------------------------------------
 -- Resource Terms

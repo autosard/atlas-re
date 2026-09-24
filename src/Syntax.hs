@@ -90,8 +90,8 @@ normProd t = case unprod t of
 normalisedProd :: (HasProduct a, Ord a) => a -> a -> a
 normalisedProd t s = combine (normProd s) (normProd t)
   where combine t s
-          | t == one = t
-          | s == one = s
+          | t == one = s
+          | s == one = t
           | otherwise = case (unprod t, unprod s) of
               (Just ts, Just ss) -> prod $ MSet.union ts ss
               (Nothing, Just ss) -> prod $ MSet.insert t ss
