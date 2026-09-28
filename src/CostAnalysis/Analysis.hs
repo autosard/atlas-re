@@ -250,7 +250,7 @@ assertPotential p = mapM_ go . M.toList =<< use sig
                 
           let fromCs = concat [(fs^.fsFrom)!?RTPhi x `eq` pot
                               | x <- args (fs^.fsFrom),
-                                let tx = fnArgType x (args (fs^.fsFrom)) tFun,
+                                let tx = fnArgType x (fs^.fsFormArgs) tFun,
                                 tx == returnType]
           let toCs = concat [case t of
                                i@(RTPhi _) -> (fs^.fsTo)!i `eq` pot

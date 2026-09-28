@@ -81,7 +81,7 @@ unifySizePattern :: SizePattern -> SizeExpr -> SizeSubst -> [SizeSubst]
 unifySizePattern p s subst = do
   let c = M.findWithDefault 0 SPId  p
       d = M.findWithDefault 0 SId s
-      s' = M.adjust (const (c-d)) SId s
+      s' = M.adjust (const (d-c)) SId s
       pVars = mapMaybe toVar $ M.toList p
   partitionedTerms <- FM.partitions (length pVars) s'
   unifySizeVars pVars partitionedTerms subst
