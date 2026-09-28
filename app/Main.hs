@@ -92,10 +92,10 @@ run Options{..} AnalyzeOptions{..} = do
     (AnalysisResult {_arResult=Left unsatCore}) ->
       let core' = S.fromList unsatCore in do
           hPutStrLn stderr "solver returned unsat. See unsat-core for details."
-          writeHtmlProof "./out" (renderProof result) 
+          writeHtmlProof "./out" result
     (AnalysisResult {_arResult=(Right (solution, OptBound objective))}) -> do
         putStr "Done. "
-        writeHtmlProof "./out" (renderProof result)
+        writeHtmlProof "./out" result
         when switchPrintObjective
           (do
               putStrLn ""
@@ -126,8 +126,10 @@ printSolutionCoeffs solution = mapM_ (\(q, v) -> putStrLn $ show q ++ " = " ++ s
 --           putStrLn $ "\t" ++ show kind ++ ": " ++ printRHS pot rhs solution 
           
 
-writeHtmlProof :: FilePath -> LT.Text -> IO ()
-writeHtmlProof path html = do
+writeHtmlProof :: FilePath -> AnalysisResult -> IO ()
+writeHtmlProof path result = do
+  sources <- M.fromList <$> mapM (\f -> (,) f . T.lines <$> TextIO.readFile f) (proofSourceFiles result)
+  let html = renderProofWithSources sources result
   path <- liftIO $ makeAbsolute path
   liftIO $ createDirectoryIfMissing False path
   liftIO $ TextLazyIO.writeFile (path </> "index.html") html

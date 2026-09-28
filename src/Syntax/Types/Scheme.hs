@@ -67,5 +67,5 @@ findByType t m = asum $ map valForKey $ M.toList m
 
 instance PrettyPrint Scheme where
   prettyPrint (Forall n t) = "forall "
-    ++ intercalate "," (map (\i -> "?" ++ show n) [1..n])
+    ++ intercalate "," (map (\i -> "?" ++ show i) [1..n])
     ++ ". " ++ prettyPrint t
