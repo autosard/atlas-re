@@ -19,6 +19,7 @@ module CostAnalysis.Template
   , fsBinder
   , fsFormArgs
   , assertEq
+  , assertLeZero
   , assertEqSubst
   , assertEqVarSubst
   , assertEqVarsSubst
@@ -334,3 +335,7 @@ assertEqVarsSubst xs ys q p =
     -- Apply each substitution sequentially to the term
     substMultiple qt = foldl (\accTerm (x, y) -> substVar x y accTerm) qt substs
     
+
+assertLeZero :: (Template a, HasCoeffs a) => a -> [Formula]
+assertLeZero t = concat [geZero (CoeffTerm q) | q <- getCoeffs t]
+

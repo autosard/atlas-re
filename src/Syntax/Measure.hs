@@ -18,6 +18,7 @@ module Syntax.Measure
   , apply
   , applyST
   , sizeGeOne
+  , stIsLowerBound
   ) where
 
 import Data.Kind (Type)
@@ -52,6 +53,11 @@ data SizeTransform = SizeTransform
   , stRhs :: SizeExpr
   , stRelation :: Relation
   } deriving Show
+
+stIsLowerBound :: SizeTransform -> Bool
+stIsLowerBound st = case stRelation st of
+  Eq -> False
+  Ge -> True
 
 applyST :: SizeTransform -> [Id] -> SizeExpr
 applyST st args = substVars (stLhs st) args (stRhs st)

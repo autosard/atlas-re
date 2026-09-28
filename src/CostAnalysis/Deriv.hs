@@ -9,7 +9,7 @@ import Data.Set(Set)
 import Prelude hiding (or, and, negate, sum)
 import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
-import Control.Monad (zipWithM)
+import Control.Monad (zipWithM, when)
 
 
 import Syntax (Id, substVar, freeVars, Positioned)
@@ -19,7 +19,7 @@ import Syntax.Expression
 import Syntax.Pattern
 import Syntax.Annotation
 
-import Syntax.Measure (ConstPat(..))
+import Syntax.Measure (ConstPat(..), stIsLowerBound)
 import CostAnalysis.Tactic
 import CostAnalysis.Rules (JudgementType(..))
 import qualified CostAnalysis.Rules as R
@@ -33,6 +33,7 @@ import Text.Show.Pretty (ppShow)
 import Primitive (dbg)
 import Syntax.Types.Type (funTArgs)
 import Syntax.Types.Scheme (tFunArgs)
+import Control.Monad.Extra (ifM)
 
 
 type Prove e a = Tactic -> e -> JudgementType -> ResourceContext -> Id -> FreeTemplate -> FreeTemplate -> ProveMonad a
@@ -132,7 +133,10 @@ proveApp tactic e@(App fn appArgs) judgeType rctx binder q q' = do
     Nothing -> return $ assertEq r' r
     Just st -> do
       let subst = TransformApp appVars st
-      assertEqSubst (binder, subst) r' r
+      let csPos = if stIsLowerBound st
+                  then assertLeZero r' else []
+      csSubst <- assertEqSubst (binder, subst) r' r
+      return $ csPos ++ csSubst
   
   -- check signature
   let csSig = assertEqVarsSubst (fnSig^.fsFormArgs)
