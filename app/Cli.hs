@@ -15,6 +15,7 @@ import Syntax (Fqn)
 import Options.Applicative
 import qualified Data.Text as T
 import Data.Text (Text)
+import Data.Char (isLower)
 import CostAnalysis.ProveMonad (AnalysisMode(..))
 
 data Options = Options
@@ -38,21 +39,17 @@ optionsP = do
      <> short 's'
      <> metavar "PATH"
      <> help "Search for modules in PATH.")
+   -- the eval and bench commands are currently not implemented
    optCommand <- hsubparser (command "analyze"
                              (info analyzeCommandP (progDesc "Perform amortized resource analysis for the given functions.")))
-                 <|> hsubparser (command "eval"
-                                 (info evalCommandP (progDesc "Evaluate the given expression in the context of the given module.")))
-                 <|> hsubparser (command "bench"
-                                 (info benchCommandP (progDesc "Run the given benchmark.")))
    return Options{..}
 
 data AnalyzeOptions = AnalyzeOptions {
   target :: Either Text Fqn,
   tacticsPath :: Maybe FilePath,
-  switchPrintDeriv :: Bool,
+  outputPath :: FilePath,
   analysisMode :: AnalysisMode,
   switchIncremental :: Bool,
-  switchHideConstraints :: Bool,
   switchPrintProg :: Bool,
   switchPrintObjective :: Bool,
   switchDumpCoeffs :: Bool,
@@ -65,19 +62,21 @@ runOptionsP = do
      <> short 't'
      <> metavar "PATH"
      <> help "When present, tactics will be loaded from this directory.")
-  switchPrintDeriv <- switch
-    (long "print-deriv"
-    <> help "Print the derivation tree in ascii.")
+  outputPath <- strOption
+    (long "output"
+     <> short 'o'
+     <> metavar "DIR"
+     <> help "Write the HTML proof to DIR."
+     <> value "out"
+     <> showDefault)
   analysisMode <- option (eitherReader parseAnalysisMode)
     (long "analysis-mode"
-    <> help "Analysis mode. One of [check-coeffs, check-cost, improve-cost, infer]."
+    <> metavar "MODE"
+    <> help "Analysis mode. One of [check, infer]. (default: check)"
     <> value Check)
   switchIncremental <- switch
     (long "incremental"
     <> help "When active, individual constraint systems for each recursive binding group are solved incrementally.")
-  switchHideConstraints <- switch
-    (long "hide-constraints"
-    <> help "When active, only the derivation tree is printed without constraints.")
   switchPrintProg <- switch
     (long "print-program"
     <> help "Output the normalized program.")
@@ -90,7 +89,7 @@ runOptionsP = do
   switchPrintObjective <- switch
     (long "print-objective"
     <> help "Output the final value of the objective function.")      
-  target <- argument (eitherReader parseFqn) (metavar "MODULE[.FUNCTION]" <> help "Analysis target. When a specific function is specified only this function and its dependencies are analyzed, which can save time.")
+  target <- argument (eitherReader parseFqn) (metavar "MODULE[.FUNCTION]" <> help "Analysis target, e.g. Heap.Splay or Heap.Splay.insert. When a specific function is specified only this function and its dependencies are analyzed, which can save time.")
   return AnalyzeOptions{..}
 
 analyzeCommandP :: Parser Command
@@ -99,14 +98,16 @@ analyzeCommandP = Analyze <$> runOptionsP
 parseAnalysisMode :: String -> Either String AnalysisMode
 parseAnalysisMode "check" = Right Check
 parseAnalysisMode "infer" = Right Infer
-parseAnalysisMode _ = Left "not a valid inference mode"
+parseAnalysisMode s = Left $ "'" ++ s ++ "' is not a valid analysis mode. Use one of [check, infer]."
 
 parseFqn :: String -> Either String (Either Text Fqn)
-parseFqn s = case suffix of
-               [] -> Right (Left $ T.pack moduleName)
-               [_] -> Left errorMsg
-               (_:functionName) -> Right (Right (T.pack moduleName, T.pack functionName))
-  where (moduleName, suffix) = break (== '.') s
+parseFqn s = case breakEnd (== '.') s of
+               (_, []) -> Left errorMsg
+               ([], _) -> Right (Left $ T.pack s)
+               (prefix, name@(c:_))
+                 | isLower c || c == '_' -> Right (Right (T.pack (init prefix), T.pack name))
+                 | otherwise -> Right (Left $ T.pack s)
+  where breakEnd p xs = let (a, b) = break p (reverse xs) in (reverse b, reverse a)
         errorMsg = "Could not parse fqn '" ++ s ++
                    "'. Make sure to specify the target name with <module>[.<function>]."
 

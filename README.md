@@ -43,37 +43,14 @@ packages: .
 
 Example input programs can be found under `examples`. They are maintained in a seperate [repository](https://github.com/autosard/atlas-examples/tree/atlas-revisited). 
 
-Checking cost bound for the splay operation on splay trees:
+Checking the annotated cost bound of the splay operation on splay trees:
 
 ```
-atlas-re --search examples analyze --analysis-mode check-coeffs SplayTree.splay
-
-Analyzing module SplayTree(splay).
-Saved proof to "file:///atlas-re/out/index.html"
-Potential functions:
-	1/2 * rk(e1) + 1 (Tree Base )
-	0 (List Base )
-
-splay:
-	3/2 * log(|t|)
+$ atlas-re --search examples analyze SearchTree.Splay.splay
+Loading   SearchTree.Splay
+Analyzing 1 function: splay
+Proof found (2.6s).
+Proof: file:///atlas-re/out/index.html
 ```
 
-Infering the cost bound for a purely functional queue:
-
-```
-$ atlas-re --search examples analyze --analysis-mode infer Queue
-
-Saved proof to "file:///atlas-re/out/index.html"
-Potential functions:
-	0 (Tree Base )
-	1/4 + |e2| (List Base )
-
-head:
-	1
-moveToFront:
-	0
-snoc:
-	2
-tail:
-	1
-```
+The derivation, the found bounds and, if no proof exists, the unsat core can be inspected in the linked HTML proof. Use `--analysis-mode infer` to infer cost bounds instead of checking the annotated ones, and `--output DIR` to write the proof somewhere else than `out`. The exit code is 0 if a proof was found and 1 otherwise.

@@ -36,6 +36,7 @@ module Syntax.Program
   , pMapFn
   , fns
   , groupFuns
+  , restrictToFn
   ) where
 
 import qualified Data.Text as T
@@ -216,3 +217,17 @@ groupFuns defs = map getGroup sccs
     sccs = stronglyConnComp graphEdges
     getGroup (AcyclicSCC def) = [_funName def]
     getGroup (CyclicSCC defs') = map _funName defs'
+
+-- | Restricts the program to the given function and the functions it (transitively) calls.
+restrictToFn :: Id -> Program a -> Program a
+restrictToFn fn prog = prog
+  & pFunDefs %~ (`M.restrictKeys` reachable)
+  & pSig %~ (`M.restrictKeys` reachable)
+  & pMutRecGroups %~ filter (not . null) . map (filter (`S.member` reachable))
+  where reachable = go S.empty [fn]
+        go seen [] = seen
+        go seen (f:fs)
+          | f `S.member` seen = go seen fs
+          | otherwise = case M.lookup f (prog^.pFunDefs) of
+              Just def -> go (S.insert f seen) (S.toList (calledFunctions (def^.funBody)) ++ fs)
+              Nothing -> go seen fs

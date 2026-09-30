@@ -25,6 +25,14 @@ import System.Directory
 import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
+import Data.List(intercalate, dropWhileEnd)
+import Data.Char(isSpace)
+import Numeric(showFFloat)
+import GHC.Clock(getMonotonicTime)
+import Control.Exception(catches, Handler(..), ErrorCall(..), throwIO)
+import System.IO.Error(isUserError, ioeGetErrorString)
+import System.Environment(lookupEnv)
+import System.Console.ANSI(hSupportsANSI)
 
 import Syntax (Id)
 import Syntax.PrettyPrint (prettyPrint)
@@ -64,20 +72,23 @@ app options = do
 
 run :: Options -> AnalyzeOptions -> IO ()
 run Options{..} AnalyzeOptions{..} = do
-  createDirectoryIfMissing True "out"
   let (modName, fn) = case target of
         (Left mod) -> (mod, Nothing)
         (Right (mod, fn)) -> (mod, Just fn)
+  status "Loading" (T.unpack modName)
   prog <- loadProgram searchPath modName fn
   when switchPrintProg $ liftIO $ putStrLn (prettyPrint prog)
 
-  unless (case fn of 
-            Just name -> M.member name (_pFunDefs prog)
-            Nothing -> True
-         ) $ do
-    fail "Module does not define the requested function."
+  let fns = M.keys (_pFunDefs prog)
+  case fn of
+    Just name | not (M.member name (_pFunDefs prog)) -> do
+      -- the loaded program only contains the target and its dependencies
+      available <- M.keys . _pFunDefs <$> loadProgram searchPath modName Nothing
+      failWith $ "Module '" ++ T.unpack modName ++ "' does not define function '" ++ T.unpack name ++ "'."
+        ++ (if null available then "" else "\nAvailable functions: " ++ commaList available)
+    _ -> return ()
   tactics <- case tacticsPath of
-    Just path -> loadTactics (T.unpack modName) (M.keys (_pFunDefs prog)) path
+    Just path -> loadTactics (T.unpack modName) fns path
     Nothing -> return M.empty
   let env = ProofEnv {
         _tactics=tactics
@@ -87,19 +98,60 @@ run Options{..} AnalyzeOptions{..} = do
         , _inferPotential=switchInferPotential
         , _axioms = _pAxioms prog
         }
+  status "Analyzing" $ case fns of
+    [] -> "no functions"
+    _ -> show (length fns) ++ plural (length fns) " function" ++ ": " ++ commaList fns
+  start <- getMonotonicTime
   result <- liftIO $ analyzeProgram env prog
-  case result of
-    (AnalysisResult {_arResult=Left unsatCore}) ->
-      let core' = S.fromList unsatCore in do
-          hPutStrLn stderr "solver returned unsat. See unsat-core for details."
-          writeHtmlProof "./out" result
-    (AnalysisResult {_arResult=(Right (solution, OptBound objective))}) -> do
-        putStr "Done. "
-        writeHtmlProof "./out" result
-        when switchPrintObjective
-          (do
-              putStrLn ""
-              putStrLn ("objective: " ++ objective))
+  elapsed <- subtract start <$> getMonotonicTime
+  proofFile <- writeHtmlProof outputPath result
+  let took = " (" ++ showFFloat (Just 1) elapsed "s)"
+  case _arResult result of
+    Left _ -> do
+      failed <- styled stderr [SetColor Foreground Vivid Red, SetConsoleIntensity BoldIntensity] "No proof found"
+      hPutStrLn stderr $ failed ++ ": the constraint system is unsatisfiable" ++ took ++ "."
+      hPutStrLn stderr "The unsat core is highlighted in the proof."
+      putStrLn $ "Proof: " ++ proofFile
+      exitWith (ExitFailure 1)
+    Right (solution, OptBound objective) -> do
+      ok <- styled stderr [SetColor Foreground Vivid Green, SetConsoleIntensity BoldIntensity] "Proof found"
+      hPutStrLn stderr $ ok ++ took ++ "."
+      when switchDumpCoeffs $ printSolutionCoeffs solution
+      when switchPrintObjective $ putStrLn ("Objective: " ++ objective)
+      putStrLn $ "Proof: " ++ proofFile
+
+-- | Progress message on stderr, so that stdout only carries results.
+status :: String -> String -> IO ()
+status verb msg = do
+  verb' <- styled stderr [SetConsoleIntensity BoldIntensity] (verb ++ replicate (10 - length verb) ' ')
+  hPutStrLn stderr (verb' ++ msg)
+
+warn :: String -> IO ()
+warn msg = do
+  prefix <- styled stderr [SetColor Foreground Vivid Yellow, SetConsoleIntensity BoldIntensity] "warning:"
+  hPutStrLn stderr (prefix ++ " " ++ msg)
+
+failWith :: String -> IO a
+failWith msg = do
+  prefix <- styled stderr [SetColor Foreground Vivid Red, SetConsoleIntensity BoldIntensity] "error:"
+  hPutStrLn stderr (prefix ++ " " ++ dropWhileEnd isSpace msg)
+  exitFailure
+
+-- | Wraps the string in the given SGR codes, if the handle is a terminal and NO_COLOR is not set.
+styled :: Handle -> [SGR] -> String -> IO String
+styled h sgr s = do
+  noColor <- maybe False (not . null) <$> lookupEnv "NO_COLOR"
+  ansi <- hSupportsANSI h
+  return $ if ansi && not noColor
+    then setSGRCode sgr ++ s ++ setSGRCode [Reset]
+    else s
+
+commaList :: [Id] -> String
+commaList = intercalate ", " . map T.unpack
+
+plural :: Int -> String -> String
+plural 1 s = s
+plural _ s = s ++ "s"
 
 printSolutionCoeffs solution = mapM_ (\(q, v) -> putStrLn $ show q ++ " = " ++ show v) (M.assocs solution)
 -- printSolution :: Bool -> FreeSignature -> PotFnMap -> Map Coeff Rational -> IO ()
@@ -126,16 +178,16 @@ printSolutionCoeffs solution = mapM_ (\(q, v) -> putStrLn $ show q ++ " = " ++ s
 --           putStrLn $ "\t" ++ show kind ++ ": " ++ printRHS pot rhs solution 
           
 
-writeHtmlProof :: FilePath -> AnalysisResult -> IO ()
+writeHtmlProof :: FilePath -> AnalysisResult -> IO String
 writeHtmlProof path result = do
   sources <- M.fromList <$> mapM (\f -> (,) f . T.lines <$> TextIO.readFile f) (proofSourceFiles result)
   let html = renderProofWithSources sources result
   path <- liftIO $ makeAbsolute path
-  liftIO $ createDirectoryIfMissing False path
+  liftIO $ createDirectoryIfMissing True path
   liftIO $ TextLazyIO.writeFile (path </> "index.html") html
   liftIO $ TextLazyIO.writeFile (path </> "style.css") css
   liftIO $ TextLazyIO.writeFile (path </> "proof.js") js
-  liftIO $ putStrLn $ "Saved proof to \"file://" ++ path </> "index.html" ++ "\""
+  return $ "file://" ++ path </> "index.html"
 
 -- printDeriv :: Bool -> Maybe (Set Constraint) -> Derivation -> IO ()
 -- printDeriv showCs unsatCore deriv = putStr (drawTree deriv')
@@ -180,7 +232,13 @@ writeHtmlProof path result = do
 --   return $ normalizeExpr typed
 
 loadTactics :: String -> [Id] -> FilePath -> IO (Map Id Tactic)
-loadTactics modName fns path = M.fromList . catMaybes <$> mapM loadOne fns
+loadTactics modName fns path = do
+  loaded <- mapM loadOne fns
+  let missing = [fn | (fn, Nothing) <- zip fns loaded]
+  unless (null missing) $
+    warn $ "No tactic file for " ++ commaList missing
+      ++ " (looked for " ++ path </> modName </> "<function>.txt)."
+  return $ M.fromList (catMaybes loaded)
   where loadOne :: Id -> IO (Maybe (Id, Tactic))
         loadOne fn = do
           let fileName = path </> modName </> T.unpack fn <.> "txt"
@@ -188,13 +246,14 @@ loadTactics modName fns path = M.fromList . catMaybes <$> mapM loadOne fns
           if exists then do
             contents <-TextIO.readFile fileName
             return $ Just (fn, parseTactic fileName contents)
-          else do
-            print $ "No tactic file for function '" `T.append` fn `T.append` "' found."
-            return Nothing
+          else return Nothing
 
 
 main :: IO ()
 main = do
   options <- execParser cliP
-  app options
+  app options `catches`
+    [ Handler (\e -> throwIO (e :: ExitCode))
+    , Handler (\e -> failWith $ if isUserError e then ioeGetErrorString e else show e)
+    , Handler (\(ErrorCall msg) -> failWith msg) ]
 

@@ -70,6 +70,7 @@ instance PrettyPrint Type where
       parensIf False s = s
 
 isResourceRelevant :: Type -> Bool
+isResourceRelevant (TAp "String" []) = False
 isResourceRelevant (TAp c args) = True
 isResourceRelevant (TVar _) = False
 isResourceRelevant (TGen _) = False

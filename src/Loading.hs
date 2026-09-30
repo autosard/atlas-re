@@ -8,7 +8,9 @@ import Data.Map(Map)
 import qualified Data.Text.IO as TextIO(readFile)
 import qualified Data.Text as T
 import Data.Text(Text)
-import Data.List(uncons)
+import Data.List(uncons, intercalate)
+import System.IO(hPutStrLn, stderr)
+import System.FilePath(makeRelative, dropExtension)
 import Data.Maybe(fromMaybe)
 import Control.Monad.State
 import Control.Monad.Extra
@@ -84,8 +86,14 @@ findModule loadPath moduleName = do
   matches <- Glob.glob $ loadPath ++ "/**/" ++ modulePath ++ extension
   case uncons matches of
     Nothing -> fail $ "Could not locate module '" ++ moduleName ++ "'. Please check the specified search path."
-    Just (file,_) -> return file
-    where modulePath = map (\c -> if c == '.' then '/' else c) moduleName 
+    Just (file, others) -> do
+      unless (null others) $
+        hPutStrLn stderr $ "warning: Module name '" ++ moduleName ++ "' is ambiguous, using '"
+          ++ qualifiedName file ++ "'. Use a qualified name to pick one of: "
+          ++ intercalate ", " (map qualifiedName matches)
+      return file
+    where modulePath = map (\c -> if c == '.' then '/' else c) moduleName
+          qualifiedName = map (\c -> if c == '/' then '.' else c) . dropExtension . makeRelative loadPath
 
 
 
@@ -97,7 +105,8 @@ loadProgram pathSearch modName fn = do
 
   let run step = either printSrcError return . step
 
-  contextualizeProg
+  maybe id restrictToFn fn
+    . contextualizeProg
     . normalizeProg
     <$> (run inferProgram
          =<< run elabProgram surfaceProg)

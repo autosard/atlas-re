@@ -51,6 +51,7 @@ data ElabError
   | ElabError String
   | IllformedResourceTerm String
   | ArgCountMismatch Id Int Int
+  | UnboundVariable Id [Id]
   deriving Eq
 
 illformedTerm :: Expr Parsed -> String -> Elab a
@@ -67,6 +68,10 @@ instance Show ElabError where
     ++ "  Expected: " ++ show expected ++ "\n"
     ++ "  Found   : " ++ show found
   show (ElabError msg) = msg
+  show (UnboundVariable x scope) =
+    "Unbound variable '" ++ T.unpack x ++ "'. "
+    ++ if null scope then "No variables are in scope here."
+       else "Variables in scope: " ++ L.intercalate ", " (map T.unpack scope)
 
 
 freshMatchVar :: Elab Id
@@ -120,7 +125,17 @@ elabSig sSig = do
   where sCostSig = sfsCostSig sSig
 
 elabBoundTemplate :: [Id] -> Expr Parsed -> Elab BoundTemplate
-elabBoundTemplate args e = fromResourceExpr <$> elabResourceExpr e
+elabBoundTemplate args e = do
+  checkScope args e
+  fromResourceExpr <$> elabResourceExpr e
+
+-- | Ensures that a resource or size expression only refers to the given variables.
+checkScope :: [Id] -> Expr Parsed -> Elab ()
+checkScope scope (VarAnn pos x) = unless (x `elem` scope) $
+  throwError $ SourceError pos (UnboundVariable x scope)
+checkScope scope (AppAnn _ _ args) = mapM_ (checkScope scope) args
+checkScope scope (ConstAnn _ _ args) = mapM_ (checkScope scope) args
+checkScope _ _ = return ()
 
 
 --------------------------------------------------------------------------------
@@ -344,6 +359,7 @@ elabAlgebra mKind clauses = do
 elabClause :: SMeasure m -> SurfaceClause -> Elab (ConstPat, Carrier m)
 elabClause mKind (SurfaceClause _ [PConst _ cPat pVars] body) = do
   let varNames = map (\(PVar _ x) -> x) pVars
+  checkScope varNames body
   terms <- case mKind of
     SSize -> elabSizeExpr body
     SPotential -> do
