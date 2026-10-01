@@ -28,17 +28,18 @@ import Control.Monad.Except (MonadError (throwError, catchError))
 import CostAnalysis.Deriv ( derivFun )
 import Syntax.Types.Type
 import Syntax.Types.Scheme (tFunArgs, Scheme(..), fnArgType, tFunResult)
-import Syntax.Measure (SizeTransform, ConstPat, Relation)
+import Syntax.Measure (SizeTransform, ConstPat (..), Relation, MeasureAlgebra (..))
 
 import CostAnalysis.Template
 import CostAnalysis.TemplateLanguage
 import CostAnalysis.ProveMonad
-import CostAnalysis.Rules (JudgementType (..))
+import CostAnalysis.Rules (JudgementType (..), SubArg (..))
+import CostAnalysis.Subtyping (templNonNeg)
 import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Order (computeStratifiedCosts)
 import CostAnalysis.Constraint (sum)
 import CostAnalysis.Coeff (Coeff(Coeff))
-import Control.Monad.Extra (whenM, filterM)
+import Control.Monad.Extra (whenM, filterM, forM_)
 import qualified Syntax.Measure (Relation(..))
 import Syntax.ResourceExpression.Inequality (sizeConstraints)
 
@@ -92,11 +93,15 @@ analyzeStages prog = do
   tLang .= fromConfig (templateConfig $ prog^.pConfig)
   initMeasureSig prog
   potOptiTgts <- use optiTargets
+  -- constraints of the optimisation targets for inferred potentials (|q| >= +-q);
+  -- they would otherwise be lost by the solving and reset of the size analysis
+  potCs <- use constraints
   
   analyzeSize prog
 
   resetAnalysis
   optiTargets .= potOptiTgts
+  tellSigCs potCs
   analyzeCost prog
 
 analyzeSize :: Program Positioned -> ProveMonad ()
@@ -137,8 +142,24 @@ analyzeCost prog = do
   tLang .= fromConfig (templateConfig (prog^.pConfig))
   initCostSig prog
   constrainSig prog
+  whenM (view inferPotential) $ constrainPotMeasures prog
   
   analyzeProg Standard prog
+
+-- | Inferred potential measures must be non-negative. By induction on values it
+-- suffices that the right-hand side of every equation is non-negative,
+-- assuming the potentials of the fields are, i.e. 0 <=_K e for every equation.
+constrainPotMeasures :: Program Positioned -> ProveMonad ()
+constrainPotMeasures prog = do
+  mSig <- use measureSig
+  forM_ (M.toList mSig) $ \(scheme, env) -> do
+    let fields = M.fromList $ ctorFields (prog^.pDataEnv) scheme
+        (Equations eqs) = emPotentialMeasure env
+    forM_ eqs $ \(ConstPat cName _, rhs) -> do
+      rctx <- addVarConstraints (M.findWithDefault [] cName fields) []
+      cs <- templNonNeg (S.fromList [Mono, L2xy]) rctx
+              (ArithTemplate (M.map fromRScalar rhs))
+      tellSigCs cs
 
 initMeasureSig :: Program Positioned -> ProveMonad ()
 initMeasureSig prog = do

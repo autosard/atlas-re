@@ -30,6 +30,8 @@ module CostAnalysis.Template
   , scale
   , sizeTransformFromTempl
   , fromResourceExpr
+  , ArithTemplate (..)
+  , zeroTemplate
   ) where
 
 import Prelude hiding (sum, or, and)
@@ -187,6 +189,7 @@ instance Template ArithTemplate where
     ttTerms = ttTerms q `M.union` ttTerms p}
 
 
+zeroTemplate :: ArithTemplate
 zeroTemplate = ArithTemplate M.empty
 
 

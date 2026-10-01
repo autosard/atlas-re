@@ -1,4 +1,4 @@
-module CostAnalysis.Subtyping (templLe) where
+module CostAnalysis.Subtyping (templLe, templNonNeg) where
 
 import Prelude hiding (sum)
 import qualified Prelude as P (sum)
@@ -8,8 +8,7 @@ import qualified Data.Map as M
 import Data.Maybe (catMaybes, mapMaybe)
 import qualified Data.Vector as V
 
-import CostAnalysis.Template (Template(terms,(!?)))
-import CostAnalysis.Coeff (HasCoeffs(..))
+import CostAnalysis.Template (Template(terms,(!?)), zeroTemplate)
 import Syntax.ResourceExpression
 import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
@@ -22,8 +21,6 @@ import Data.Bifunctor (Bifunctor(first))
 import Syntax.ResourceExpression.Inequality (ResourceIneq, SizeGuardMatrix, sizeConstraints )
 import qualified Syntax.ResourceExpression.Inequality as ReIneq (ResourceIneq (LeZero))
 import Lens.Micro.Platform (view)
-import Text.Show.Pretty (ppShow)
-import Primitive (dbg)
 
 type LeMatrix = V.Vector (V.Vector Rational)
 
@@ -38,18 +35,26 @@ farkas as ps qs | V.length ps == V.length qs = do
   where prods fs as = zipWith prod2 fs (map ConstTerm as)
         fas fs as i = prods fs ([row V.! i | row <- V.toList as])
 
-templLe :: (Template a, Template b, HasCoeffs a, HasCoeffs b) => Set SubArg -> [ResourceIneq] -> a -> b -> ProveMonad [Formula]
+-- | Constraints for p <= q (under the expert knowledge K). Both templates are
+-- compared on the union of their terms, so terms occurring in only one of them
+-- are treated as having coefficient 0 in the other.
+templLe :: (Template a, Template b) => Set SubArg -> [ResourceIneq] -> a -> b -> ProveMonad [Formula]
 templLe subArgs rctx p q =
   let rctxBounds = lowerBounds rctx in do
     axs <- view axioms
     let ks = merge $
-          [termOrderConstraints (sizeConstraints rctx) (terms p) | S.member Mono subArgs]
+          [termOrderConstraints (sizeConstraints rctx) ts | S.member Mono subArgs]
           ++ if S.member L2xy subArgs
-             then map (instantiateAxiom rctxBounds (terms p)) axs
+             then map (instantiateAxiom rctxBounds ts) axs
              else []
     farkas ks ps qs
-  where ps = V.fromList . map CoeffTerm $ getCoeffs p
-        qs = V.fromList $ [q!?t | t <- S.toList $ terms p]
+  where ts = terms p `S.union` terms q
+        ps = V.fromList [p !? t | t <- S.toList ts]
+        qs = V.fromList [q !? t | t <- S.toList ts]
+
+-- | Constraints for 0 <= q, i.e. 0 <=_K q.
+templNonNeg :: (Template a) => Set SubArg -> [ResourceIneq] -> a -> ProveMonad [Formula]
+templNonNeg subArgs rctx = templLe subArgs rctx zeroTemplate
   
 merge :: [LeMatrix] -> LeMatrix
 merge = V.concat 

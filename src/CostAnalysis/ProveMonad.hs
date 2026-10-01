@@ -52,6 +52,7 @@ module CostAnalysis.ProveMonad
   , runProof
   , ResourceContext
   , addVarConstraints
+  , ctorFields
   , axioms
   ) where
 
@@ -166,18 +167,21 @@ genPotMeasure :: DataEnv
   -> Scheme
   -> (Id -> [(Id, Type)] -> ProveMonad (ConstPat, ResourceExpr))
   -> ProveMonad (MeasureAlgebra Potential)
-genPotMeasure env (Forall _ (TAp tName _)) genRhs = do
-  let ctors = diCtors $ env M.! tName
-  
-  let ctorInputs = [(cName, args')
-                   | CtorInfo cName cType <- ctors
-                   , let (Forall _ t) = cType
-                         args' = [(Text.pack $ "_pArg" ++ show i, t)
-                                 | (t, i) <- zip (funTArgs t) [1..]
-                                 ]
-                   ]
-  eqs <- forM ctorInputs (uncurry genRhs)
+genPotMeasure env scheme genRhs = do
+  eqs <- forM (ctorFields env scheme) (uncurry genRhs)
   return $ Equations eqs
+
+-- | The constructors of a data type together with their (named) fields, as
+-- used for the pattern variables of generated measure equations.
+ctorFields :: DataEnv -> Scheme -> [(Id, [(Id, Type)])]
+ctorFields env (Forall _ (TAp tName _)) =
+  [(cName, args')
+  | CtorInfo cName cType <- diCtors $ env M.! tName
+  , let (Forall _ t) = cType
+        args' = [(Text.pack $ "_pArg" ++ show i, t)
+                | (t, i) <- zip (funTArgs t) [1..]
+                ]
+  ]
 
 genZeroPotExpr :: Id -> [(Id, Type)] -> ProveMonad (ConstPat, ResourceExpr)
 genZeroPotExpr cName args = do 

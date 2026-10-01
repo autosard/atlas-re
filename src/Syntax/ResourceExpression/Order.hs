@@ -77,9 +77,11 @@ resourceLe :: SizeGuardMatrix -> ResourceTerm -> ResourceTerm -> Bool
 -- resourceLe guards RTId (RTPhi _) = True
 -- 1. Constant 1 Term (RTId) vs Sizes
 -- RTId is treated semantically as the constant 1 size term: (SConst 1)
-resourceLe guards RTId (RTSize s) = True
-  --sizeSumLe guards [SConst 1] [s]
-  
+-- 1 <= |x| only holds if it follows from the size guards (e.g. |x| >= 1
+-- for size measures that never yield 0).
+resourceLe guards RTId (RTSize x) =
+  sizeExprLe guards (FM.singleton SId) (FM.singleton (SVar x))
+
 resourceLe guards (RTSize x) RTId = 
   sizeExprLe guards (FM.singleton (SVar x)) (FM.singleton SId)
 
@@ -95,10 +97,14 @@ resourceLe guards (RTLog qTerms) (RTLog pTerms) =
 resourceLe guards (RTProd qTerms) (RTProd pTerms) =
    all (uncurry (resourceLe guards)) (zip (MSet.toList qTerms) (MSet.toList pTerms))
 
-resourceLe guards RTId (RTLog s) = FM.coeffSum s >= 2
--- 4. Logarithmic Terms vs Linear Terms (Asymptotic Dominance)
--- Logarithmic terms are always bounded by linear terms (e.g., log(x) <= x)
-resourceLe _ (RTLog _) (RTSize _) = True
+-- 1 <= log(s) iff s >= 2, which must follow from the size guards.
+resourceLe guards RTId (RTLog s) =
+  sizeExprLe guards (FM.singleton' SId 2) s
+-- 4. Logarithmic Terms vs Linear Terms
+-- With log(z) = log2(max(z,1)) we have log(z) <= z for z >= 0, so
+-- log(s) <= |x| holds whenever s <= |x| follows from the size guards.
+resourceLe guards (RTLog s) (RTSize x) =
+  sizeExprLe guards s (FM.singleton (SVar x))
 resourceLe _ (RTSize _) (RTLog _) = False
 
 -- 5. Fallback for all other terms (RTPhi, RTBinoms, etc.)
