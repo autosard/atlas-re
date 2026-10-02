@@ -40,7 +40,7 @@ import Syntax.Program
 import Parsing.Tactic
 import CostAnalysis.Coeff
 import CostAnalysis.Analysis
-import CostAnalysis.ProveMonad (ProofEnv(..), OptBound (OptBound))
+import CostAnalysis.ProveMonad (ProofEnv(..), OptBound (OptBound), AnalysisMode (..))
 import CostAnalysis.Tactic
 import CostAnalysis.PrettyProof
 
@@ -75,6 +75,11 @@ run Options{..} AnalyzeOptions{..} = do
   let (modName, fn) = case target of
         (Left mod) -> (mod, Nothing)
         (Right (mod, fn)) -> (mod, Just fn)
+  -- Inferring potential measures together with signatures leads to bilinear
+  -- constraints (measure coefficients times template coefficients), which the
+  -- optimizer cannot handle reliably.
+  when (switchInferPotential && analysisMode == Infer) $
+    failWith "--infer-potential is only supported with --analysis-mode check."
   status "Loading" (T.unpack modName)
   prog <- loadProgram searchPath modName fn
   when switchPrintProg $ liftIO $ putStrLn (prettyPrint prog)

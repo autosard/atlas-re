@@ -85,7 +85,7 @@ runOptionsP = do
     <> help "Dump the values of found coefficients.")
   switchInferPotential <- switch
     (long "infer-potential"
-    <> help "Ignore given potential functions and infer them instead.")
+    <> help "Ignore given potential functions and infer them instead. Requires --analysis-mode check.")
   switchPrintObjective <- switch
     (long "print-objective"
     <> help "Output the final value of the objective function.")      
