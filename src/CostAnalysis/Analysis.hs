@@ -36,7 +36,7 @@ import CostAnalysis.ProveMonad
 import CostAnalysis.Rules (JudgementType (..), SubArg (..))
 import CostAnalysis.Subtyping (templNonNeg)
 import Syntax.ResourceExpression
-import Syntax.ResourceExpression.Order (computeStratifiedCosts)
+import Syntax.ResourceExpression.Order (stratifiedWeights)
 import CostAnalysis.Constraint (sum)
 import CostAnalysis.Coeff (Coeff(Coeff))
 import Control.Monad.Extra (whenM, filterM, forM_)
@@ -235,9 +235,9 @@ optimizeScc scc prog = do
 optimizeSig :: Program Positioned -> (Id, FreeSig) -> ProveMonad () 
 optimizeSig prog (fn, fsSig) = do
   guards <- sizeConstraints <$> addVarConstraints argsWithTypes []
-  let termsWithCost = computeStratifiedCosts guards terms'
-  let costTerm = sum [prod2 (ConstTerm (fromIntegral (c*c))) (CoeffTerm (Coeff (templ^.ftId) t))
-                 | (t, c) <- termsWithCost]
+  let termsWithCost = stratifiedWeights guards terms'
+  let costTerm = sum [prod2 (ConstTerm w) (CoeffTerm (Coeff (templ^.ftId) t))
+                 | (t, w) <- termsWithCost]
   whenM (sizeTransformable prog fn) $
     optiTargets %= (costTerm:)
   where
@@ -269,10 +269,14 @@ assertPotential p = mapM_ go . M.toList =<< use sig
                 WorstCase -> ConstTerm 0
                 Amortized -> ConstTerm 1
                 
-          let fromCs = concat [(fs^.fsFrom)!?RTPhi x `eq` pot
+          let fromCs = concat [if tx == returnType
+                               then (fs^.fsFrom)!?RTPhi x `eq` pot
+                               -- required potential of other arguments is
+                               -- non-negative; otherwise the objective is
+                               -- unbounded for types without potential
+                               else geZero ((fs^.fsFrom)!?RTPhi x)
                               | x <- args (fs^.fsFrom),
-                                let tx = fnArgType x (fs^.fsFormArgs) tFun,
-                                tx == returnType]
+                                let tx = fnArgType x (fs^.fsFormArgs) tFun]
           let toCs = concat [case t of
                                i@(RTPhi _) -> (fs^.fsTo)!i `eq` pot
                                i -> zero ((fs^.fsTo)!i)

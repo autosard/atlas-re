@@ -1,6 +1,7 @@
 module Syntax.ResourceExpression.Order
   ( resourceLe
   , computeStratifiedCosts
+  , stratifiedWeights
   )where
 
 import qualified Data.Map.Strict as M
@@ -126,4 +127,31 @@ computeStratifiedCosts g terms = go 1 (S.toList terms)
 
     -- x is strictly less than y if x <= y and NOT y <= x
     strictlyLess :: ResourceTerm -> ResourceTerm -> Bool
-    strictlyLess x y = resourceLe g x y && not (resourceLe g y x)
+    strictlyLess x y = costLe g x y && not (costLe g y x)
+
+-- | Order on resource terms used only for the weights of the objective. It
+-- extends 'resourceLe' by asymptotic dominance: a product with a size factor
+-- dominates every term without one. This order is not sound for deriving
+-- inequalities and must not be used to generate Farkas rows.
+costLe :: SizeGuardMatrix -> ResourceTerm -> ResourceTerm -> Bool
+costLe g t1 t2 = resourceLe g t1 t2 || dominates t1 t2
+  where
+    dominates t (RTProd ts) = hasSizeFactor ts && not (isProdWithSize t)
+    dominates _ _ = False
+    isProdWithSize (RTProd ts) = hasSizeFactor ts
+    isProdWithSize _ = False
+    hasSizeFactor = any isSize . MSet.toList
+    isSize (RTSize _) = True
+    isSize _ = False
+
+-- | Weights for the terms of an objective: every term weighs more than all
+-- terms of lower layers together, so that replacing smaller terms by a
+-- dominating one never decreases the objective.
+stratifiedWeights :: SizeGuardMatrix -> Set ResourceTerm -> [(ResourceTerm, Rational)]
+stratifiedWeights g terms = go 0 layers
+  where
+    layered = computeStratifiedCosts g terms
+    layers = [ [t | (t, c') <- layered, c' == c] | c <- S.toList (S.fromList (map snd layered)) ]
+    go _ [] = []
+    go lower (l:ls) = let w = lower + 1
+                      in [(t, w) | t <- l] ++ go (lower + w * fromIntegral (length l)) ls

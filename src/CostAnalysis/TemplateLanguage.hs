@@ -56,7 +56,9 @@ genSizeSums (a,b) xs = [FM.add (FM.singleton' SId (fromIntegral c)) vars
                        | vars <- varSums xs,
                          c <- [-1..b],                
                          sum vars + fromIntegral c >= 1,
-                         not (M.null vars && c == 2)] -- log(2) covered by RTId
+                         -- constant arguments are useless: log(1) = 0 and
+                         -- log(2) is covered by RTId
+                         not (M.null vars)]
   where
     varSums :: [Id] -> [Map SizeTerm Rational]
     varSums [] = [M.empty]
