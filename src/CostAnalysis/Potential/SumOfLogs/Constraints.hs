@@ -42,6 +42,7 @@ constCases :: Args -> Pattern Positioned -> [Predicate]
 constCases _ (ConstPat _ "leaf" _) = []
 constCases args p@(ConstPat _ "node" [Id _ t, _, Id _ u])
   = maybeToList (predFromInvariant args t u (getType p))
+constCases _ _ = []
 
 cConst :: Args -> PositionedExpr -> Set Predicate -> (FreeTemplate, FreeTemplate) -> FreeTemplate -> [Constraint]
 cConst args e@(Leaf {}) _ (q, _) q' =
