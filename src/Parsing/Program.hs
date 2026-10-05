@@ -146,7 +146,9 @@ pProgram = scn *> do
       modes   = M.fromList [(fn, m) | TLFnPragma (fn, m) <- tops]
       clauses :: [(Id, SurfaceClause)]
       clauses = [c | TLClause c <- tops]
-      groupedClauses = M.fromListWith (++) (map (\(i, c) -> (i, [c])) clauses)
+      -- keep the clauses of each function in source order (fromListWith
+      -- combines as f new old)
+      groupedClauses = M.fromListWith (flip (++)) (map (\(i, c) -> (i, [c])) clauses)
 
   let config = ProgConfig templLangConfig modes
   

@@ -300,20 +300,126 @@ elabExpr e = return (mapAnn id e)
 elabPattern :: Pattern Parsed -> Pattern Elaborated
 elabPattern = mapAnn id
            
+-- | Compiles the clauses of a function definition into nested matches on the
+-- argument variables, following the usual column-wise compilation of pattern
+-- matrices. Clauses are tried top to bottom (first-match semantics): a clause
+-- whose pattern in the current column is a variable is kept in every
+-- constructor branch, and additionally in a final variable branch covering the
+-- remaining constructors.
 compileClauses :: [Id] -> [SurfaceClause] -> Elab (Expr Elaborated)
-compileClauses [] [SurfaceClause pos [] body] = elabExpr body
--- compileClauses [] (_:_:_) = throwError $ SourceError (initialPos) (IllformedResourceTerm "Overlapping or redundant clauses.")
-compileClauses (v:vs) clauses = do
-  -- Group the clauses by their first pattern component
-  arms <- mapM (\(SurfaceClause pos (p:ps) body) -> do
-                   let p' = elabPattern p
-                   body' <- compileClauses vs [SurfaceClause pos ps body]
-                   return $ MatchArmAnn (getAnn p') p' body')
-                 clauses
+compileClauses vars clauses =
+  compileRows vars [Row (scArgs c) [] (scBody c) | c <- clauses]
 
-  let targetExpr = VarAnn dummyPos v
-  return $ MatchAnn dummyPos targetExpr arms
-  
+-- | The value a user variable is bound to: a match variable, or a constructor
+-- application once the match variable has been destructured.
+data Val = VVar Id | VCon Id [Val]
+
+-- | A row of the pattern matrix: the remaining patterns, the user variables
+-- bound so far and the body.
+data Row = Row [Pattern Parsed] [(Id, Val)] (Expr Parsed)
+
+compileRows :: [Id] -> [Row] -> Elab (Expr Elaborated)
+compileRows _ [] = return $
+  AppAnn dummyPos "error" [LitAnn dummyPos (LString "no matching clause")]
+compileRows [] (Row _ binds body : _) = do
+  body' <- elabExpr body
+  foldM bindVal body' binds
+compileRows (v:vs) rows
+  -- variable rule: every row binds the current column to a variable
+  | all (isVarLike . rowHead) rows = compileRows vs (map (bindHead v) rows)
+  -- constructor rule
+  | otherwise = do
+      let ctors = L.nub [(c, length ps) | Row (PConst _ c ps : _) _ _ <- rows]
+      arms <- forM ctors $ \(c, k) -> do
+        fields <- fieldVars c k rows
+        let val = VCon c (map VVar fields)
+            rows' = map (substRow v val) (concatMap (specialize v c k) rows)
+        body <- compileRows (fields ++ vs) rows'
+        let pat = PConst dummyPos c (map (PVar dummyPos) fields)
+        return $ MatchArmAnn dummyPos pat body
+      -- rows with a variable in this column also cover all other constructors
+      let varRows = [bindHead v r | r <- rows, isVarLike (rowHead r)]
+      defArm <- if null varRows then return [] else do
+        y <- freshMatchVar
+        body <- compileRows vs (map (substRow v (VVar y)) varRows)
+        return [MatchArmAnn dummyPos (PVar dummyPos y) body]
+      return $ MatchAnn dummyPos (VarAnn dummyPos v) (arms ++ defArm)
+  where
+    rowHead (Row (p:_) _ _) = p
+    rowHead (Row [] _ _) = error "compileRows: row without patterns"
+
+isVarLike :: Pattern Parsed -> Bool
+isVarLike (PVar _ _) = True
+isVarLike (PWildcard _) = True
+isVarLike _ = False
+
+-- | Removes the first pattern of a row, which must be a variable or wildcard,
+-- and records the binding of the variable to the match variable.
+bindHead :: Id -> Row -> Row
+bindHead v (Row (PVar _ x : ps) binds body) = Row ps ((x, VVar v) : binds) body
+bindHead _ (Row (_ : ps) binds body) = Row ps binds body
+bindHead _ r = r
+
+-- | The rows of the branch for constructor @c@ with @k@ fields.
+specialize :: Id -> Id -> Int -> Row -> [Row]
+specialize v c k r@(Row (p : ps) binds body) = case p of
+  PConst _ c' qs
+    | c' == c   -> [Row (qs ++ ps) binds body]
+    | otherwise -> []
+  _ -> let Row ps' binds' body' = bindHead v r
+       in [Row (replicate k (PWildcard dummyPos) ++ ps') binds' body']
+specialize _ _ _ r = [r]
+
+-- | Replaces the match variable @v@ in the bound values, after @v@ has been
+-- destructured or rebound by a match.
+substRow :: Id -> Val -> Row -> Row
+substRow v val (Row ps binds body) = Row ps [(x, go w) | (x, w) <- binds] body
+  where go (VVar u) | u == v = val
+        go (VVar u) = VVar u
+        go (VCon c ws) = VCon c (map go ws)
+
+-- | Variables for the fields of constructor @c@. The name used in the source
+-- is kept if it is used consistently at this position and nowhere else in the
+-- matrix; otherwise a fresh variable is introduced.
+fieldVars :: Id -> Int -> [Row] -> Elab [Id]
+fieldVars c k rows = forM [0 .. k - 1] $ \i ->
+  case [x | Row (PConst _ c' qs : _) _ _ <- rows, c' == c, PVar _ x <- [qs !! i]] of
+    (x : xs) | all (== x) xs && occurrences x == length (x : xs) -> return x
+    _ -> freshMatchVar
+  where
+    occurrences x = length [() | Row ps _ _ <- rows, p <- ps, y <- patVars p, y == x]
+
+patVars :: Pattern Parsed -> [Id]
+patVars (PVar _ x) = [x]
+patVars (PConst _ _ ps) = concatMap patVars ps
+patVars (PWildcard _) = []
+
+-- | Binds a user variable to its value: by a single-armed match for a match
+-- variable, or by let-bindings that rebuild a destructured value.
+bindVal :: Expr Elaborated -> (Id, Val) -> Elab (Expr Elaborated)
+bindVal body (x, VVar v)
+  | x == v    = return body
+  | otherwise = return $ MatchAnn dummyPos (VarAnn dummyPos v) [MatchArmAnn dummyPos (PVar dummyPos x) body]
+bindVal body (x, VCon c ws) = do
+  (args, wrap) <- argVars ws
+  return $ wrap (LetAnn dummyPos x (ConstAnn dummyPos c (map (VarAnn dummyPos) args)) body)
+  where
+    -- arguments of a constructor application must be variables (ANF)
+    argVars [] = return ([], id)
+    argVars (VVar u : rest) = do
+      (us, wrap) <- argVars rest
+      return (u : us, wrap)
+    argVars (VCon c' ws' : rest) = do
+      t <- freshMatchVar
+      (us, wrap) <- argVars rest
+      inner <- bindVal (VarAnn dummyPos t) (t, VCon c' ws')
+      let build e = substLet inner e
+      return (t : us, build . wrap)
+    -- place e as the body of the let-chain that defines t
+    substLet (LetAnn a y e1 (VarAnn _ _)) e = LetAnn a y e1 e
+    substLet (LetAnn a y e1 rest) e = LetAnn a y e1 (substLet rest e)
+    substLet other _ = other
+
 validateClauses :: Id -> [SurfaceClause] -> Elab ()
 validateClauses name clauses = do
   case clauses of

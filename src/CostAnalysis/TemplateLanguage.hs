@@ -37,8 +37,12 @@ type TemplateLanguage = [Id] -> Set ResourceTerm
 mergeLangs :: TemplateLanguage -> TemplateLanguage -> TemplateLanguage
 mergeLangs f g args = f args `S.union` g args
 
+-- | Potential terms are always part of the template language: signatures of
+-- amortised functions constrain the coefficients of phi-terms, and for types
+-- without a potential measure the terms are identically zero. The 'pot'
+-- configuration is still accepted, but has no additional effect.
 fromConfig :: TemplateLanguageConfig -> TemplateLanguage
-fromConfig = foldr (mergeLangs . fromAtomConf) (const S.empty)
+fromConfig = foldr (mergeLangs . fromAtomConf) (fromAtomConf PotLangConf)
 
 fromAtomConf :: AtomicLangConfig -> TemplateLanguage
 fromAtomConf SizeLangConf args = S.fromList $ RTId : [RTSize x | x <- args]

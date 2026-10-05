@@ -272,15 +272,34 @@ normTerm t = FM.singleton t
 
 normBinom :: SizeExpr -> Int -> ResourceExpr
 normBinom _ 0 = FM.singleton RTId
-normBinom ss k = case (filter (/= SId) $ M.keys ss, ss M.!? SId) of
-  ([x], Nothing) -> FM.singleton $ RTBinom (FM.singleton x) k
-  ([x], Just 1) -> FM.fromList $ RTBinom (FM.singleton x) k :
-    [case k - 1 of
-       0 -> RTId
-       _ -> RTBinom (FM.singleton x) (k - 1)
-    | k - 1 >= 0]
-  (xs, Nothing) -> FM.fromList $ genBinoms k (S.toList $ freeVars xs)
-  (xs, Just c) -> error $ "cannot normalise arbitrary sums in binomial coeffients: " ++ show xs ++ show k
+normBinom ss k = case (vars, M.findWithDefault 0 SId ss) of
+  -- constant argument: binom(c, k) for a natural number c
+  ([], c) -> let b = binomial c k in
+    if b == 0 then FM.empty else FM.singleton' RTId (RSConst b)
+  -- binom(x, k)
+  ([x], 0) | coeff x == 1 -> FM.singleton $ RTBinom (FM.singleton x) k
+  -- Pascal: binom(x + 1, k) = binom(x, k) + binom(x, k - 1)
+  ([x], 1) | coeff x == 1 -> FM.fromList $ RTBinom (FM.singleton x) k :
+    [ if k == 1 then RTId else RTBinom (FM.singleton x) (k - 1) ]
+  -- Vandermonde: binom(x_1 + ... + x_n, k) is the sum of the products
+  -- binom(x_1, a_1) * ... * binom(x_n, a_n) with a_1 + ... + a_n = k
+  (xs, 0) | all ((== 1) . coeff) xs -> FM.fromList
+    [ prodOf [RTBinom (FM.singleton x) a | (x, a) <- zip xs as, a > 0]
+    | as <- compositions (length xs) k ]
+  (xs, c) -> error $ "cannot normalise arbitrary sums in binomial coeffients: " ++ show xs ++ show c ++ show k
+  where
+    vars = filter (/= SId) (M.keys ss)
+    coeff x = ss M.! x
+    prodOf [] = RTId
+    prodOf [b] = b
+    prodOf bs = RTProd (MSet.fromList bs)
+    -- all ways to write k as an ordered sum of n natural numbers
+    compositions :: Int -> Int -> [[Int]]
+    compositions 0 0 = [[]]
+    compositions 0 _ = []
+    compositions n m = [a : rest | a <- [0 .. m], rest <- compositions (n - 1) (m - a)]
+    binomial :: Rational -> Int -> Rational
+    binomial c m = product [ (c - fromIntegral i) / fromIntegral (i + 1) | i <- [0 .. m - 1] ]
 
 --------------------------------------------------------------------------------
 -- Template Operations

@@ -39,7 +39,7 @@ import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Order (stratifiedWeights)
 import CostAnalysis.Constraint (sum)
 import CostAnalysis.Coeff (Coeff(Coeff))
-import Control.Monad.Extra (whenM, filterM, forM_)
+import Control.Monad.Extra (whenM, filterM, forM_, forM)
 import qualified Syntax.Measure (Relation(..))
 import Syntax.ResourceExpression.Inequality (sizeConstraints)
 
@@ -269,19 +269,35 @@ assertPotential p = mapM_ go . M.toList =<< use sig
                 WorstCase -> ConstTerm 0
                 Amortized -> ConstTerm 1
                 
-          let fromCs = concat [if tx == returnType
-                               then (fs^.fsFrom)!?RTPhi x `eq` pot
-                               -- required potential of other arguments is
-                               -- non-negative; otherwise the objective is
-                               -- unbounded for types without potential
-                               else geZero ((fs^.fsFrom)!?RTPhi x)
-                              | x <- args (fs^.fsFrom),
-                                let tx = fnArgType x (fs^.fsFormArgs) tFun]
+          -- The coefficients of phi-terms are only fixed for types with a
+          -- non-trivial potential. For other arguments, and for types whose
+          -- potential is identically zero, they are only required to be
+          -- non-negative; otherwise the objective is unbounded.
+          retZero <- zeroPotential returnType
+          fromCs <- concat <$> forM (args (fs^.fsFrom)) (\x -> do
+            let tx = fnArgType x (fs^.fsFormArgs) tFun
+            argZero <- zeroPotential tx
+            return $ if tx == returnType && not argZero
+              then (fs^.fsFrom)!?RTPhi x `eq` pot
+              else geZero ((fs^.fsFrom)!?RTPhi x))
           let toCs = concat [case t of
-                               i@(RTPhi _) -> (fs^.fsTo)!i `eq` pot
+                               i@(RTPhi _) | retZero   -> geZero ((fs^.fsTo)!i)
+                                           | otherwise -> (fs^.fsTo)!i `eq` pot
                                i -> zero ((fs^.fsTo)!i)
                             | t <- S.toList $ terms (fs^.fsTo)]
           tellSigCs (fromCs ++ toCs)
+
+-- | Whether the potential of values of the given type is identically zero,
+-- i.e. all equations of its potential measure have a zero right-hand side.
+zeroPotential :: Type -> ProveMonad Bool
+zeroPotential t
+  | not (isResourceRelevant t) = return True
+  | otherwise = do
+      env <- measureEnvForType t
+      let (Equations eqs) = emPotentialMeasure env
+      return $ all (all isZero' . M.elems . snd) eqs
+  where isZero' (RSConst 0) = True
+        isZero' _ = False
 
 
 assertSigMatchesAnn :: Program Positioned -> ProveMonad ()

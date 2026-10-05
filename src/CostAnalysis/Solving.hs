@@ -107,7 +107,19 @@ solve fns = do
   liftIO $ writeFile "out/instance.smt" smt
   liftIO $ appendFile "out/instance.smt" ("; number of assertions: " ++ show numAssertions)
   solution <- case result of 
-    Left unsatCore -> throwError $ UnsatErr unsatCore
+    Left unsatCore
+      -- constraints are only tracked without an objective, so when optimising
+      -- the core is empty; recompute it with a tracked, non-optimising solve
+      | isJust opti -> do
+          (coreResult, _, _) <- liftIO . evalZ3 $ do
+            let coeffs = S.toList . S.unions $ map (S.fromList . getCoeffs) (cs ++ extCs)
+            tracker <- createSolverZ3 coeffs cs extCs Nothing
+            result <- solveZ3 tracker coeffs False
+            return (result, (), ())
+          case coreResult of
+            Left core -> throwError $ UnsatErr core
+            Right _ -> throwError $ UnsatErr unsatCore
+      | otherwise -> throwError $ UnsatErr unsatCore
     Right solution -> return solution
   constraints .= []
   return solution
