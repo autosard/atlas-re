@@ -5,8 +5,9 @@
 #
 #   -m, --mode MODE        check (default) or infer
 #   -t, --timeout SECS     timeout per benchmark (default: 600)
-#   -b, --bin PATH         atlas-re binary (default: cabal list-bin exe:atlas-re)
-#   -e, --examples DIR     examples directory (default: examples)
+#   -b, --bin PATH         atlas-re binary (default: cabal list-bin exe:atlas-re,
+#                          otherwise atlas-re from PATH)
+#   -e, --examples DIR     examples directory (default: $ATLAS_EXAMPLES or examples)
 #   -o, --out DIR          results directory (default: bench-results/<date>-<mode>)
 #   -c, --compare FILE     results.tsv of an earlier run; report regressions against it
 #   -x, --exclude PREFIX   skip modules with this prefix (repeatable;
@@ -25,7 +26,7 @@ set -uo pipefail
 mode=check
 timeout=600
 bin=
-examples=examples
+examples=${ATLAS_EXAMPLES:-examples}
 out=
 compare=
 excludes=(Data. Potential.)
@@ -49,7 +50,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ $mode == check || $mode == infer ]] || { echo "mode must be check or infer" >&2; exit 2; }
-[[ -z $bin ]] && bin=$(cabal list-bin exe:atlas-re 2>/dev/null)
+[[ -z $bin ]] && bin=$(cabal list-bin exe:atlas-re 2>/dev/null || command -v atlas-re)
 [[ -x $bin ]] || { echo "atlas-re binary not found (build it or pass --bin)" >&2; exit 2; }
 [[ -d $examples ]] || { echo "examples directory not found: $examples" >&2; exit 2; }
 [[ -z $compare || -f $compare ]] || { echo "comparison file not found: $compare" >&2; exit 2; }
