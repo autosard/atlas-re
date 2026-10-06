@@ -274,10 +274,11 @@ assertPotential p = mapM_ go . M.toList =<< use sig
           -- potential is identically zero, they are only required to be
           -- non-negative; otherwise the objective is unbounded.
           retZero <- zeroPotential returnType
+          carried <- carriedPotTypes returnType
           fromCs <- concat <$> forM (args (fs^.fsFrom)) (\x -> do
             let tx = fnArgType x (fs^.fsFormArgs) tFun
             argZero <- zeroPotential tx
-            return $ if tx == returnType && not argZero
+            return $ if tx `elem` carried && not argZero
               then (fs^.fsFrom)!?RTPhi x `eq` pot
               else geZero ((fs^.fsFrom)!?RTPhi x))
           let toCs = concat [case t of
@@ -286,6 +287,27 @@ assertPotential p = mapM_ go . M.toList =<< use sig
                                i -> zero ((fs^.fsTo)!i)
                             | t <- S.toList $ terms (fs^.fsTo)]
           tellSigCs (fromCs ++ toCs)
+
+-- | The types whose potential is carried by values of the given type: the
+-- type itself and, for a product whose potential measure is a sum of the
+-- potentials of its components with coefficient 1 (e.g. pot (x, t) = pot t),
+-- the types of these components. An argument of a carried type must keep its
+-- potential, since the result accounts for it with coefficient 1; otherwise
+-- potential that is not returned could be spent as cost.
+carriedPotTypes :: Type -> ProveMonad [Type]
+carriedPotTypes t@(TAp "(,)" _) | isResourceRelevant t = do
+  env <- measureEnvForType t
+  let (Equations eqs) = emPotentialMeasure env
+      comps = unprod t
+  return $ case eqs of
+    [(ConstPat _ vars, rhs)]
+      | length vars == length comps
+      , let fieldTypes = M.fromList (zip vars comps)
+      , [x | (RTPhi x, RSConst 1) <- M.toList rhs] `sameAs` M.keys rhs
+        -> t : [fieldTypes M.! x | RTPhi x <- M.keys rhs]
+    _ -> [t]
+  where sameAs xs ts = map RTPhi xs == ts
+carriedPotTypes t = return [t]
 
 -- | Whether the potential of values of the given type is identically zero,
 -- i.e. all equations of its potential measure have a zero right-hand side.
