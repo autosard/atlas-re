@@ -131,12 +131,15 @@ computeStratifiedCosts g terms = go 1 (S.toList terms)
 
 -- | Order on resource terms used only for the weights of the objective. It
 -- extends 'resourceLe' by asymptotic dominance: a product with a size factor
--- dominates every term without one. This order is not sound for deriving
--- inequalities and must not be used to generate Farkas rows.
+-- dominates every term without one, and the logarithm of a size expression
+-- with a variable dominates the constant 1 (although log(|x|) = 0 for
+-- |x| = 1). This order is not sound for deriving inequalities and must not be
+-- used to generate Farkas rows.
 costLe :: SizeGuardMatrix -> ResourceTerm -> ResourceTerm -> Bool
 costLe g t1 t2 = resourceLe g t1 t2 || dominates t1 t2
   where
     dominates t (RTProd ts) = hasSizeFactor ts && not (isProdWithSize t)
+    dominates RTId (RTLog s) = not (S.null (freeVars s))
     dominates _ _ = False
     isProdWithSize (RTProd ts) = hasSizeFactor ts
     isProdWithSize _ = False
