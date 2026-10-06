@@ -7,7 +7,9 @@ RUN apk add --no-cache build-base git curl ncurses gmp-dev z3-dev
 WORKDIR /build
 RUN git clone --depth 1 -b ${ATLAS_REF} https://github.com/autosard/atlas-re.git
 RUN git clone --depth 1 -b ${EXAMPLES_REF} https://github.com/autosard/atlas-examples.git
-RUN git clone https://github.com/IagoAbal/haskell-z3
+# haskell-z3 411.0.1 (the version on Hackage is outdated), pinned for reproducibility
+RUN git clone https://github.com/IagoAbal/haskell-z3 \
+ && git -C haskell-z3 checkout --quiet b77a17e5eeb7db82656bcbcd66c6e952207e69ca
 # atlas-re requires GHC 9.6 (base 4.18), ghcup installs a newer one by default
 ENV BOOTSTRAP_HASKELL_NONINTERACTIVE=1 BOOTSTRAP_HASKELL_GHC_VERSION=9.6.7
 RUN curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh

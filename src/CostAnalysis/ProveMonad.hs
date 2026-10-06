@@ -28,6 +28,7 @@ module CostAnalysis.ProveMonad
   , incremental
   , costModes 
   , inferPotential
+  , outputDir
   , ProofErr (..)
   , AnalysisMode (..)
   , OptBound (..)
@@ -130,6 +131,8 @@ data ProofEnv = ProofEnv {
   _incremental :: Bool,
   _costModes :: Map Id CostMode,
   _inferPotential :: Bool,
+  -- | directory for the generated SMT instance (next to the HTML proof)
+  _outputDir :: FilePath,
   _axioms :: [AxiomSpec]
   }
 

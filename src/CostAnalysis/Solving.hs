@@ -24,6 +24,8 @@ import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
 import Data.Maybe (isNothing, isJust)
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath ((</>))
 
 
 class Encodeable a where
@@ -104,8 +106,11 @@ solve fns = do
       numAssertions <- length <$> optimizeGetAssertions
       result <- solveZ3 tracker coeffs (isJust opti)
       return (result, smt, numAssertions)
-  liftIO $ writeFile "out/instance.smt" smt
-  liftIO $ appendFile "out/instance.smt" ("; number of assertions: " ++ show numAssertions)
+  outDir <- view outputDir
+  liftIO $ do
+    createDirectoryIfMissing True outDir
+    writeFile (outDir </> "instance.smt")
+      (smt ++ "; number of assertions: " ++ show numAssertions)
   solution <- case result of 
     Left unsatCore
       -- constraints are only tracked without an objective, so when optimising

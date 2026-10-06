@@ -85,6 +85,7 @@ library
                       transformers,
                       parser-combinators,
                       filepath ^>= 1.5.2.0,
+                      directory,
                       Glob ^>= 0.10.2,
                       extra ^>= 1.7.14,
                       array ^>= 0.5.8,

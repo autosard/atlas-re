@@ -102,6 +102,7 @@ run Options{..} AnalyzeOptions{..} = do
         , _costModes=analysisModes . _pConfig $ prog
         , _inferPotential=switchInferPotential
         , _axioms = _pAxioms prog
+        , _outputDir = outputPath
         }
   status "Analyzing" $ case fns of
     [] -> "no functions"
