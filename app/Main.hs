@@ -25,7 +25,7 @@ import System.Directory
 import Data.Set(Set)
 import qualified Data.Set as S
 import Data.Tree(drawTree)
-import Data.List(intercalate, dropWhileEnd)
+import Data.List(intercalate, dropWhileEnd, isPrefixOf)
 import Data.Char(isSpace)
 import Numeric(showFFloat)
 import GHC.Clock(getMonotonicTime)
@@ -107,6 +107,7 @@ run Options{..} AnalyzeOptions{..} = do
   status "Analyzing" $ case fns of
     [] -> "no functions"
     _ -> show (length fns) ++ plural (length fns) " function" ++ ": " ++ commaList fns
+  removeInstances outputPath
   start <- getMonotonicTime
   result <- liftIO $ analyzeProgram env prog
   elapsed <- subtract start <$> getMonotonicTime
@@ -183,6 +184,16 @@ printSolutionCoeffs solution = mapM_ (\(q, v) -> putStrLn $ show q ++ " = " ++ s
 --         printPotFn (kind, (pot, rhs)) = do
 --           putStrLn $ "\t" ++ show kind ++ ": " ++ printRHS pot rhs solution 
           
+
+-- | Remove the SMT instances of a previous run, so that the output directory
+-- only holds the instances of the current one.
+removeInstances :: FilePath -> IO ()
+removeInstances path = do
+  exists <- doesDirectoryExist path
+  when exists $ do
+    files <- listDirectory path
+    mapM_ (removeFile . (path </>))
+      [f | f <- files, "instance" `isPrefixOf` f, takeExtension f == ".smt"]
 
 writeHtmlProof :: FilePath -> AnalysisResult -> IO String
 writeHtmlProof path result = do

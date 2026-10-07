@@ -23,9 +23,11 @@ import Syntax (Id)
 import CostAnalysis.Coeff
 import CostAnalysis.Constraint
 import CostAnalysis.ProveMonad
+import CostAnalysis.Rules (JudgementType (..))
 import Data.Maybe (isNothing, isJust)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
+import qualified Data.Text as T
 
 
 class Encodeable a where
@@ -90,8 +92,8 @@ assertConstraints track = foldrM (go track) M.empty
           optimizeAssertAndTrack c' p
           return $ M.insert pS c tracker
 
-solve :: [Id] -> ProveMonad Solution
-solve fns = do
+solve :: JudgementType -> [Id] -> ProveMonad Solution
+solve mode fns = do
   targets <- use optiTargets
   let opti = case targets of
                [] -> Nothing
@@ -107,10 +109,22 @@ solve fns = do
       result <- solveZ3 tracker coeffs (isJust opti)
       return (result, smt, numAssertions)
   outDir <- view outputDir
+  incr <- view incremental
+  -- one instance per solver call, named after the phase and the binding group
+  let phase = case mode of
+        CfEq -> "size-eq"
+        Cf -> "size-ge"
+        Standard -> "cost"
+      group = case (mode, fns) of
+        (Standard, _) | not incr -> ""
+        (_, fn:_) -> "-" ++ T.unpack fn
+        (_, []) -> ""
+      header = "; phase: " ++ phase ++ "; group: "
+        ++ T.unpack (T.intercalate ", " fns) ++ "\n"
   liftIO $ do
     createDirectoryIfMissing True outDir
-    writeFile (outDir </> "instance.smt")
-      (smt ++ "; number of assertions: " ++ show numAssertions)
+    writeFile (outDir </> ("instance-" ++ phase ++ group ++ ".smt"))
+      (header ++ smt ++ "; number of assertions: " ++ show numAssertions)
   solution <- case result of 
     Left unsatCore
       -- constraints are only tracked without an objective, so when optimising

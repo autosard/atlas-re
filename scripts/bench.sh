@@ -114,7 +114,7 @@ for m in "${modules[@]}"; do (( ${#m} > width )) && width=${#m}; done
 
 npass=0 nunsat=0 nerror=0 ntimeout=0
 for m in "${modules[@]}"; do
-  # the tool writes instance.smt to ./out regardless of --output, so give
+  # the tool writes instance-*.smt to ./out regardless of --output, so give
   # every benchmark its own working directory
   work="$out/$m"
   mkdir -p "$work/out"

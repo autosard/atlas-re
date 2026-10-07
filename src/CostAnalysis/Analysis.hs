@@ -204,7 +204,7 @@ analyzeProg mode prog = do
 analyzeBindingGroup :: JudgementType -> Program Positioned -> [Id]  -> ProveMonad ()
 analyzeBindingGroup mode prog fns = do
   mapM_ go fns
-  sol <- solve fns
+  sol <- solve mode fns
   tell sol
   solution .= Just (fst sol)
   where go :: Id -> ProveMonad ()
