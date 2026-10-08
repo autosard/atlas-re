@@ -12,11 +12,16 @@ module CostAnalysis.Constraint
   , prod2
   , zero
   , fromRScalar
+  , isNonlinear
+  , hasVars
+  , substFormula
   )where
 
 import Prelude hiding (sum, or)
 
 import CostAnalysis.Coeff
+import Data.Map (Map)
+import qualified Data.Map as M
 import Syntax.ResourceExpression (RScalar (..))
 
 type Var = Int
@@ -113,3 +118,61 @@ instance HasCoeffs Formula where
   getCoeffs (Iff c1 c2) = getCoeffs c1 ++ getCoeffs c2
   getCoeffs (Atom _) = []
   getCoeffs Bot = []
+
+-- | Contains a product of two non-constant factors.
+isNonlinear :: Formula -> Bool
+isNonlinear = anyArith go
+  where go (Prod ts) = length (filter (not . isConst) ts) > 1 || any go ts
+        go (Sum ts) = any go ts
+        go (Diff ts) = any go ts
+        go (Minus t) = go t
+        go _ = False
+        isConst (ConstTerm _) = True
+        isConst _ = False
+
+-- | Contains a variable or a Boolean atom besides coefficients.
+hasVars :: Formula -> Bool
+hasVars (Atom _) = True
+hasVars (Impl a b) = hasVars a || hasVars b
+hasVars (Iff a b) = hasVars a || hasVars b
+hasVars (Not a) = hasVars a
+hasVars (Or fs) = any hasVars fs
+hasVars (And fs) = any hasVars fs
+hasVars f = anyArith go f
+  where go (VarTerm _) = True
+        go (Sum ts) = any go ts
+        go (Diff ts) = any go ts
+        go (Prod ts) = any go ts
+        go (Minus t) = go t
+        go _ = False
+
+anyArith :: (ArithExpr -> Bool) -> Formula -> Bool
+anyArith p (Eq a b) = p a || p b
+anyArith p (Le a b) = p a || p b
+anyArith p (Ge a b) = p a || p b
+anyArith p (Impl a b) = anyArith p a || anyArith p b
+anyArith p (Iff a b) = anyArith p a || anyArith p b
+anyArith p (Not a) = anyArith p a
+anyArith p (Or fs) = any (anyArith p) fs
+anyArith p (And fs) = any (anyArith p) fs
+anyArith _ _ = False
+
+-- | Replaces coefficients by their values.
+substFormula :: Map Coeff Rational -> Formula -> Formula
+substFormula vals f | M.null vals = f
+substFormula vals f = case f of
+  Eq a b -> Eq (go a) (go b)
+  Le a b -> Le (go a) (go b)
+  Ge a b -> Ge (go a) (go b)
+  Impl a b -> Impl (substFormula vals a) (substFormula vals b)
+  Iff a b -> Iff (substFormula vals a) (substFormula vals b)
+  Not a -> Not (substFormula vals a)
+  Or fs -> Or (map (substFormula vals) fs)
+  And fs -> And (map (substFormula vals) fs)
+  _ -> f
+  where go (CoeffTerm q) = maybe (CoeffTerm q) ConstTerm (M.lookup q vals)
+        go (Sum ts) = Sum (map go ts)
+        go (Diff ts) = Diff (map go ts)
+        go (Prod ts) = Prod (map go ts)
+        go (Minus t) = Minus (go t)
+        go t = t

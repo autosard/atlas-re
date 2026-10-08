@@ -28,6 +28,7 @@ import Data.Maybe (isNothing, isJust)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 import qualified Data.Text as T
+import Syntax.ResourceExpression (isPotential)
 
 
 class Encodeable a where
@@ -100,14 +101,6 @@ solve mode fns = do
                ts -> Just . sum $ ts
   extCs <- use sigCs
   cs <- use constraints
-  (result, smt, numAssertions) <- liftIO . evalZ3 $
-    do
-      let coeffs = S.toList . S.unions $ map (S.fromList . getCoeffs) (cs ++ extCs)
-      tracker <- createSolverZ3 coeffs cs extCs opti
-      smt <- optimizeToString
-      numAssertions <- length <$> optimizeGetAssertions
-      result <- solveZ3 tracker coeffs (isJust opti)
-      return (result, smt, numAssertions)
   outDir <- view outputDir
   incr <- view incremental
   -- one instance per solver call, named after the phase and the binding group
@@ -121,27 +114,76 @@ solve mode fns = do
         (_, []) -> ""
       header = "; phase: " ++ phase ++ "; group: "
         ++ T.unpack (T.intercalate ", " fns) ++ "\n"
-  liftIO $ do
-    createDirectoryIfMissing True outDir
-    writeFile (outDir </> ("instance-" ++ phase ++ group ++ ".smt"))
-      (header ++ smt ++ "; number of assertions: " ++ show numAssertions)
+      instanceFile suffix = outDir </> ("instance-" ++ phase ++ group ++ suffix ++ ".smt")
+  liftIO $ createDirectoryIfMissing True outDir
+  -- Inferred potential measures multiply unknown coefficients of phi-terms with
+  -- unknown measure coefficients. The phi-coefficients form a separate linear
+  -- system, which is solved first; substituting its solution makes the
+  -- remaining system linear.
+  inferPot <- view inferPotential
+  phiVals <- if inferPot
+    then fixPotentialCoeffs (instanceFile "-phi") header (cs ++ extCs)
+    else return M.empty
+  let subst = substFormula phiVals
+      (cs', extCs') = (map subst cs, map subst extCs)
+      -- unsat cores refer to the substituted constraints; map them back
+      original = M.fromList $ zip (cs' ++ extCs') (cs ++ extCs)
+      restore = map (\c -> M.findWithDefault c c original)
+      coeffs = S.toList . S.unions $ map (S.fromList . getCoeffs) (cs' ++ extCs')
+  result <- liftIO . evalZ3 $ do
+    tracker <- createSolverZ3 coeffs cs' extCs' opti
+    -- written before solving, so that the instance is available even if the
+    -- solver does not terminate
+    writeInstance (instanceFile "") header
+    solveZ3 tracker coeffs (isJust opti)
   solution <- case result of 
     Left unsatCore
       -- constraints are only tracked without an objective, so when optimising
       -- the core is empty; recompute it with a tracked, non-optimising solve
       | isJust opti -> do
-          (coreResult, _, _) <- liftIO . evalZ3 $ do
-            let coeffs = S.toList . S.unions $ map (S.fromList . getCoeffs) (cs ++ extCs)
-            tracker <- createSolverZ3 coeffs cs extCs Nothing
-            result <- solveZ3 tracker coeffs False
-            return (result, (), ())
+          coreResult <- liftIO . evalZ3 $ do
+            tracker <- createSolverZ3 coeffs cs' extCs' Nothing
+            solveZ3 tracker coeffs False
           case coreResult of
-            Left core -> throwError $ UnsatErr core
-            Right _ -> throwError $ UnsatErr unsatCore
-      | otherwise -> throwError $ UnsatErr unsatCore
-    Right solution -> return solution
+            Left core -> throwError $ UnsatErr (restore core)
+            Right _ -> throwError $ UnsatErr (restore unsatCore)
+      | otherwise -> throwError $ UnsatErr (restore unsatCore)
+    Right (vals, bound) -> return (M.union vals phiVals, bound)
   constraints .= []
   return solution
+
+-- | Phase one of solving a nonlinear system: solve the linear constraints
+-- that only contain coefficients of phi-terms, and return their values.
+fixPotentialCoeffs :: FilePath -> String -> [Formula] -> ProveMonad (Map Coeff Rational)
+fixPotentialCoeffs file header cs
+  -- e.g. the size analysis, which has no phi-terms
+  | null phiCs = return M.empty
+  | otherwise = do
+      result <- liftIO . evalZ3 $ do
+        tracker <- createSolverZ3 coeffs phiCs [] Nothing
+        writeInstance file header
+        solveZ3 tracker coeffs False
+      case result of
+        Left core -> throwError $ UnsatErr core
+        Right (vals, _) -> return vals
+  where phiCs = concatMap (filter onlyPotentialCoeffs . conjuncts) cs
+        coeffs = S.toList . S.unions $ map (S.fromList . getCoeffs) phiCs
+        conjuncts (And fs) = concatMap conjuncts fs
+        conjuncts f = [f]
+        onlyPotentialCoeffs f = atomic f && not (isNonlinear f) && not (hasVars f)
+          && not (null (getCoeffs f)) && all isPotentialCoeff (getCoeffs f)
+        isPotentialCoeff (Coeff _ t) = isPotential t
+        atomic (Eq _ _) = True
+        atomic (Le _ _) = True
+        atomic (Ge _ _) = True
+        atomic _ = False
+
+writeInstance :: MonadOptimize z3 => FilePath -> String -> z3 ()
+writeInstance file header = do
+  smt <- optimizeToString
+  numAssertions <- length <$> optimizeGetAssertions
+  liftIO $ writeFile file
+    (header ++ smt ++ "; number of assertions: " ++ show numAssertions)
 
 createSolverZ3 :: MonadOptimize z3 => [Coeff] -> [Formula] -> [Formula] -> Maybe ArithExpr -> z3 (Map String Formula)
 createSolverZ3 coeffs typingCs extCs optiTarget = do
