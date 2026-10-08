@@ -92,7 +92,7 @@ import Syntax.Measure (SizeTransform,
                        sizeGeOne)
 import CostAnalysis.TemplateLanguage
 import Syntax.ResourceExpression ( ResourceTerm(..), isPotential, ResourceExpr, RScalar (..) )
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, fromMaybe)
 import Control.Monad (forM)
 import Control.Monad.Extra (whenM, ifM, mapMaybeM)
 import qualified Syntax.FreeModule as FM
@@ -176,15 +176,25 @@ genPotMeasure env scheme genRhs = do
 
 -- | The constructors of a data type together with their (named) fields, as
 -- used for the pattern variables of generated measure equations.
+-- The field types are instantiated with the type arguments of the scheme, so
+-- that e.g. the first field of a pair (Tree a, a) has type Tree a rather than
+-- a type variable, which would not be resource relevant.
 ctorFields :: DataEnv -> Scheme -> [(Id, [(Id, Type)])]
-ctorFields env (Forall _ (TAp tName _)) =
+ctorFields env (Forall _ tScheme@(TAp tName _)) =
   [(cName, args')
   | CtorInfo cName cType <- diCtors $ env M.! tName
   , let (Forall _ t) = cType
-        args' = [(Text.pack $ "_pArg" ++ show i, t)
-                | (t, i) <- zip (funTArgs t) [1..]
+        subst = fromMaybe M.empty $ match (ctorResult t) tScheme
+        args' = [(Text.pack $ "_pArg" ++ show i, substGen subst t')
+                | (t', i) <- zip (funTArgs t) [1..]
                 ]
   ]
+  where ctorResult (TFun _ r) = ctorResult r
+        ctorResult r = r
+        substGen s (TGen i) = M.findWithDefault (TGen i) i s
+        substGen s (TAp c ts) = TAp c (map (substGen s) ts)
+        substGen s (TFun a b) = TFun (substGen s a) (substGen s b)
+        substGen _ t' = t'
 
 genZeroPotExpr :: Id -> [(Id, Type)] -> ProveMonad (ConstPat, ResourceExpr)
 genZeroPotExpr cName args = do 
