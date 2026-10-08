@@ -238,8 +238,9 @@ optimizeSig prog (fn, fsSig) = do
   let termsWithCost = stratifiedWeights guards terms'
   let costTerm = sum [prod2 (ConstTerm w) (CoeffTerm (Coeff (templ^.ftId) t))
                  | (t, w) <- termsWithCost]
-  whenM (sizeTransformable prog fn) $
-    optiTargets %= (costTerm:)
+  -- the size analysis only generates signatures for size transformable
+  -- functions (initSizeSig), so every signature contributes to the objective
+  optiTargets %= (costTerm:)
   where
     templ = fsSig^.fsFrom
     terms' = S.filter (not . isZero) (templ^.ftTerms)
