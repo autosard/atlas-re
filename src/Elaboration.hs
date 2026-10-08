@@ -463,11 +463,17 @@ elabAlgebra mKind clauses = do
   return $ Equations eqs
 
 elabClause :: SMeasure m -> SurfaceClause -> Elab (ConstPat, Carrier m)
-elabClause mKind (SurfaceClause _ [PConst _ cPat pVars] body) = do
+elabClause mKind (SurfaceClause pos [PConst _ cPat pVars] body) = do
   let varNames = map (\(PVar _ x) -> x) pVars
   checkScope varNames body
   terms <- case mKind of
-    SSize -> elabSizeExpr body
+    SSize -> do
+      size <- elabSizeExpr body
+      -- the analysis assumes |x| >= 1 for every value x if the coefficients of
+      -- each equation sum up to at least 1, which requires non-negative sizes
+      when (any (< 0) (M.elems size)) $
+        throwError $ SourceError pos (ElabError "Size measures must have non-negative coefficients.")
+      return size
     SPotential -> do
       ts <- elabResourceExpr body
       return $ M.map RSConst ts
