@@ -17,7 +17,7 @@ import Control.Monad
 import Text.Megaparsec (SourcePos(SourcePos), pos1)
 import qualified Data.Text as T
 import qualified Data.List as L
-import Data.Maybe(mapMaybe)
+import Data.Maybe(mapMaybe, isJust)
 
 
 import Syntax (Id, Parsed, Elaborated)
@@ -26,8 +26,9 @@ import Syntax.Program
 import Syntax.Expression
 import Syntax.Pattern
 import Syntax.Annotation (mapAnn, getAnn)
-import Syntax.Types.Scheme (Scheme, quantify, quantifyAll, tFunArgs)
+import Syntax.Types.Scheme (Scheme(..), quantify, quantifyAll, tFunArgs, findByType)
 import Syntax.Types.Subst (tv)
+import Syntax.PrettyPrint (prettyPrint)
 import Syntax.Types.Type
 import Syntax.Measure
 import SourceError
@@ -483,7 +484,7 @@ elabClause _ (SurfaceClause pos _ _) =
       throwError $ SourceError pos (ElabError "Measure definitions must use constructor patterns.")
       
 elabMeasureSig :: [MeasureDef] -> Elab (Map Scheme MeasureEnv)
-elabMeasureSig = foldM insertMeasure Builtin.measures
+elabMeasureSig defs = completeMeasures =<< foldM insertMeasure Builtin.measures defs
   where
     insertMeasure :: Map Scheme MeasureEnv -> MeasureDef -> Elab (Map Scheme MeasureEnv)
     insertMeasure envMap mDef = do
@@ -505,6 +506,29 @@ elabMeasureSig = foldM insertMeasure Builtin.measures
           
       return $ M.insert schemeKey updatedEnv envMap
   
+-- | A type with a measure of only one kind, e.g. a potential measure for
+-- List (Op a), takes the measure of the other kind from the most specific more
+-- general type that defines it, e.g. the size measure of List a.
+completeMeasures :: Map Scheme MeasureEnv -> Elab (Map Scheme MeasureEnv)
+completeMeasures envMap = M.traverseWithKey complete envMap
+  where
+    complete scheme env = do
+      size <- if hasSize env then return (sizeMeasure env)
+        else maybe (sizeMeasure env) sizeMeasure <$> inherit scheme hasSize
+      pot <- if hasPot env then return (potentialMeasure env)
+        else maybe Nothing potentialMeasure <$> inherit scheme hasPot
+      return $ env { sizeMeasure = size, potentialMeasure = pot }
+    hasSize env = let (Equations eqs) = sizeMeasure env in not (null eqs)
+    hasPot = isJust . potentialMeasure
+    -- the most specific of the more general types that define the measure
+    inherit scheme@(Forall _ t) defines =
+      case findByType t (M.filter defines (M.delete scheme envMap)) of
+        Right found -> return found
+        Left schemes -> throwError $ SourceError dummyPos $ ElabError $
+          "Ambiguous measures for type '" ++ prettyPrint t ++ "': the measures for "
+          ++ L.intercalate ", " [ "'" ++ prettyPrint k ++ "'" | Forall _ k <- schemes ]
+          ++ " match, but none of them is more specific than the others."
+
 --------------------------------------------------------------------------------
 -- Axioms
 --------------------------------------------------------------------------------

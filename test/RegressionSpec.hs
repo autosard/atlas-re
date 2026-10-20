@@ -53,5 +53,7 @@ spec = do
   describe "measure lookup" $ do
     it "uses the most specific matching measure" $
       analyze "Measure.Specific" `shouldReturn` Proved
+    it "takes a missing measure from the most specific more general type" $
+      analyze "Measure.Inherit" `shouldReturn` Proved
     it "reports overlapping measures without a most specific one" $
       analyze "Measure.Ambiguous" `shouldThrow` errorContaining "Ambiguous measures"

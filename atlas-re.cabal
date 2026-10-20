@@ -124,7 +124,7 @@ executable atlas-re
         random ^>= 1.2.1,
         ansi-terminal >=1.0
     hs-source-dirs: app
-    -- profiling: True
+    tests: True
     default-language: Haskell2010
     ghc-options: -O2 
 
@@ -132,26 +132,15 @@ test-suite tests
     type: exitcode-stdio-1.0
     main-is: Spec.hs
     build-depends:
-        base ^>=4.17.2.1,
+        base ^>=4.18,
         containers,
+        directory,
+        filepath,
+        text,
         atlas-re,
-        hspec,
-        random ^>= 1.2.1,
-        text ^>= 2.0.2,
-        vector ^>=  0.13.1.0,
-        mtl ^>= 2.2.2
+        hspec
     hs-source-dirs: test
     other-modules:
-        Typing.InferenceSpec,
-        NormalizationSpec,
-        EvalSpec,
-        Parsing.TacticSpec,
-        CostAnalysis.CoeffSpec,
-        CostAnalysis.Potential.Log.Helper,
-        CostAnalysis.PotentialSpec,
-        CostAnalysis.Potential.Log.BaseSpec,
-        CostAnalysis.Potential.Log.ConstraintsSpec,
-        CostAnalysis.Potential.Log.WeakeningSpec
+        RegressionSpec
     default-language: Haskell2010
     build-tool-depends: hspec-discover:hspec-discover
- 
