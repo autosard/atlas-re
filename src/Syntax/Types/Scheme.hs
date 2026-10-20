@@ -18,7 +18,7 @@ import Syntax.PrettyPrint (PrettyPrint(..))
 import Syntax.Types.Type(Type(TGen, TFun), unprod, match)
 import Syntax.Types.Subst(Types(apply, tv))
 import Data.List (intercalate)
-import Data.Foldable (asum)
+import Data.Maybe (isJust)
 
 
 instance Types Scheme where
@@ -57,12 +57,17 @@ quantify vs t = Forall (length vs) (apply s t)
 quantifyAll :: Type -> Scheme
 quantifyAll t = quantify (tv t) t
 
-findByType :: Type -> Map Scheme a -> Maybe a
-findByType t m = asum $ map valForKey $ M.toList m
-  where 
-    valForKey (Forall _ k, v) = do
-      k `match` t
-      return v
+-- | Looks up the entry of the most specific scheme that matches the given
+-- type, e.g. List (Hp a) instead of List a. Returns the matching schemes if
+-- there is no unique most specific one.
+findByType :: Type -> Map Scheme a -> Either [Scheme] (Maybe a)
+findByType t m = case filter (\(s, _) -> all (atLeastAsSpecific s . fst) matches) matches of
+  [] | null matches -> Right Nothing
+  [(_, v)] -> Right (Just v)
+  _ -> Left (map fst matches)
+  where
+    matches = [(s, v) | (s@(Forall _ k), v) <- M.toList m, isJust (k `match` t)]
+    atLeastAsSpecific (Forall _ k1) (Forall _ k2) = isJust (k2 `match` k1)
 
 
 instance PrettyPrint Scheme where

@@ -75,7 +75,8 @@ analyzeProgram env prog = do
   case result of
     Left (DerivErr srcErr) -> printSrcError srcErr
     Left (UnsatErr core) -> buildResult state' (Left core)
-    Left (MissingMeasure t m) -> die $ "Missing definition of measure '" ++ show m ++ "' for type '" ++ prettyPrint t ++ "'."  
+    Left (MissingMeasure t m) -> die $ "Missing definition of measure '" ++ show m ++ "' for type '" ++ prettyPrint t ++ "'."
+    Left (ProofErr msg) -> die msg
     Right _ -> buildResult state' (Right solution)
   where buildResult state result =
           return $ AnalysisResult
@@ -189,7 +190,11 @@ genSig prog fn sig = do
   tl <- use tLang
   from <- freshTempl [x | (x,t) <- argsWithT, isResourceRelevant t]
         
-  let binder = maybe "𝜈" csBinder (sig^.costSig) 
+  -- like the arguments (_arg0, ...), the result gets a name that cannot occur
+  -- in the source, since the body is analysed with the binder in scope and a
+  -- variable of the same name would be identified with the result. The
+  -- binder of the annotation is renamed in assertSigMatchesAnn.
+  let binder = "_res"
   to <- freshTempl [binder]
   return $ FreeSig from to binder args
 

@@ -80,6 +80,8 @@ import Syntax.Expression
 import Syntax.Pattern
 import Syntax.Types.Type
 import Syntax.Types.Scheme (Scheme (Forall), findByType, tFunResult)
+import Syntax.PrettyPrint (prettyPrint)
+import Data.List (intercalate)
 import Syntax.ResourceExpression.Axioms (AxiomSpec)
 import Syntax.Program hiding (AnalysisMode)
 import Syntax.Annotation
@@ -365,8 +367,15 @@ measureEnvForType :: Type -> ProveMonad EnrichedMeasureEnv
 measureEnvForType t = do
   mSig <- use measureSig
   case findByType t mSig of
-    Just env -> return env
-    Nothing -> throwError $ MissingMeasure t Size
+    Right (Just env) -> return env
+    Right Nothing -> throwError $ MissingMeasure t Size
+    Left schemes -> throwError $ ambiguousMeasures t schemes
+
+ambiguousMeasures :: Type -> [Scheme] -> ProofErr
+ambiguousMeasures t schemes = ProofErr $ "Ambiguous measures for type '"
+  ++ prettyPrint t ++ "': the measures for "
+  ++ intercalate ", " (map (\(Forall _ k) -> "'" ++ prettyPrint k ++ "'") schemes)
+  ++ " match, but none of them is more specific than the others."
 
 addVarConstraints :: [(Id, Type)] -> ResourceContext -> ProveMonad ResourceContext
 addVarConstraints xs rctx = do
@@ -394,7 +403,9 @@ sizeTransformable :: Program Positioned -> Id -> ProveMonad Bool
 sizeTransformable prog fn = do
   let tResult = tFunResult $ ((prog^.pSig) M.! fn)^.typeSig
   mSig <- use measureSig
-  return $ isJust (findByType tResult mSig)
+  case findByType tResult mSig of
+    Right found -> return $ isJust found
+    Left schemes -> throwError $ ambiguousMeasures tResult schemes
 
 defineByShift :: (ArithExpr -> ArithExpr) -> FreeTemplate -> ProveMonad (FreeTemplate , [Formula])
 defineByShift shift q = do
