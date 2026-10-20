@@ -1,0 +1,41 @@
+{-# TEMPLATE [log(1,2), pot] #-}
+
+import Data.List
+(**
+ * Pairing heaps in their natural representation, as in
+ * examples/Heap/PairingList.atl: a non-empty heap Hp is a root with a list of
+ * subheaps, Heap adds the empty heap. Shared by the regression tests in
+ * Pairing.*.
+ *)
+
+data Hp a = Hp a (List (Hp a))
+data Heap a = Empty | Some (Hp a)
+
+measure Size (Hp a) where
+  size (Hp x hs) = size hs
+
+measure Size (List (Hp a)) where
+  size Nil = 1
+  size (Cons h hs) = size h + size hs
+
+measure Size (Heap a) where
+  size Empty = 1
+  size (Some h) = size h + 1
+
+measure Potential (Hp a) where
+  pot (Hp x hs) = pot hs
+
+measure Potential (List (Hp a)) where
+  pot Nil = 0
+  pot (Cons h hs) = pot h + pot hs + log(|h| + |hs| - 1)
+
+measure Potential (Heap a) where
+  pot Empty = 0
+  pot (Some h) = pot h + log(|h| + 1)
+
+axiom x >= 1, y >= 1 => log(x + y) >= 1/2 * log(x) + 1/2 * log(y) + 1
+
+link : (h1 : Hp a, h2 : Hp a) | pot h1 + pot h2 + log(|h1| + |h2| - 1) -> (h : Hp a) | pot h
+link (Hp x lx) (Hp y ly) = if x < y
+  then Hp x (Cons (Hp y ly) lx)
+  else Hp y (Cons (Hp x lx) ly)

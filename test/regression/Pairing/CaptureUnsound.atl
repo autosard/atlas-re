@@ -1,0 +1,18 @@
+{-# TEMPLATE [log(1,2), pot] #-}
+
+import Data.List
+import Pairing.Heap
+
+(**
+ * The bound is false: for hs = [h1, h2, h3] with 4, 1 and 1 nodes, cost plus
+ * potential difference exceeds it by about 0.33. It used to be proved, since
+ * the pattern variable h was identified with the result binder h.
+ *)
+
+merge_pairs : (hs : List (Hp a)) | pot hs + 3/2 * log(|hs|) -> (h : Heap a) | pot h
+merge_pairs Nil = Empty
+merge_pairs (Cons h1 t) = match t with
+  | Nil -> Some h1
+  | (Cons h2 hs) -> match ~ merge_pairs hs with
+    | Empty -> Some (link h1 h2)
+    | (Some h) -> Some (link (link h1 h2) h)

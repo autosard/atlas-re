@@ -1,0 +1,23 @@
+{-# TEMPLATE [size] #-}
+
+import Data.List
+
+(**
+ * The measure on List (Pr a b) is more specific than the one on List a of
+ * Data.List and must be used for walk, which is only provable with it. Its
+ * scheme sorts after the one of List a, so a lookup that returns the first
+ * matching measure picks the wrong one.
+ *)
+
+data Pr a b = Pr a b
+
+measure Size (Pr a b) where
+  size (Pr x y) = 1
+
+measure Size (List (Pr a b)) where
+  size Nil = 0
+  size (Cons p ps) = size ps + 2
+
+walk : (l : List (Pr a b)) | 1/2 * |l| -> (y : List (Pr a b)) | 0
+walk Nil = Nil
+walk (Cons p ps) = ~ walk ps

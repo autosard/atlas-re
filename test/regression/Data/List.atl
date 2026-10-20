@@ -1,0 +1,6 @@
+data List a = Nil | Cons a (List a)
+
+measure Size (List a) where
+  size Nil = 0
+  size (Cons x xs) = size xs + 1
+

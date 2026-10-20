@@ -16,7 +16,6 @@ import qualified Data.Set as S
 
 import Lens.Micro.Platform
 
-import System.Exit (die)
 
 import Syntax (Id, Positioned)
 import Syntax.PrettyPrint (prettyPrint)              
@@ -75,8 +74,8 @@ analyzeProgram env prog = do
   case result of
     Left (DerivErr srcErr) -> printSrcError srcErr
     Left (UnsatErr core) -> buildResult state' (Left core)
-    Left (MissingMeasure t m) -> die $ "Missing definition of measure '" ++ show m ++ "' for type '" ++ prettyPrint t ++ "'."
-    Left (ProofErr msg) -> die msg
+    Left (MissingMeasure t m) -> ioError $ userError $ "Missing definition of measure '" ++ show m ++ "' for type '" ++ prettyPrint t ++ "'."
+    Left (ProofErr msg) -> ioError $ userError msg
     Right _ -> buildResult state' (Right solution)
   where buildResult state result =
           return $ AnalysisResult

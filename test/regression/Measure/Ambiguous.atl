@@ -1,0 +1,19 @@
+{-# TEMPLATE [size] #-}
+
+import Data.List
+
+(**
+ * Both measures match Pr (List a) (List b), but neither is more specific than
+ * the other, so the analysis must report an error.
+ *)
+
+data Pr a b = Pr a b
+
+measure Size (Pr (List a) b) where
+  size (Pr x y) = size x
+
+measure Size (Pr a (List b)) where
+  size (Pr x y) = size y
+
+first : (p : Pr (List a) (List b)) | |p| -> (y : List a) | 0
+first (Pr x y) = x
