@@ -29,11 +29,10 @@ import CostAnalysis.Constraint ( ArithExpr(ConstTerm), sum )
 import CostAnalysis.ProveMonad
 import qualified CostAnalysis.Rules as Rule
 import CostAnalysis.Subtyping
-import Text.Show.Pretty (ppShow)
-import Primitive (dbg)
-import Syntax.Types.Type (funTArgs)
 import Syntax.Types.Scheme (tFunArgs)
-import Control.Monad.Extra (ifM)
+import Builtin (funTypes)
+import Syntax.Types.Type (isResourceRelevant)
+
 
 
 type Prove e a = Tactic -> e -> JudgementType -> ResourceContext -> Id -> FreeTemplate -> FreeTemplate -> ProveMonad a
@@ -110,7 +109,7 @@ proveLet :: Prove (Expr Positioned) Derivation
 proveLet tactic e@(Let x e1 e2) judgeType rctx binder q q' = do
   let [t1, t2] = subTactics 2 tactic
       argsO = S.fromList (args q) S.\\ (freeVars e1 S.\\ freeVars e2)
-  o <- freshTempl (x : S.toList argsO)
+  o <- freshTempl ([x | isResourceRelevant (getType e1)] ++ S.toList argsO)
   rctx' <- addVarConstraints [(x, getType e1)] rctx
   deriv1 <- proveExpr t1 e1 judgeType rctx x q o
   deriv2 <- proveExpr t2 e2 judgeType rctx' binder o q'
@@ -121,7 +120,7 @@ proveApp :: Prove (Expr Positioned) Derivation
 proveApp tactic e@(App "error" _) judgeType rctx binder q q' = do
   conclude R.App judgeType q q' [] e []
 proveApp tactic e@(App fn appArgs) judgeType rctx binder q q' = do
-  fnSig <- (M.! fn) <$> use sig
+  fnSig <- lookupSig e fn (length appArgs)
   mSizeSig <- M.lookup fn <$> use sizeSig
   let appVars = map argToVar appArgs
 
@@ -150,6 +149,13 @@ proveApp tactic e@(App fn appArgs) judgeType rctx binder q q' = do
         argToVar (Var x) = x
         argToVar expr = error $ "Encoutered non variable argument for function application: " ++ prettyPrint expr
 
+lookupSig :: Expr Positioned -> Id -> Int -> ProveMonad FreeSig
+lookupSig e fn arity = do
+  sigs <- use sig
+  case M.lookup fn sigs of
+    Just fnSig -> return fnSig
+    Nothing | fn `M.member` Builtin.funTypes -> return $ zeroSig arity
+            | otherwise -> errorFrom e $ "Missing signature for function '" ++ show fn ++ "'."
   
 proveSub :: Prove (Expr Positioned) Derivation
 proveSub tactic@(Rule (Rule.Sub sArgs) _) e judgeType rctx binder q q' = do

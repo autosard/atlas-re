@@ -1,0 +1,29 @@
+{-# TEMPLATE [size, pot] #-}
+
+import Data.List
+
+(**
+ * List (Op a) has only a potential measure and must take its size measure from
+ * the more general List a of Data.List. walk is only provable with both: an
+ * Enq costs one more than a Deq, which is paid by the potential.
+ *)
+
+data Op a = Enq a | Deq
+
+measure Size (Op a) where
+  size (Enq x) = 1
+  size Deq = 1
+
+measure Potential (Op a) where
+  pot (Enq x) = 1
+  pot Deq = 0
+
+measure Potential (List (Op a)) where
+  pot Nil = 0
+  pot (Cons op ops) = pot op + pot ops
+
+walk : (ops : List (Op a)) | |ops| + pot(ops) -> (r : List (Op a)) | 0
+walk Nil = Nil
+walk (Cons op ops) = match op with
+  | (Enq x) -> ~ Cons op (~ walk ops)
+  | Deq -> ~ walk ops

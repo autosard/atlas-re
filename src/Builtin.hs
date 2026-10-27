@@ -65,14 +65,10 @@ dataDefs = M.fromList
        }
    )]
 
-tNat = TAp "Nat" []
-
 funTypes :: Map Id Scheme
 funTypes = M.fromList
   [
     ("error", Forall 1 $ [TAp "String" []] `fn` TGen 0)
-  , ("+", Forall 0 $ [tNat, tNat] `fn` tNat)
-  , ("*", Forall 0 $ [tNat, tNat] `fn` tNat)
   , ("<=", Forall 1 $ [TGen 0, TGen 0] `fn` TAp "Bool" [])
   , (">=", Forall 1 $ [TGen 0, TGen 0] `fn` TAp "Bool" [])
   , ("<", Forall 1 $ [TGen 0, TGen 0] `fn` TAp "Bool" [])

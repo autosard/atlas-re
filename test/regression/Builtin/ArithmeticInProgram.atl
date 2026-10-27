@@ -1,0 +1,13 @@
+{-# TEMPLATE [binom(2)] #-}
+
+measure Size Nat where
+  size Zero = 0
+  size (Suc n) = size n + 1
+
+(**
+ * + and * are only available in resource annotations; programs have to use
+ * the functions of Data.Nat.
+ *)
+
+plus : (x : Nat, y : Nat) | 0 -> (r : Nat) | 0
+plus x y = x + y

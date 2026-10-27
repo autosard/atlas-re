@@ -15,7 +15,7 @@ import Data.Map(Map)
 import qualified Data.Map as M
 import Data.Array(Array)
 import qualified Data.Array as A
-import Control.Monad.Extra(mapAndUnzipM, foldM)
+import Control.Monad.Extra(mapAndUnzipM, foldM, when)
 import Data.List(uncons)
 import Lens.Micro.Platform
 import qualified Data.List as L
@@ -82,6 +82,7 @@ data TypeError
   | OccursCheck Id Type
   | UnboundIdentifier Id
   | UnknownDataConstructor Id
+  | ArithmeticInProgram Id
   deriving Eq
 
 instance Show TypeError where
@@ -92,6 +93,9 @@ instance Show TypeError where
   show (OccursCheck var t) = "Occurs check failed for '" ++ T.unpack var ++ "' in '" ++ show t ++ "'."
   show (UnboundIdentifier id) = "Unbound identifier: '" ++ T.unpack id ++ "'"
   show (UnknownDataConstructor id) = "Unknown data constructor: '" ++ T.unpack id ++ "'"
+  show (ArithmeticInProgram id) = "The operator '" ++ T.unpack id
+    ++ "' is only available in resource annotations. "
+    ++ "Use the functions of Data.Nat (e.g. Data.Nat.add) for arithmetic in programs."
   
 type TI = ExceptT TypeError (State TiState)
 
@@ -268,6 +272,8 @@ tiExpr' ctx cEnv (MatchAnn ann e arms) = do
           unify tp $ getType pat
           unify te $ getType e
 tiExpr' ctx cEnv (AppAnn ann id args) = do
+  when (id `elem` ["+", "-", "*", "negate"]) $
+    throwError (ArithmeticInProgram id)
   to <- newTVar
   scFun <- find id ctx
   tFun <- instScheme scFun

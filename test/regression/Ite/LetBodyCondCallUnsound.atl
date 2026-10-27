@@ -1,0 +1,15 @@
+{-# TEMPLATE [binom(2)] #-}
+
+import Data.List
+
+(**
+ * A call in the condition of a conditional in the body of a let.
+ *)
+
+cmp : (x : a, c : List b) | binom (|c|) 1 -> (r : Bool) | 0
+cmp x c = match c with
+  | Nil -> True
+  | (Cons z zs) -> ~ cmp x zs
+
+f : (x : a, c : List b) | 0 -> (r : Bool) | 0
+f x c = let d = c in if cmp x d then True else False

@@ -1,0 +1,15 @@
+{-# TEMPLATE [binom(2)] #-}
+
+import Data.List
+
+(**
+ * The cost of the call in the condition is accounted for.
+ *)
+
+cmp : (x : a, c : List b) | binom (|c|) 1 -> (r : Bool) | 0
+cmp x c = match c with
+  | Nil -> True
+  | (Cons z zs) -> ~ cmp x zs
+
+f : (x : a, c : List b) | binom (|c|) 1 -> (r : Bool) | 0
+f x c = if cmp x c then True else False

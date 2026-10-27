@@ -12,6 +12,7 @@ import Data.List (isInfixOf)
 import System.Directory (getTemporaryDirectory, createDirectoryIfMissing)
 import System.FilePath ((</>))
 import System.IO.Error (isUserError, ioeGetErrorString)
+import System.Exit (ExitCode(..))
 
 import Loading (loadProgram)
 import Syntax.Program (Program(..), ProgramConfig(..))
@@ -57,3 +58,20 @@ spec = do
       analyze "Measure.Inherit" `shouldReturn` Proved
     it "reports overlapping measures without a most specific one" $
       analyze "Measure.Ambiguous" `shouldThrow` errorContaining "Ambiguous measures"
+
+  describe "conditionals" $ do
+    it "account for the cost of a call in the condition" $
+      analyze "Ite.CondCallUnsound" `shouldReturn` Rejected
+    it "still allow the sound bound for a call in the condition" $
+      analyze "Ite.CondCallSound" `shouldReturn` Proved
+    it "account for the cost of a let-bound condition" $
+      analyze "Ite.LetBoundCallUnsound" `shouldReturn` Rejected
+    it "account for the cost of a call in a condition in the body of a let" $
+      analyze "Ite.LetBodyCondCallUnsound" `shouldReturn` Rejected
+
+  describe "built-in functions" $ do
+    it "comparisons cost nothing outside of conditions" $
+      analyze "Builtin.Ops" `shouldReturn` Proved
+    -- type errors are reported by loadProgram, which exits
+    it "arithmetic is not allowed in programs" $
+      analyze "Builtin.ArithmeticInProgram" `shouldThrow` (== ExitFailure 1)

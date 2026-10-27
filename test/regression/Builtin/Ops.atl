@@ -1,0 +1,19 @@
+{-# TEMPLATE [binom(2)] #-}
+
+measure Size Nat where
+  size Zero = 0
+  size (Suc n) = size n + 1
+
+(**
+ * Built-in comparisons cost nothing, also outside of the condition of a
+ * conditional. Analysing these used to fail with a missing signature.
+ *)
+
+lt : (x : Nat, y : Nat) | 0 -> (r : Bool) | 0
+lt x y = x < y
+
+eq : (x : a, y : a) | 0 -> (r : Bool) | 0
+eq x y = x == y
+
+max : (x : Nat, y : Nat) | 0 -> (r : Nat) | 0
+max x y = if x <= y then y else x

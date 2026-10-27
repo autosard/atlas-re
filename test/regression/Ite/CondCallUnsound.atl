@@ -1,0 +1,16 @@
+{-# TEMPLATE [binom(2)] #-}
+
+import Data.List
+
+(**
+ * The call in the condition of the conditional costs |c|. It used to be
+ * ignored by the analysis, which proved f at cost 0.
+ *)
+
+cmp : (x : a, c : List b) | binom (|c|) 1 -> (r : Bool) | 0
+cmp x c = match c with
+  | Nil -> True
+  | (Cons z zs) -> ~ cmp x zs
+
+f : (x : a, c : List b) | 0 -> (r : Bool) | 0
+f x c = if cmp x c then True else False

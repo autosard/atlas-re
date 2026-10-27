@@ -32,6 +32,7 @@ module CostAnalysis.Template
   , fromResourceExpr
   , ArithTemplate (..)
   , zeroTemplate
+  , zeroSig
   ) where
 
 import Prelude hiding (sum, or, and)
@@ -42,6 +43,7 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
+import Data.Text as T (pack)
 
 import Syntax (Id, freeVars, Substitutable(..), substVar)
 import CostAnalysis.Coeff
@@ -51,7 +53,6 @@ import qualified Syntax.FreeModule as FM
 import Syntax.Measure hiding (Eq)
 import CostAnalysis.Constraint hiding (ConstTerm, VarTerm, fromRScalar)
 import qualified Data.MultiSet as MSet
-import CostAnalysis.TemplateLanguage (genBinoms)
 import Syntax.FreeModule (FreeModule)
 
 --------------------------------------------------------------------------------
@@ -133,6 +134,17 @@ data FreeSig = FreeSig {
   } deriving Show
 
 makeLenses ''FreeSig
+
+zeroSig :: Int -> FreeSig
+zeroSig arity = FreeSig {
+  _fsFrom = noTerms
+  , _fsTo = noTerms
+  , _fsBinder = "_res"
+  , _fsFormArgs = [T.pack ("_arg" ++ show i) | i <- [0 .. arity - 1]]
+  }
+  where noTerms = FreeTemplate { _ftId = -1, _ftTerms = S.empty }
+
+  
 
 --------------------------------------------------------------------------------
 -- BoundTemplate
