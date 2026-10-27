@@ -18,7 +18,7 @@ module Syntax.Measure
   , apply
   , applyST
   , sizeGeOne
-  , stIsLowerBound
+  , stIsUpperBound
   ) where
 
 import Data.Kind (Type)
@@ -54,8 +54,9 @@ data SizeTransform = SizeTransform
   , stRelation :: Relation
   } deriving Show
 
-stIsLowerBound :: SizeTransform -> Bool
-stIsLowerBound st = case stRelation st of
+-- | Ge: the size of the result is at most the right-hand side, |f x| <= rhs.
+stIsUpperBound :: SizeTransform -> Bool
+stIsUpperBound st = case stRelation st of
   Eq -> False
   Ge -> True
 

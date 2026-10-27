@@ -126,7 +126,10 @@ analyzeSize prog = do
                                  trackSolution
                                  obtainSizeTransforms scc Syntax.Measure.Ge
                              ) $
-                    \case (UnsatErr _) -> return ()
+                    \case (UnsatErr _) -> do
+                            constraints .= []
+                            sig %= M.mapWithKey (\fn fs -> if fn `elem` scc
+                                                  then zeroSig (length (fs^.fsFormArgs)) else fs)
    
                 e -> throwError e)
            

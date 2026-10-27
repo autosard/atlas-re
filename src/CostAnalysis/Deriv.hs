@@ -19,7 +19,7 @@ import Syntax.Expression
 import Syntax.Pattern
 import Syntax.Annotation
 
-import Syntax.Measure (ConstPat(..), stIsLowerBound)
+import Syntax.Measure (ConstPat(..), stIsUpperBound)
 import CostAnalysis.Tactic
 import CostAnalysis.Rules (JudgementType(..))
 import qualified CostAnalysis.Rules as R
@@ -132,8 +132,8 @@ proveApp tactic e@(App fn appArgs) judgeType rctx binder q q' = do
     Nothing -> return $ assertEq r' r
     Just st -> do
       let subst = TransformApp appVars st
-      let csPos = if stIsLowerBound st
-                  then assertLeZero r' else []
+      let csPos = if stIsUpperBound st
+                  then assertNonNeg r' else []
       csSubst <- assertEqSubst (binder, subst) r' r
       return $ csPos ++ csSubst
   
@@ -144,7 +144,11 @@ proveApp tactic e@(App fn appArgs) judgeType rctx binder q q' = do
               p
         ++ assertEqVarsSubst [fnSig^.fsBinder] [binder] (fnSig^.fsTo) p'
 
-  conclude R.App judgeType q q' (csSplit ++ csRemainder ++ csSig) e []
+  let csUpper = case mSizeSig of
+        Just st | judgeType == CfEq && stIsUpperBound st ->
+                  assertEq (fnSig^.fsTo) (BoundTemplate M.empty)
+        _ -> []
+  conclude R.App judgeType q q' (csSplit ++ csRemainder ++ csSig ++ csUpper) e []
   where argToVar :: Expr Positioned -> Id
         argToVar (Var x) = x
         argToVar expr = error $ "Encoutered non variable argument for function application: " ++ prettyPrint expr
