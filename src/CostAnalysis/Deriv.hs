@@ -24,7 +24,8 @@ import CostAnalysis.Tactic
 import CostAnalysis.Rules (JudgementType(..))
 import qualified CostAnalysis.Rules as R
 import CostAnalysis.Template hiding (assertEqSubst)
-import CostAnalysis.Constraint ( ArithExpr(ConstTerm), sum ) 
+import qualified CostAnalysis.Template as Templ
+import CostAnalysis.Constraint ( ArithExpr(ConstTerm), sum, geZero, zero ) 
                                  
 import CostAnalysis.ProveMonad
 import qualified CostAnalysis.Rules as Rule
@@ -137,7 +138,10 @@ proveApp tactic e@(App fn appArgs) judgeType rctx binder q q' = do
       let subst = TransformApp appVars st
       let csPos = if stIsUpperBound st
                   then assertNonNeg r' else []
-      csSubst <- assertEqSubst (binder, subst) r' r
+      let (tgtTerms, csTgt) = Templ.assertEqSubst True (binder, subst) r' r
+          leftOver = (r^.ftTerms) S.\\ tgtTerms
+          csLeft = concatMap (if judgeType == Cf then geZero . (r!?) else zero . (r!?)) leftOver
+          csSubst = csTgt ++ csLeft
       return $ csPos ++ csSubst
     -- transform left over terms
     _ -> return $ assertEq r' r
