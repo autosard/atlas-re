@@ -35,6 +35,7 @@ module CostAnalysis.Template
   , zeroSig
   ) where
 
+import Data.Ratio (denominator, numerator)
 import Prelude hiding (sum, or, and)
 
 import Data.Map(Map)
@@ -278,9 +279,35 @@ normExpr = FM.linMap normTerm
 
 normTerm :: ResourceTerm -> ResourceExpr
 normTerm (RTLog s) | s == FM.singleton' SId 2 = FM.singleton RTId
-normTerm (RTProd ts) = FM.prod . MSet.toList $ MSet.map normTerm ts
+normTerm (RTProd ts) = FM.linMap mergeBinoms . FM.prod . MSet.toList $ MSet.map normTerm ts
 normTerm (RTBinom ss k) = normBinom ss k
 normTerm t = FM.singleton t
+
+-- | Merges binomial factors of the same variable in a product:
+-- binom(x, a) * binom(x, b) is the sum over i = 0 .. min(a, b) of
+-- (a + b - i)! / (i! (a - i)! (b - i)!) * binom(x, a + b - i),
+-- e.g. binom(x, 1) * binom(x, 1) = 2 binom(x, 2) + binom(x, 1).
+mergeBinoms :: ResourceTerm -> ResourceExpr
+mergeBinoms t@(RTProd ts) = case pick (MSet.toList ts) of
+  Nothing -> FM.singleton t
+  Just (x, a, b, rest) -> FM.sum
+    [ FM.scale (RSConst (fromInteger m)) (mergeBinoms (foldr (<>) (RTBinom (FM.singleton (SVar x)) (a + b - i)) rest))
+    | i <- [0 .. min a b]
+    , let m = fac (a + b - i) `div` (fac i * fac (a - i) * fac (b - i)) ]
+  where
+    single (RTBinom ss k) | [(SVar x, 1)] <- M.toList ss = Just (x, k)
+    single _ = Nothing
+    -- two factors binom(x, a) and binom(x, b) of the same variable x
+    pick fs = case [ (x, a, b, deleteAt k others)
+                   | (i, f) <- zip [0 :: Int ..] fs, Just (x, a) <- [single f]
+                   , let others = deleteAt i fs
+                   , (k, g) <- zip [0 :: Int ..] others, Just (y, b) <- [single g], y == x ] of
+      (found : _) -> Just found
+      [] -> Nothing
+    deleteAt i xs = take i xs ++ drop (i + 1) xs
+    fac :: Int -> Integer
+    fac n = product [1 .. fromIntegral n]
+mergeBinoms t = FM.singleton t
 
 normBinom :: SizeExpr -> Int -> ResourceExpr
 normBinom _ 0 = FM.singleton RTId
@@ -298,6 +325,22 @@ normBinom ss k = case (vars, M.findWithDefault 0 SId ss) of
   (xs, 0) | all ((== 1) . coeff) xs -> FM.fromList
     [ prodOf [RTBinom (FM.singleton x) a | (x, a) <- zip xs as, a > 0]
     | as <- compositions (length xs) k ]
+  -- Vandermonde with a constant: binom(x_1 + ... + x_n + c, k) is the sum of
+  -- binom(c, k - j) * binom(x_1 + ... + x_n, j) for a natural number c
+  (xs, c) | all ((== 1) . coeff) xs && c > 0 && denominator c == 1 -> FM.sum
+    [ FM.scale (RSConst b) (normBinom (M.delete SId ss) j)
+    | j <- [0 .. k], let b = binomial c (k - j), b /= 0 ]
+  -- natural coefficients: c x is x + ... + x (c times), so Vandermonde applies
+  -- to the variables with repetitions; factors of the same variable are then
+  -- merged, e.g. binom(2x, 2) = 2 binom(x, 2) + binom(x, 1) binom(x, 1)
+  --                           = 4 binom(x, 2) + binom(x, 1)
+  (xs, c) | all (natural . coeff) xs && natural c ->
+    let copies = concat [ replicate (fromInteger (numerator (coeff x))) x | x <- xs ]
+        expand j = FM.linMap mergeBinoms $ FM.fromList
+          [ prodOf [RTBinom (FM.singleton x) a' | (x, a') <- zip copies as, a' > 0]
+          | as <- compositions (length copies) j ] in
+    FM.sum [ FM.scale (RSConst b) (expand j)
+           | j <- [0 .. k], let b = binomial c (k - j), b /= 0 ]
   -- binom(c_1 x_1 + ... + c_n x_n + c, 1) = c_1 binom(x_1, 1) + ... + c_n binom(x_n, 1) + c,
   -- e.g. for the size 2|x| of a call f x x
   (xs, c) | k == 1 && all ((>= 0) . coeff) xs && c >= 0 -> FM.fromList' $
@@ -306,6 +349,7 @@ normBinom ss k = case (vars, M.findWithDefault 0 SId ss) of
   (xs, c) -> error $ "cannot normalise arbitrary sums in binomial coeffients: " ++ show xs ++ show c ++ show k
   where
     vars = filter (/= SId) (M.keys ss)
+    natural r = r >= 0 && denominator r == 1
     coeff x = ss M.! x
     prodOf [] = RTId
     prodOf [b] = b

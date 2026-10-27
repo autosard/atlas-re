@@ -8,7 +8,7 @@ import qualified Data.Set as S
 import Data.Set(Set)
 import Prelude hiding (or, and, negate, sum)
 import Lens.Micro.Platform
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Control.Monad (zipWithM, when)
 
 
@@ -127,28 +127,31 @@ proveApp tactic e@(App fn appArgs) judgeType rctx binder q q' = do
   [p, r, p', r'] <- mapM freshFrom [q, q, q', q']
   let csSplit = assertEq q (add p r) ++ assertEq q' (add p' r')
   
+  let viaTransform = judgeType /= Standard && isJust mSizeSig
+      exactPassUpper = case mSizeSig of
+        Just st -> judgeType == CfEq && stIsUpperBound st
+        Nothing -> False
+
   csRemainder <- case mSizeSig of
-    -- transform left over terms
-    Nothing -> return $ assertEq r' r
-    Just st -> do
+    Just st | not exactPassUpper -> do
       let subst = TransformApp appVars st
       let csPos = if stIsUpperBound st
                   then assertNonNeg r' else []
       csSubst <- assertEqSubst (binder, subst) r' r
       return $ csPos ++ csSubst
+    -- transform left over terms
+    _ -> return $ assertEq r' r
   
   -- check signature
-  let csSig = assertEqVarsSubst (fnSig^.fsFormArgs)
+  let csSig = if viaTransform
+        then assertEq p (BoundTemplate M.empty) ++ assertEq p' (BoundTemplate M.empty)
+        else assertEqVarsSubst (fnSig^.fsFormArgs)
               appVars
               (fnSig^.fsFrom)
               p
-        ++ assertEqVarsSubst [fnSig^.fsBinder] [binder] (fnSig^.fsTo) p'
+             ++ assertEqVarsSubst [fnSig^.fsBinder] [binder] (fnSig^.fsTo) p'
 
-  let csUpper = case mSizeSig of
-        Just st | judgeType == CfEq && stIsUpperBound st ->
-                  assertEq (fnSig^.fsTo) (BoundTemplate M.empty)
-        _ -> []
-  conclude R.App judgeType q q' (csSplit ++ csRemainder ++ csSig ++ csUpper) e []
+  conclude R.App judgeType q q' (csSplit ++ csRemainder ++ csSig) e []
   where argToVar :: Expr Positioned -> Id
         argToVar (Var x) = x
         argToVar expr = error $ "Encoutered non variable argument for function application: " ++ prettyPrint expr
