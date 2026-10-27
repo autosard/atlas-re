@@ -37,7 +37,7 @@ import CostAnalysis.Subtyping (templNonNeg)
 import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Order (stratifiedWeights)
 import CostAnalysis.Constraint (sum)
-import CostAnalysis.Coeff (Coeff(Coeff))
+import CostAnalysis.Coeff (Coeff(Coeff), getCoeffs)
 import Control.Monad.Extra (whenM, filterM, forM_, forM)
 import qualified Syntax.Measure (Relation(..))
 import Syntax.ResourceExpression.Inequality (sizeConstraints)
@@ -116,14 +116,14 @@ analyzeSize prog = do
           optimizeScc scc prog
           (do
               strictPass scc
-              trackSolution
+              trackSolution scc
               obtainSizeTransforms scc Syntax.Measure.Eq
            ) `catchError` (\e -> case e of
                 (UnsatErr _)  -> do
                   constraints .= []
                   catchError (do
                                  upperBoundPass scc
-                                 trackSolution
+                                 trackSolution scc
                                  obtainSizeTransforms scc Syntax.Measure.Ge
                              ) $
                     \case (UnsatErr _) -> do
@@ -135,9 +135,12 @@ analyzeSize prog = do
            
         strictPass = analyzeBindingGroup CfEq prog 
         upperBoundPass = analyzeBindingGroup Cf prog
-        trackSolution = do
+        trackSolution scc = do
           (Just coeffs) <- use solution
-          tellSigCs $ concatMap (\(q, v) -> eq (CoeffTerm q) (ConstTerm v)) (M.toList coeffs)
+          fss <- M.elems . (`M.restrictKeys` S.fromList scc) <$> use sig
+          let sigCoeffs = S.fromList $ concatMap (\fs -> getCoeffs (fs^.fsFrom) ++ getCoeffs (fs^.fsTo)) fss
+          tellSigCs $ concatMap (\(q, v) -> eq (CoeffTerm q) (ConstTerm v))
+            (filter ((`S.member` sigCoeffs) . fst) (M.toList coeffs))
 
 
 analyzeCost :: Program Positioned -> ProveMonad ()
