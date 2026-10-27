@@ -94,18 +94,18 @@ prod = foldr mult unit
 basis :: FreeModule a b -> Set a
 basis = M.keysSet
 
-map :: (Ord c) => (a -> c) -> FreeModule a b -> FreeModule c b
-map = M.mapKeys
+map :: (Ord c, Num b) => (a -> c) -> FreeModule a b -> FreeModule c b
+map = M.mapKeysWith (+)
 
-mapMaybe :: (Ord c) => (a -> Maybe c) -> FreeModule a b -> FreeModule c b
-mapMaybe f = M.fromList . Data.Maybe.mapMaybe (\(k, v) -> (,v) <$> f k) . M.toList
+mapMaybe :: (Ord c, Num b) => (a -> Maybe c) -> FreeModule a b -> FreeModule c b
+mapMaybe f = M.fromListWith (+) . Data.Maybe.mapMaybe (\(k, v) -> (,v) <$> f k) . M.toList
 
 linMap :: (Ord a, Ord c, Num b, Ord b) => (a -> FreeModule c b) -> FreeModule a b -> FreeModule c b
 linMap f m = sum . Prelude.map go $ M.toList (map f m)
   where go (n, k) = scale k n
 
-bimap :: (Ord a', Ord b') => (a -> a') -> (b -> b') -> FreeModule a b -> FreeModule a' b'
-bimap f g = M.mapKeys f . M.map g
+bimap :: (Ord a', Num b') => (a -> a') -> (b -> b') -> FreeModule a b -> FreeModule a' b'
+bimap f g = M.mapKeysWith (+) f . M.map g
 
 instance (PrettyPrint a, Show b) => PrettyPrint (FreeModule a b) where
   prettyPrint m = intercalate " + " $ Prelude.map ppProd (M.toList m)

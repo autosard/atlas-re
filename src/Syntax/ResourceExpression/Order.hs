@@ -94,9 +94,15 @@ resourceLe guards (RTSize x) (RTSize y) =
 resourceLe guards (RTLog qTerms) (RTLog pTerms) = 
   sizeExprLe guards qTerms pTerms
 
--- 4. Products  
+-- 4. Products of non-negative factors: q_1 ... q_n <= p_1 ... p_m holds if
+-- q_i <= p_i for i <= n and the additional factors p_{n+1}, ..., p_m are at
+-- least 1 (a factor such as binom(|x|, 1) may be 0).
 resourceLe guards (RTProd qTerms) (RTProd pTerms) =
-   all (uncurry (resourceLe guards)) (zip (MSet.toList qTerms) (MSet.toList pTerms))
+  length qs <= length ps
+  && all (uncurry (resourceLe guards)) (zip qs ps)
+  && all (resourceLe guards RTId) (drop (length qs) ps)
+  where qs = MSet.toList qTerms
+        ps = MSet.toList pTerms
 
 -- 1 <= log(s) iff s >= 2, which must follow from the size guards.
 resourceLe guards RTId (RTLog s) =

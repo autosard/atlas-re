@@ -298,6 +298,11 @@ normBinom ss k = case (vars, M.findWithDefault 0 SId ss) of
   (xs, 0) | all ((== 1) . coeff) xs -> FM.fromList
     [ prodOf [RTBinom (FM.singleton x) a | (x, a) <- zip xs as, a > 0]
     | as <- compositions (length xs) k ]
+  -- binom(c_1 x_1 + ... + c_n x_n + c, 1) = c_1 binom(x_1, 1) + ... + c_n binom(x_n, 1) + c,
+  -- e.g. for the size 2|x| of a call f x x
+  (xs, c) | k == 1 && all ((>= 0) . coeff) xs && c >= 0 -> FM.fromList' $
+    [(RTBinom (FM.singleton x) 1, RSConst (coeff x)) | x <- xs]
+    ++ [(RTId, RSConst c) | c /= 0]
   (xs, c) -> error $ "cannot normalise arbitrary sums in binomial coeffients: " ++ show xs ++ show c ++ show k
   where
     vars = filter (/= SId) (M.keys ss)
