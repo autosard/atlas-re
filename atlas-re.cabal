@@ -43,6 +43,7 @@ library
                       Syntax.PrettyPrint,
                       Syntax.ResourceExpression,
                       Syntax.ResourceExpression.Order,
+                      Syntax.ResourceExpression.Binomial,
                       Syntax.ResourceExpression.Pattern,
                       Syntax.ResourceExpression.Axioms,
                       Syntax.ResourceExpression.Inequality,
@@ -138,9 +139,11 @@ test-suite tests
         filepath,
         text,
         atlas-re,
-        hspec
+        hspec,
+        multiset
     hs-source-dirs: test
     other-modules:
         RegressionSpec
+        BinomialSpec
     default-language: Haskell2010
     build-tool-depends: hspec-discover:hspec-discover
