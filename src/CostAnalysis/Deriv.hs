@@ -9,7 +9,7 @@ import Data.Set(Set)
 import Prelude hiding (or, and, negate, sum)
 import Lens.Micro.Platform
 import Data.Maybe (fromMaybe, isJust)
-import Control.Monad (zipWithM, when)
+import Control.Monad (zipWithM)
 
 
 import Syntax (Id, substVar, freeVars, Positioned)
@@ -49,7 +49,7 @@ proveConst :: Prove (Expr Positioned) Derivation
 proveConst _ e@(Const name args) judgeType _ binder q q' = do
   mEnv <- measureEnvForType (getType e)
   let subst = ExpandCtor (ConstPat name (map argToVar args)) mEnv
-  cs <- assertEqSubst (binder, subst) q' q
+  cs <- assertEqSubst (Subst binder subst) q' q
   conclude R.Const judgeType q q' cs e []
   where argToVar (Var x) = x
         argToVar _ = error "Encoutered non variable argument for constructor application."
@@ -92,7 +92,7 @@ proveMatchArm x tactic (MatchArm pat body) judgeType rctx binder q q' = do
   rctx' <- addVarConstraints (pVarsWithType pat) rctx
   mEnv <- measureEnvForType tMatch
   subst <- (`ExpandCtor`  mEnv) <$> simplifyPattern pat
-  (p, cs) <- defEqSubst (x, subst) q
+  (p, cs) <- defEqSubst (Subst x subst) q
   deriv <- proveExpr tactic body judgeType rctx' binder p q'
   concludeArm pat judgeType q q' cs body [deriv]
 proveMatchArm _ _ arm _ _ _ _ _ = errorFrom arm "unsupported pattern in rule (match)."
@@ -138,7 +138,7 @@ proveApp tactic e@(App fn appArgs) judgeType rctx binder q q' = do
       let subst = TransformApp appVars st
       let csPos = if stIsUpperBound st
                   then assertNonNeg r' else []
-      let (tgtTerms, csTgt) = Templ.assertEqSubst True (binder, subst) r' r
+      let (tgtTerms, csTgt) = Templ.assertEqSubst True (Subst binder subst) r' r
           leftOver = (r^.ftTerms) S.\\ tgtTerms
           csLeft = concatMap (if judgeType == Cf then geZero . (r!?) else zero . (r!?)) leftOver
           csSubst = csTgt ++ csLeft

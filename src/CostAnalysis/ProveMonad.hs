@@ -387,13 +387,13 @@ addVarConstraints xs rctx = do
             return $ Just [sizeGeOneCs x | sizeGeOne (emSizeMeasure env)]
           else return Nothing
 
-defEqSubst :: (Id, SubstValue) -> FreeTemplate -> ProveMonad (FreeTemplate, [Formula])
+defEqSubst :: Subst -> FreeTemplate -> ProveMonad (FreeTemplate, [Formula])
 defEqSubst subst q = do
   p <- freshEmptyTempl
   let (tgtTerms, cs) = Templ.assertEqSubst False subst q p
   return (p & ftTerms .~ tgtTerms, cs)
 
-assertEqSubst :: (Id, SubstValue) -> FreeTemplate -> FreeTemplate  -> ProveMonad [Formula]
+assertEqSubst :: Subst -> FreeTemplate -> FreeTemplate  -> ProveMonad [Formula]
 assertEqSubst subst q p = do
   let (tgtTerms, cs) = Templ.assertEqSubst True subst q p
   let leftOverTerms = (p^.ftTerms)  S.\\ tgtTerms

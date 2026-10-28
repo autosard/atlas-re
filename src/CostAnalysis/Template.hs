@@ -25,6 +25,7 @@ module CostAnalysis.Template
   , assertEqVarsSubst
   , assertEqExceptTerm
   , SubstValue (..)
+  , Subst (..)
   , defineFrom
   , add
   , scale
@@ -225,11 +226,20 @@ data SubstValue =
   | TransformApp [Id] SizeTransform
   deriving Show
 
+-- | A substitution applied to the terms of a template: a variable is replaced
+-- by a value (unfolding a measure, applying a size transformer), or several
+-- variables are renamed simultaneously (the formal arguments of a signature to
+-- the actual arguments of a call, which need not be distinct).
+data Subst =
+  Subst Id SubstValue
+  | Rename [(Id, Id)]
+  deriving Show
+
 -- | Assert that the template 'q' subject to a substitution 'subst', equals template 'p' after normalization. 
 --
 -- Formula: q[x -> v] -^-> q' = p
 --
-assertEqSubst :: Bool -> (Id, SubstValue) -> FreeTemplate -> FreeTemplate -> (Set ResourceTerm, [Formula])
+assertEqSubst :: Bool -> Subst -> FreeTemplate -> FreeTemplate -> (Set ResourceTerm, [Formula])
 assertEqSubst checkTarget subst q p = (rhsTerms, constrain reducts)
   where constrain rs = [ Eq
                          (if checkTarget 
@@ -240,38 +250,44 @@ assertEqSubst checkTarget subst q p = (rhsTerms, constrain reducts)
         termFromSrc (t, C.ConstTerm 1) = q!t
         termFromSrc (t, k) = prod2 k (q!t)
         rhsTerms = S.fromList $ map fst reducts
-        reducts = mergeTerms
-                  . reduceTerms subst $ S.toList (terms q)
+        reducts = substImages subst $ S.toList (terms q)
 
--- dont forget that the flips the templates
+-- | The images of the given terms under the substitution, normalised and
+-- grouped by target term: every target term with the source terms that
+-- contribute to it and their factors.
+substImages :: Subst -> [ResourceTerm] -> [(ResourceTerm, [(ResourceTerm, ArithExpr)])]
+substImages subst = mergeTerms . reduceTerms subst
+
 mergeTerms :: [(ResourceTerm, (ResourceTerm, RScalar))] -> [(ResourceTerm, [(ResourceTerm, ArithExpr)])]
 mergeTerms xs = M.toList
   $ M.fromListWith (++) [origin src tgt | (src, tgt) <- xs]
   where origin src (tgt, k) = (tgt, [(src, C.fromRScalar k)])
 
-reduceTerms :: (Id, SubstValue) -> [ResourceTerm] -> [(ResourceTerm, (ResourceTerm, RScalar))]
+reduceTerms :: Subst -> [ResourceTerm] -> [(ResourceTerm, (ResourceTerm, RScalar))]
 reduceTerms subst = concatMap go
   where 
     go t = [(t, t') | t' <- M.toList $ normExpr (reduceTerm subst t)]
 
-reduceTerm :: (Id, SubstValue) -> ResourceTerm -> ResourceExpr
+reduceTerm :: Subst -> ResourceTerm -> ResourceExpr
+reduceTerm (Rename rs) t = FM.singleton $ foldl (\acc (x, y) -> substVar x y acc) t rs
 reduceTerm subst (RTSize x) = fromSizeExpr $ reduceSizeExpr subst (FM.singleton (SVar x))
 reduceTerm subst (RTLog ss) = FM.singleton (RTLog $ reduceSizeExpr subst ss)
 reduceTerm subst (RTBinom ss k) = FM.singleton $ RTBinom (reduceSizeExpr subst ss) k
-reduceTerm (x,  ExpandCtor pat mEnv) t@(RTPhi y)
+reduceTerm (Subst x (ExpandCtor pat mEnv)) t@(RTPhi y)
   | x == y = apply (emPotentialMeasure mEnv) pat
   | otherwise = FM.singleton t
-reduceTerm (x,  _) t@(RTPhi _) = FM.singleton t
+reduceTerm _ t@(RTPhi _) = FM.singleton t
 reduceTerm subst (RTProd ts) = FM.prod . MSet.toList $ MSet.map (reduceTerm subst) ts
 reduceTerm _ RTId = FM.singleton RTId
 
 
-reduceSizeExpr :: (Id, SubstValue) -> SizeExpr -> SizeExpr
-reduceSizeExpr (x, ExpandCtor pat mEnv) sum =
+reduceSizeExpr :: Subst -> SizeExpr -> SizeExpr
+reduceSizeExpr (Subst x (ExpandCtor pat mEnv)) sum =
   let sizeAlg = emSizeMeasure mEnv in
     FM.linSubst (SVar x) (apply sizeAlg pat) sum
-reduceSizeExpr (x, TransformApp args st) sum =
+reduceSizeExpr (Subst x (TransformApp args st)) sum =
   FM.linSubst (SVar x) (applyST st args) sum
+reduceSizeExpr (Rename rs) sum = foldl (\acc (x, y) -> substVar x y acc) sum rs
 
   
 normExpr :: ResourceExpr -> ResourceExpr
@@ -328,17 +344,10 @@ assertEqVarSubst x y q p = concat [(q!?t) `eq` (p!?substVar x y t) | t <- S.toLi
 -- Formula: q[xs -> ys] = p
 --
 assertEqVarsSubst :: (Template a, Template b) => [Id] -> [Id] -> a -> b -> [Formula]
-assertEqVarsSubst xs ys q p = 
-  concat [(q !? t) `eq` (p !? substMultiple t) | t <- S.toList $
-           terms q
-           `S.union`
-           (terms p S.\\ S.map substMultiple (terms q))]
-  where
-    -- Pair up the source and target variables
-    substs = zip xs ys
-    -- Apply each substitution sequentially to the term
-    substMultiple qt = foldl (\accTerm (x, y) -> substVar x y accTerm) qt substs
-    
+assertEqVarsSubst xs ys q p =
+  concat [ (p !? tgt) `eq` sum [ prod2 k (q !? t) | (t, k) <- srcs ] | (tgt, srcs) <- images ]
+  ++ concat [ zero (p !? u) | u <- S.toList (terms p S.\\ S.fromList (map fst images)) ]
+  where images = substImages (Rename (zip xs ys)) (S.toList (terms q))
 
 -- | All coefficients of the template are non-negative.
 assertNonNeg :: (Template a, HasCoeffs a) => a -> [Formula]
