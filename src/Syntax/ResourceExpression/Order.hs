@@ -142,11 +142,14 @@ computeStratifiedCosts g terms = go 1 (S.toList terms)
 -- |x| = 1). This order is not sound for deriving inequalities and must not be
 -- used to generate Farkas rows.
 costLe :: SizeGuardMatrix -> ResourceTerm -> ResourceTerm -> Bool
-costLe g t1 t2 = resourceLe g t1 t2 || dominates t1 t2
+costLe g t1 t2 = resourceLe g t1 t2 || dominates t1 t2 || lowerDegree t1 t2
   where
     dominates t (RTProd ts) = hasSizeFactor ts && not (isProdWithSize t)
     dominates RTId (RTLog s) = not (S.null (freeVars s))
     dominates _ _ = False
+    lowerDegree a b = case (degree a, degree b) of
+      (Just da, Just db) -> da < db
+      _ -> False
     isProdWithSize (RTProd ts) = hasSizeFactor ts
     isProdWithSize _ = False
     hasSizeFactor = any isSize . MSet.toList
@@ -164,3 +167,13 @@ stratifiedWeights g terms = go 0 layers
     go _ [] = []
     go lower (l:ls) = let w = lower + 1
                       in [(t, w) | t <- l] ++ go (lower + w * fromIntegral (length l)) ls
+
+-- | Polynomial degree of a term in the sizes, if the term is polynomial;
+-- logarithms count as degree 0, potentials are not polynomial.
+degree :: ResourceTerm -> Maybe Int
+degree RTId = Just 0
+degree (RTSize _) = Just 1
+degree (RTBinom _ k) = Just k
+degree (RTLog _) = Just 0
+degree (RTProd ts) = sum <$> mapM degree (MSet.toList ts)
+degree (RTPhi _) = Nothing
