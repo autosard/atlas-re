@@ -12,6 +12,8 @@
 #   -c, --compare FILE     results.tsv of an earlier run; report regressions against it
 #   -x, --exclude PREFIX   skip modules with this prefix (repeatable;
 #                          Data. and Potential. are always skipped)
+#   -p, --poly             write bounds as polynomials in the sizes instead of
+#                          binomial coefficients (--poly-bounds)
 #   -h, --help             show this help
 #
 # Positional MODULE_PREFIX arguments restrict the run, e.g. `Heap` or
@@ -30,6 +32,7 @@ examples=${ATLAS_EXAMPLES:-examples}
 out=
 compare=
 excludes=(Data. Potential.)
+extra=()
 filters=()
 
 usage() { sed -n '2,/^$/s/^# \{0,1\}//p' "$0"; }
@@ -43,6 +46,7 @@ while [[ $# -gt 0 ]]; do
     -o|--out)      out=$2; shift 2 ;;
     -c|--compare)  compare=$2; shift 2 ;;
     -x|--exclude)  excludes+=("$2"); shift 2 ;;
+    -p|--poly)     extra+=(--poly-bounds); shift ;;
     -h|--help)     usage; exit 0 ;;
     -*)            echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
     *)             filters+=("$1"); shift ;;
@@ -122,7 +126,7 @@ for m in "${modules[@]}"; do
 
   start=$(date +%s.%N)
   (cd "$work" && timeout "$timeout" "$bin" --search "$examples" analyze \
-       --analysis-mode "$mode" --output "$work/out" "$m") > "$work/log" 2>&1
+       --analysis-mode "$mode" --output "$work/out" "${extra[@]}" "$m") > "$work/log" 2>&1
   rc=$?
   secs=$(awk -v s="$start" -v e="$(date +%s.%N)" 'BEGIN { printf "%.1f", e - s }')
 

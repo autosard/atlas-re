@@ -7,6 +7,7 @@ module CostAnalysis.PrettyProof
   ( renderProof
   , renderProofWithSources
   , proofSourceFiles
+  , BoundForm (..)
   , css
   , js
   ) where
@@ -20,15 +21,16 @@ import qualified Data.Text.Lazy as TL
 import CostAnalysis.Analysis (AnalysisResult)
 import CostAnalysis.PrettyProof.Assets (css, js)
 import CostAnalysis.PrettyProof.Data (proofData, proofSourceFiles)
+import CostAnalysis.PrettyProof.Format (BoundForm (..))
 
 renderProof :: AnalysisResult -> TL.Text
-renderProof = renderProofWithSources M.empty
+renderProof = renderProofWithSources BinomialForm M.empty
 
 -- | Like 'renderProof', but embeds the given source files (as lines) so the
 -- viewer can show the code each rule was applied to. The files a proof refers
 -- to are given by 'proofSourceFiles'.
-renderProofWithSources :: Map FilePath [Text] -> AnalysisResult -> TL.Text
-renderProofWithSources sources result = TL.concat
+renderProofWithSources :: BoundForm -> Map FilePath [Text] -> AnalysisResult -> TL.Text
+renderProofWithSources form sources result = TL.concat
   [ "<!doctype html>\n"
   , "<html lang=\"en\">\n"
   , "<head>\n"
@@ -49,7 +51,7 @@ renderProofWithSources sources result = TL.concat
   , "</div>\n"
   , "</div>\n"
   , "<script id=\"proof-data\" type=\"application/json\">"
-  , TL.replace "</" "<\\/" (encodeToLazyText (proofData sources result))
+  , TL.replace "</" "<\\/" (encodeToLazyText (proofData form sources result))
   , "</script>\n"
   , "<script src=\"proof.js\"></script>\n"
   , "</body>\n"

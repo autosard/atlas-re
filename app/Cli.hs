@@ -53,6 +53,7 @@ data AnalyzeOptions = AnalyzeOptions {
   switchPrintProg :: Bool,
   switchPrintObjective :: Bool,
   switchDumpCoeffs :: Bool,
+  switchPolyBounds :: Bool,
   switchInferPotential :: Bool}
 
 runOptionsP :: Parser AnalyzeOptions
@@ -83,6 +84,9 @@ runOptionsP = do
   switchDumpCoeffs <- switch
     (long "dump-coeffs"
     <> help "Dump the values of found coefficients.")
+  switchPolyBounds <- switch
+    (long "poly-bounds"
+    <> help "Show bounds as polynomials in the sizes instead of binomial coefficients, e.g. ½·|l|² + ½·|l| instead of binom(|l|, 1) + binom(|l|, 2).")
   switchInferPotential <- switch
     (long "infer-potential"
     <> help "Ignore given potential functions and infer them instead. Requires --analysis-mode check.")

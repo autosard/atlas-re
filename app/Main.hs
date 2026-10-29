@@ -112,7 +112,7 @@ run Options{..} AnalyzeOptions{..} = do
   start <- getMonotonicTime
   result <- liftIO $ analyzeProgram env prog
   elapsed <- subtract start <$> getMonotonicTime
-  proofFile <- writeHtmlProof outputPath result
+  proofFile <- writeHtmlProof (if switchPolyBounds then PolynomialForm else BinomialForm) outputPath result
   let took = " (" ++ showFFloat (Just 1) elapsed "s)"
   case _arResult result of
     Left _ -> do
@@ -173,10 +173,10 @@ removeInstances path = do
     mapM_ (removeFile . (path </>))
       [f | f <- files, "instance" `isPrefixOf` f, takeExtension f == ".smt"]
 
-writeHtmlProof :: FilePath -> AnalysisResult -> IO String
-writeHtmlProof path result = do
+writeHtmlProof :: BoundForm -> FilePath -> AnalysisResult -> IO String
+writeHtmlProof form path result = do
   sources <- M.fromList <$> mapM (\f -> (,) f . T.lines <$> TextIO.readFile f) (proofSourceFiles result)
-  let html = renderProofWithSources sources result
+  let html = renderProofWithSources form sources result
   path <- liftIO $ makeAbsolute path
   liftIO $ createDirectoryIfMissing True path
   liftIO $ TextLazyIO.writeFile (path </> "index.html") html

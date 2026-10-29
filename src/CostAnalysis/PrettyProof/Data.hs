@@ -189,8 +189,8 @@ showSizeTransform fn (SizeTransform lhs rhs rel) =
 -- Document
 --------------------------------------------------------------------------------
 
-proofData :: Map FilePath [Text] -> AnalysisResult -> Value
-proofData sources result = object
+proofData :: BoundForm -> Map FilePath [Text] -> AnalysisResult -> Value
+proofData form sources result = object
   [ "result" .= (if sat then "sat" else "unsat" :: String)
   , "objective" .= objective
   , "file" .= listToMaybe (nodeFiles result)
@@ -251,9 +251,9 @@ proofData sources result = object
           , "binder" .= _fsBinder s
           , "from" .= _ftId (_fsFrom s)
           , "to" .= _ftId (_fsTo s)
-          , "pre" .= fmap (showBound . btCoeffs) (boundOf ctx (_fsFrom s))
-          , "post" .= fmap (showBound . btCoeffs) (boundOf ctx (_fsTo s))
-          , "cost" .= fmap (showBound . btCoeffs . amortisedCost) (boundOf ctx (_fsFrom s))
+          , "pre" .= fmap (showBoundAs form . btCoeffs) (boundOf ctx (_fsFrom s))
+          , "post" .= fmap (showBoundAs form . btCoeffs) (boundOf ctx (_fsTo s))
+          , "cost" .= fmap (showBoundAs form . btCoeffs . amortisedCost) (boundOf ctx (_fsFrom s))
           ]
 
     encodePot (scheme, clauses) = object

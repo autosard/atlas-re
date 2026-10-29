@@ -5,6 +5,8 @@ module CostAnalysis.PrettyProof.Format
   , showSize
   , showTerm
   , showBound
+  , BoundForm (..)
+  , showBoundAs
   , showRScalarExpr
   , showPattern
   , ConstraintRow (..)
@@ -26,6 +28,7 @@ import Control.Monad (foldM)
 import CostAnalysis.Coeff (Coeff (..))
 import CostAnalysis.Constraint (Formula (..), ArithExpr (..))
 import Syntax.ResourceExpression
+import qualified Syntax.ResourceExpression.Polynomial as P
 import Syntax.Pattern (Pattern (..))
 
 --------------------------------------------------------------------------------
@@ -82,6 +85,29 @@ termBody t = showTerm t
 -- | A template with known coefficients, e.g. @½·log(|t|) + log(|t|+1) + 1@.
 showBound :: Map ResourceTerm Rational -> String
 showBound m = joinSigned [(v, termBody t) | (t, v) <- M.toList m, v /= 0]
+
+-- | How bounds are displayed: as found, i.e. in binomial coefficients, or
+-- expanded into polynomials over the sizes, e.g. @½·|l|² + ½·|l|@.
+data BoundForm = BinomialForm | PolynomialForm
+  deriving (Eq, Show)
+
+showBoundAs :: BoundForm -> Map ResourceTerm Rational -> String
+showBoundAs BinomialForm m = showBound m
+showBoundAs PolynomialForm m = joinSigned
+  [ (k, showMonomial mono) | (mono, k) <- sortOn (degree . fst) (P.monomials (P.fromBound m)) ]
+  where
+    -- highest degree first, logarithmic factors after polynomial ones
+    degree mono = (negate (length [() | P.AVar _ <- MSet.toList mono]), negate (MSet.size mono), mono)
+
+showMonomial :: P.Monomial -> String
+showMonomial mono = intercalate "·" (map power (MSet.toOccurList mono))
+  where
+    power (a, 1) = showAtom a
+    power (a, n) = showAtom a ++ superscript n
+    showAtom (P.AVar x) = "|" ++ T.unpack x ++ "|"
+    showAtom (P.AOpaque t) = showTerm t
+    superscript n = map (\c -> M.findWithDefault c c sup) (show n)
+    sup = M.fromList (zip "0123456789" "⁰¹²³⁴⁵⁶⁷⁸⁹")
 
 -- | Resource expressions whose coefficients may still be unknowns (potential
 -- functions before a solution is applied).
