@@ -44,6 +44,7 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import Lens.Micro.Platform
 import Data.Maybe (fromMaybe)
+import Data.Ratio (denominator)
 import Data.Text as T (pack)
 
 import Syntax (Id, freeVars, Substitutable(..), substVar)
@@ -269,6 +270,11 @@ reduceTerms subst = concatMap go
     go t = [(t, t') | t' <- M.toList $ normExpr (reduceTerm subst t)]
 
 reduceTerm :: Subst -> ResourceTerm -> ResourceExpr
+-- An upper bound on |x| may only be substituted where the term is monotone in
+-- |x| (rule KeepSize); otherwise the term is kept, i.e. it cannot be related
+-- to the terms before the call and its coefficient must be zero.
+reduceTerm (Subst x (TransformApp _ st)) t
+  | stIsUpperBound st && not (monotoneIn x t) = FM.singleton t
 reduceTerm (Rename rs) t = FM.singleton $ foldl (\acc (x, y) -> substVar x y acc) t rs
 reduceTerm subst (RTSize x) = fromSizeExpr $ reduceSizeExpr subst (FM.singleton (SVar x))
 reduceTerm subst (RTLog ss) = FM.singleton (RTLog $ reduceSizeExpr subst ss)
@@ -280,6 +286,29 @@ reduceTerm _ t@(RTPhi _) = FM.singleton t
 reduceTerm subst (RTProd ts) = FM.prod . MSet.toList $ MSet.map (reduceTerm subst) ts
 reduceTerm _ RTId = FM.singleton RTId
 
+
+-- | Whether the value of the term does not decrease when |x| increases (for
+-- natural sizes). binom(u, k) for k >= 2 is monotone only on the natural
+-- numbers, e.g. binom(-1, 2) > binom(0, 2), so u must have natural
+-- coefficients and a non-negative constant.
+monotoneIn :: Id -> ResourceTerm -> Bool
+monotoneIn x t = case t of
+  RTSize _ -> True
+  RTLog s -> coeffOf s >= 0
+  RTBinom s 1 -> coeffOf s >= 0
+  RTBinom s _ -> natural s
+  RTProd ts -> all (\f -> monotoneIn x f && nonNeg f) (MSet.toList ts)
+  RTPhi _ -> True
+  RTId -> True
+  where
+    coeffOf s = M.findWithDefault 0 (SVar x) s
+    natural s = all (\c -> c >= 0 && denominator c == 1) (M.elems s)
+    -- factors of a product must be non-negative for the product to be monotone
+    nonNeg (RTBinom s 1) = all (>= 0) (M.elems s)
+    nonNeg (RTBinom s _) = natural s
+    nonNeg (RTPhi _) = False
+    nonNeg (RTProd fs) = all nonNeg (MSet.toList fs)
+    nonNeg _ = True
 
 reduceSizeExpr :: Subst -> SizeExpr -> SizeExpr
 reduceSizeExpr (Subst x (ExpandCtor pat mEnv)) sum =

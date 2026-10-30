@@ -18,10 +18,13 @@
 -- Soundness. The rewritten expression equals binom(u, k) at every point, so
 -- for an exact size transformer (u is the size of a value, a natural number)
 -- the meaning is preserved. For an inexact transformer (|r| <= u) the analysis
--- additionally relies on monotonicity, binom(|r|, k) <= binom(u, k), which holds
--- since u is a natural number when the coefficients are integers (u >= |r| >= 0).
--- Fractional coefficients are therefore only supported for k = 1 (where
--- binom(u, 1) = u is monotone for all u); otherwise normalisation fails.
+-- additionally relies on monotonicity, binom(v, k) <= binom(u, k) for v <= u,
+-- which holds for k >= 2 only on the natural numbers (binom(-1, 2) > binom(0, 2)).
+-- Reduction therefore substitutes an inexact transformer into binom(v, k) with
+-- k >= 2 only if v has natural coefficients and a non-negative constant
+-- ('monotoneIn' in CostAnalysis.Template). Fractional coefficients are only
+-- supported for k = 1 (where binom(u, 1) = u is monotone for all u); otherwise
+-- normalisation fails.
 module Syntax.ResourceExpression.Binomial
   ( normBinom
   , mergeBinoms
