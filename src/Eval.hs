@@ -1,128 +1,197 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
-{-# LANGUAGE InstanceSigs #-}
 
-module Eval where
+-- | A big-step interpreter that counts the ticks of an evaluation. It works on
+-- loaded programs (elaborated, typed and normalised), and on expressions of
+-- any stage, so that expressions given on the command line can be evaluated
+-- without type checking.
+module Eval
+  ( Val (..)
+  , EvalError (..)
+  , EvalResult (..)
+  , evalInProgram
+  , printVal
+  ) where
 
 import qualified Data.Map as M
-import Data.Map(Map)
-
-import Syntax.Ast
-import Primitive(Id)
-import Control.Monad (msum)
-import Control.Monad.Except (Except, liftEither, runExcept, MonadError (throwError))
-import Control.Monad.State(StateT, runStateT)
-import Control.Monad.Reader (ReaderT (runReaderT), lift, asks)
-import Data.Either.Extra (maybeToEither)
-import Syntax.Constants(evalConst, algebraicConsts, toBool)
+import Data.Map (Map)
+import qualified Data.Text as T
+import Data.Ratio (numerator, denominator)
 import Data.Maybe (fromMaybe)
-import System.Random
-import Data.Random.Sample
-import Data.Random.Distribution.Bernoulli (Bernoulli(Bernoulli))
+import Control.Monad (msum, zipWithM)
+import Control.Monad.Except (ExceptT, runExceptT, throwError)
+import Control.Monad.State.Strict (State, runState)
+import Control.Monad.Reader (ReaderT, runReaderT, asks)
+import System.Random (StdGen, uniformR)
 import Lens.Micro.Platform
+
+import Syntax (Id, Positioned)
+import Syntax.Expression
+import Syntax.Pattern
+import Syntax.Program
+
+data Val = ConstVal !Id ![Val]
+  deriving (Eq, Show)
+
+data EvalError
+  = UnboundIdentifier !Id
+  | UndefinedFunction !Id
+  | NonExhaustivePatterns !String
+  | RuntimeError !String
+    -- | a call of @error@, e.g. for a raised exception of the RaML source
+  | ErrorCall !String
+  deriving Eq
+
+instance Show EvalError where
+  show (UnboundIdentifier x) = "Unbound identifier '" ++ T.unpack x ++ "'."
+  show (UndefinedFunction f) = "Undefined function '" ++ T.unpack f ++ "'."
+  show (NonExhaustivePatterns e) = "Non-exhaustive patterns in '" ++ e ++ "'."
+  show (RuntimeError msg) = msg
+  show (ErrorCall msg) = "error " ++ msg
+
+-- | The cost is also reported for evaluations that end in a call of @error@.
+data EvalResult = EvalResult
+  { erCost :: !Rational
+  , erVal :: !(Either String Val)
+  } deriving Show
+
+type Env = Map Id Val
+
+data EvalEnv = EvalEnv
+  { _eeDefs :: Map Id (FunDef Positioned)
+    -- | position of each constructor in its data type, for comparisons
+  , _eeCtorIndex :: Map Id Int
+  }
+
+data EvalState = EvalState
+  { _rng :: !StdGen
+  , _cost :: !Rational
+  }
+
+makeLenses ''EvalEnv
+makeLenses ''EvalState
+
+type Eval = ReaderT EvalEnv (ExceptT EvalError (State EvalState))
 
 defaultCost :: Rational
 defaultCost = 1
 
-type Env = Map Id Val
+-- | Evaluates the expression with the functions of the program. Returns the
+-- result, the incurred cost and the updated random generator (used by coins).
+evalInProgram :: Program Positioned -> Expr a -> StdGen -> Either EvalError (EvalResult, StdGen)
+evalInProgram prog e g =
+  case (`runState` EvalState g 0) . runExceptT . (`runReaderT` env) $ evalExpr M.empty e of
+    (Right v, s) -> Right (EvalResult (s ^. cost) (Right v), s ^. rng)
+    (Left (ErrorCall msg), s) -> Right (EvalResult (s ^. cost) (Left msg), s ^. rng)
+    (Left err, _) -> Left err
+  where env = EvalEnv (prog ^. pFunDefs) ctorIndex
+        ctorIndex = M.fromList
+          [ (ciName c, i)
+          | info <- M.elems (prog ^. pDataEnv)
+          , (i, c) <- zip [0..] (diCtors info) ]
 
-type DefMap = Map Id TypedFunDef
+--------------------------------------------------------------------------------
+-- Values
+--------------------------------------------------------------------------------
 
-data EvalError
-  = UnboundIdentifier !Id
-  | NonExaustivePatterns !TypedExpr
-  deriving Eq
+natVal :: Int -> Val
+natVal 0 = ConstVal "Zero" []
+natVal n = ConstVal "Suc" [natVal (n - 1)]
 
-instance Show EvalError where
-  show :: EvalError -> String
-  show (UnboundIdentifier id) = "Unbound identifier: '" ++ show id ++ "'"
+fromNat :: Val -> Maybe Int
+fromNat (ConstVal "Zero" []) = Just 0
+fromNat (ConstVal "Suc" [n]) = (+ 1) <$> fromNat n
+fromNat _ = Nothing
 
-data EvalState = EvalState {
-  _rng :: !StdGen,
-  _cost :: !Rational}
-  deriving Show
+boolVal :: Bool -> Val
+boolVal True = ConstVal "True" []
+boolVal False = ConstVal "False" []
 
-makeLenses ''EvalState
-                   
-type Eval = ReaderT DefMap (StateT EvalState (Except EvalError))
+-- | Prints values in ATLAS syntax, with natural numbers as literals.
+printVal :: Val -> String
+printVal = go False
+  where go _ v | Just n <- fromNat v = show n
+        go _ (ConstVal "(,)" [x, y]) = "(" ++ go False x ++ ", " ++ go False y ++ ")"
+        go _ (ConstVal c []) = T.unpack c
+        go nested (ConstVal c args) = paren nested $ unwords (T.unpack c : map (go True) args)
+        paren True s = "(" ++ s ++ ")"
+        paren False s = s
 
-bernoulli :: Rational -> Bernoulli Double Bool
-bernoulli p = Bernoulli (fromRational p) 
+-- | Structural order on values: constructors are ordered as in their data
+-- declaration (e.g. Zero < Suc), arguments lexicographically.
+compareVal :: Map Id Int -> Val -> Val -> Ordering
+compareVal idx (ConstVal c1 args1) (ConstVal c2 args2) =
+  case compare (rank c1) (rank c2) of
+    EQ -> mconcat (zipWith (compareVal idx) args1 args2)
+    o -> o
+  where rank c = (M.lookup c idx, c)
+
+--------------------------------------------------------------------------------
+-- Evaluation
+--------------------------------------------------------------------------------
+
+lookupVar :: Id -> Env -> Eval Val
+lookupVar x env = maybe (throwError (UnboundIdentifier x)) return (M.lookup x env)
 
 flipCoin :: Rational -> Eval Bool
 flipCoin p = do
   g <- use rng
-  let (b, g') = samplePure (bernoulli p) g
+  let d = denominator p
+      (k, g') = uniformR (0, d - 1) g
   rng .= g'
-  return b
+  return (k < numerator p)
 
-find :: Id -> Env -> Eval Val
-find id env = do
-  let maybeVal = M.lookup id env
-  lift $ liftEither (maybeToEither (UnboundIdentifier id) maybeVal)
-
-evalEval :: DefMap -> EvalState -> Eval a -> Either EvalError (StdGen, (Rational, a))
-evalEval defs initState eval = runExcept (
-  do
-    (val, s) <- (`runStateT` initState) . (`runReaderT` defs) $ eval
-    return (s^.rng, (s ^. cost, val)))
-
-evalWithProgram :: TypedProgram -> TypedExpr -> StdGen -> (StdGen, (Rational, Val))
-evalWithProgram mod exp rng = case evalEval (defs mod) (EvalState rng 0) (evalExpr M.empty exp) of
-  Left e -> error $ show e
-  Right r -> r
-  where splitDef fun@(Fn id _ _) = (id, fun)
-
-matchPatterns :: Val -> [TypedMatchArm] -> Maybe (Env, TypedExpr)
-matchPatterns val arms = msum $ map (matchArm val) arms
-  where matchArm val (MatchArm pat e) = (,e) <$> match val pat
-
-match :: Val -> TypedPattern -> Maybe Env
-match (NumVal _) _ = Nothing
-match (ConstVal id1 args) (PConst _ id2 vars)
-  | id1 == id2 && length args == length vars = Just $ bindPatVars vars args
-match val (PVar _ id) = Just $ M.singleton id val
-match _ (PWildcard _) = Just M.empty
-match _ _ = Nothing
-
-bindPatVars :: [PatternVar a] -> [Val] -> Env
-bindPatVars vars vals = foldr go M.empty $ zip vars vals
-  where go (var, val) env = case var of
-          (Id _ id) -> M.insert id val env
-          (WildcardVar _) -> env
-
-evalExpr :: Env -> TypedExpr -> Eval Val
-evalExpr env (Var id) = find id env
-evalExpr env (ConstAnn ann id args) = do
-  args' <- mapM (evalExpr env) args
-  if id `elem` algebraicConsts
-    then return $ ConstVal id args'
-    else return $ evalConst id args'
+evalExpr :: Env -> Expr a -> Eval Val
+evalExpr env (Var x) = lookupVar x env
+evalExpr _ (Lit (LNat n)) = return $ natVal n
+evalExpr _ (Lit (LString s)) = return $ ConstVal (T.pack (show s)) []
+evalExpr _ (Lit l) = throwError $ RuntimeError ("Literal " ++ show l ++ " is not a value.")
+evalExpr env (Const c args) = ConstVal c <$> mapM (evalExpr env) args
 evalExpr env (Ite e1 e2 e3) = do
-  val1 <- evalExpr env e1
-  case val1 of
-    (ConstVal "true" []) -> evalExpr env e2
-    (ConstVal "false" []) -> evalExpr env e3
-    _nonBool -> error "evaluating test in ITE returned non boolean value"    
-evalExpr env me@(Match e arms) = do
-  val <- evalExpr env e
-  case matchPatterns val arms of
-    Just (env', e) -> evalExpr (M.union env' env) e
-    Nothing -> throwError (NonExaustivePatterns me)
-evalExpr env (App id args) = do
-  maybeDef <- asks (M.lookup id)
-  def <- lift $ liftEither (maybeToEither (UnboundIdentifier id) maybeDef)
-  let (Fn _ argVars body) = def
-  args' <- mapM (evalExpr env) args
-  let bindings = M.fromList $ zip argVars args'
-  let env' = M.union bindings env
-  evalExpr env' body
-evalExpr env (Let id e1 e2) = do
-  val1 <- evalExpr env e1
-  let env' = M.insert id val1 env
-  evalExpr env' e2
-evalExpr env (Coin p) = toBool <$> flipCoin p
+  b <- evalExpr env e1
+  case b of
+    ConstVal "True" [] -> evalExpr env e2
+    ConstVal "False" [] -> evalExpr env e3
+    v -> throwError $ RuntimeError ("Condition evaluated to the non-boolean " ++ printVal v ++ ".")
+evalExpr env e@(Match scrut arms) = do
+  v <- evalExpr env scrut
+  case msum [ (, body) <$> matchPat v pat | MatchArm pat body <- arms ] of
+    Just (binds, body) -> evalExpr (M.union binds env) body
+    Nothing -> throwError $ NonExhaustivePatterns (printExprHead' e)
+  where printExprHead' = takeWhile (/= '\n') . printExpr (const "") 0
+evalExpr env (Let x e1 e2) = do
+  v <- evalExpr env e1
+  evalExpr (M.insert x v env) e2
 evalExpr env (Tick c e) = do
-  cost += fromMaybe defaultCost c 
+  cost += fromMaybe defaultCost c
   evalExpr env e
+evalExpr _ (Coin p) = boolVal <$> flipCoin p
+evalExpr env (App "error" args) = do
+  vals <- mapM (evalExpr env) args
+  throwError $ ErrorCall (unwords (map printVal vals))
+evalExpr env (App f args) = do
+  vals <- mapM (evalExpr env) args
+  case (f, vals) of
+    (op, [v1, v2]) | Just cmp <- lookup op comparisons -> do
+      idx <- view eeCtorIndex
+      return $ boolVal (cmp (compareVal idx v1 v2))
+    _ -> do
+      def <- asks (M.lookup f . _eeDefs) >>= maybe (throwError (UndefinedFunction f)) return
+      let params = def ^. funArgs
+      if length params /= length vals
+        then throwError $ RuntimeError ("Function '" ++ T.unpack f ++ "' expects "
+                                         ++ show (length params) ++ " arguments, got "
+                                         ++ show (length vals) ++ ".")
+        else evalExpr (M.fromList (zip params vals)) (def ^. funBody)
+  where comparisons =
+          [ ("<", (== LT)), ("<=", (/= GT)), (">", (== GT))
+          , (">=", (/= LT)), ("==", (== EQ)) ]
+evalExpr _ _ = throwError $ RuntimeError "Unsupported expression."
+
+matchPat :: Val -> Pattern a -> Maybe Env
+matchPat v (PVar _ x) = Just (M.singleton x v)
+matchPat _ (PWildcard _) = Just M.empty
+matchPat (ConstVal c args) (PConst _ c' pats)
+  | c == c' && length args == length pats = M.unions <$> zipWithM matchPat args pats
+matchPat _ _ = Nothing

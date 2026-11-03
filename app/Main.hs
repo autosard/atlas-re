@@ -53,8 +53,11 @@ import Cli(Options(..),
            BenchOptions(..),
            Command(..), cliP)
 
-import System.Random (getStdGen)
+import System.Random (StdGen, getStdGen, mkStdGen)
+import Parsing.Program (parseExpr)
+import Eval (EvalResult(..), evalInProgram, printVal)
 import Loading (loadProgram)
+import Primitive (toIntegerExact)
 
 --import CostAnalysis.Constraint (Constraint)
 import Control.Monad (when, unless)
@@ -67,7 +70,7 @@ app :: Options -> IO ()
 app options = do
   case optCommand options of
     Analyze runOptions -> run options runOptions
-    -- Eval evalOptions -> eval options evalOptions
+    Eval evalOptions -> eval options evalOptions
     -- Bench benchOptions -> bench options benchOptions
 
 run :: Options -> AnalyzeOptions -> IO ()
@@ -127,6 +130,41 @@ run Options{..} AnalyzeOptions{..} = do
       when switchDumpCoeffs $ printSolutionCoeffs solution
       when switchPrintObjective $ putStrLn ("Objective: " ++ objective)
       putStrLn $ "Proof: " ++ proofFile
+
+-- | Prints one line per expression: the cost (mean cost with --samples), the
+-- value of the first evaluation and, with --samples, the standard deviation of
+-- the cost, separated by tabs.
+eval :: Options -> EvalOptions -> IO ()
+eval Options{..} EvalOptions{..} = do
+  prog <- loadProgram searchPath evalMod Nothing
+  exprs <- if null evalExprs
+    then filter (not . T.null . T.strip) . T.lines <$> TextIO.getContents
+    else return evalExprs
+  g0 <- maybe getStdGen (return . mkStdGen) evalSeed
+  let go _ [] = return ()
+      go g (src:rest) = do
+        let e = parseExpr src
+        (results, g') <- samplesOf (max 1 evalSamples) e g
+        let costs = map erCost results
+            n = fromIntegral (length costs)
+            mean = sum costs / n
+            var = sum [ (c - mean) ^ (2 :: Int) | c <- costs ] / max 1 (n - 1)
+            sd = sqrt (fromRational var :: Double)
+        putStrLn $ showCost mean ++ "\t" ++ either ("error " ++) printVal (erVal (head results))
+          ++ (if evalSamples > 1 then "\t" ++ showFFloat (Just 4) sd "" else "")
+        hFlush stdout
+        go g' rest
+      samplesOf 0 _ g = return ([], g)
+      samplesOf n e g = case evalInProgram prog e g of
+        Left err -> failWith (show err)
+        Right (r, g') -> do
+          (rs, g'') <- samplesOf (n - 1 :: Int) e g'
+          return (r : rs, g'')
+  go g0 exprs
+  where showCost :: Rational -> String
+        showCost r = case toIntegerExact r of
+          Just n -> show n
+          Nothing -> showFFloat (Just 4) (fromRational r :: Double) ""
 
 -- | Progress message on stderr, so that stdout only carries results.
 status :: String -> String -> IO ()

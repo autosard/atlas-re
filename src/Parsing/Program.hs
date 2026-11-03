@@ -55,7 +55,7 @@ parseProgram fileName moduleName contents = case runParser pProgram fileName con
   Left errs -> error $ errorBundlePretty errs
   Right prog -> prog
 
-parseExpr contents = case runParser (pExpr sc) (T.unpack name) contents of
+parseExpr contents = case runParser (sc *> pExpr sc <* eof) (T.unpack name) contents of
   Left errs -> error $ errorBundlePretty errs
   Right prog -> prog
   where name = "<interactive>"

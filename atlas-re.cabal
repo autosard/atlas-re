@@ -29,6 +29,7 @@ library
                       Typing,
                       Contextualization,
                       Normalization,
+                      Eval,
                       
                       Syntax,
                       Syntax.Annotation,

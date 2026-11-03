@@ -39,9 +39,11 @@ optionsP = do
      <> short 's'
      <> metavar "PATH"
      <> help "Search for modules in PATH.")
-   -- the eval and bench commands are currently not implemented
+   -- the bench command is currently not implemented
    optCommand <- hsubparser (command "analyze"
-                             (info analyzeCommandP (progDesc "Perform amortized resource analysis for the given functions.")))
+                             (info analyzeCommandP (progDesc "Perform amortized resource analysis for the given functions."))
+                             <> command "eval"
+                             (info evalCommandP (progDesc "Evaluate expressions and report the incurred cost (ticks).")))
    return Options{..}
 
 data AnalyzeOptions = AnalyzeOptions {
@@ -116,12 +118,28 @@ parseFqn s = case breakEnd (== '.') s of
                    "'. Make sure to specify the target name with <module>[.<function>]."
 
 
-data EvalOptions = EvalOptions { modName :: !Text, expr :: !Text }
+data EvalOptions = EvalOptions
+  { evalMod :: !Text
+  , evalExprs :: ![Text]
+  , evalSeed :: !(Maybe Int)
+  , evalSamples :: !Int }
 
 evalOptionsP :: Parser EvalOptions
-evalOptionsP = EvalOptions
-  <$> argument str (metavar "MODULE")
-  <*> argument str (metavar "EXPR")
+evalOptionsP = do
+  evalSeed <- optional $ option auto
+    (long "seed"
+     <> metavar "N"
+     <> help "Seed of the random generator for coins.")
+  evalSamples <- option auto
+    (long "samples"
+     <> short 'n'
+     <> metavar "N"
+     <> help "Evaluate each expression N times and report the mean cost (for programs with coins)."
+     <> value 1
+     <> showDefault)
+  evalMod <- argument str (metavar "MODULE")
+  evalExprs <- many $ argument str (metavar "EXPR..." <> help "Expressions to evaluate, e.g. 'isort (Cons 2 (Cons 1 Nil))'. Natural number literals denote Peano numbers. Without EXPR, expressions are read from stdin, one per line.")
+  return EvalOptions{..}
 
 evalCommandP :: Parser Command
 evalCommandP = Eval <$> evalOptionsP
