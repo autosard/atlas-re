@@ -219,6 +219,11 @@ elabBinom :: Expr Parsed -> MaybeT Elab ResourceTerm
 elabBinom (App "binom" [x,k]) = do
   sx <- lift $ elabSizeExpr x
   ck <- lift $ elabIntLit k
+  -- resource terms must be non-negative, as template inequality treats them
+  -- as non-negative unknowns; binom(u, k) is for natural u, but e.g.
+  -- binom(|x| - 2, 3) = -1 for |x| = 1
+  when (any (\c -> c < 0 || denominator c /= 1) (M.elems sx)) $
+    lift $ illformedTerm x "Binomial coefficients must have an argument with natural coefficients."
   return $ RTBinom sx ck
 elabBinom _ = empty  
 
