@@ -18,6 +18,7 @@ import Text.Megaparsec (SourcePos(SourcePos), pos1)
 import qualified Data.Text as T
 import qualified Data.List as L
 import Data.Maybe(mapMaybe, isJust)
+import Data.Ratio (denominator)
 
 
 import Syntax (Id, Parsed, Elaborated)
@@ -471,9 +472,11 @@ elabClause mKind (SurfaceClause pos [PConst _ cPat pVars] body) = do
     SSize -> do
       size <- elabSizeExpr body
       -- the analysis assumes |x| >= 1 for every value x if the coefficients of
-      -- each equation sum up to at least 1, which requires non-negative sizes
-      when (any (< 0) (M.elems size)) $
-        throwError $ SourceError pos (ElabError "Size measures must have non-negative coefficients.")
+      -- each equation sum up to at least 1, which requires non-negative sizes.
+      -- Natural coefficients make every size a natural number, on which
+      -- binomial coefficients are monotone (see 'monotoneIn').
+      when (any (\c -> c < 0 || denominator c /= 1) (M.elems size)) $
+        throwError $ SourceError pos (ElabError "Size measures must have natural coefficients.")
       return size
     SPotential -> do
       ts <- elabResourceExpr body

@@ -21,8 +21,8 @@
 -- additionally relies on monotonicity, binom(v, k) <= binom(u, k) for v <= u,
 -- which holds for k >= 2 only on the natural numbers (binom(-1, 2) > binom(0, 2)).
 -- Reduction therefore substitutes an inexact transformer into binom(v, k) with
--- k >= 2 only if v has natural coefficients and a non-negative constant
--- ('monotoneIn' in CostAnalysis.Template). Fractional coefficients are only
+-- k >= 2 only if v and the transformer have natural coefficients and a
+-- non-negative constant ('monotoneIn' in CostAnalysis.Template). Fractional coefficients are only
 -- supported for k = 1 (where binom(u, 1) = u is monotone for all u); otherwise
 -- normalisation fails.
 module Syntax.ResourceExpression.Binomial

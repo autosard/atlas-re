@@ -273,8 +273,8 @@ reduceTerm :: Subst -> ResourceTerm -> ResourceExpr
 -- An upper bound on |x| may only be substituted where the term is monotone in
 -- |x| (rule KeepSize); otherwise the term is kept, i.e. it cannot be related
 -- to the terms before the call and its coefficient must be zero.
-reduceTerm (Subst x (TransformApp _ st)) t
-  | stIsUpperBound st && not (monotoneIn x t) = FM.singleton t
+reduceTerm (Subst x (TransformApp args st)) t
+  | stIsUpperBound st && not (monotoneIn x (applyST st args) t) = FM.singleton t
 reduceTerm (Rename rs) t = FM.singleton $ foldl (\acc (x, y) -> substVar x y acc) t rs
 reduceTerm subst (RTSize x) = fromSizeExpr $ reduceSizeExpr subst (FM.singleton (SVar x))
 reduceTerm subst (RTLog ss) = FM.singleton (RTLog $ reduceSizeExpr subst ss)
@@ -287,17 +287,19 @@ reduceTerm subst (RTProd ts) = FM.prod . MSet.toList $ MSet.map (reduceTerm subs
 reduceTerm _ RTId = FM.singleton RTId
 
 
--- | Whether the value of the term does not decrease when |x| increases (for
--- natural sizes). binom(u, k) for k >= 2 is monotone only on the natural
--- numbers, e.g. binom(-1, 2) > binom(0, 2), so u must have natural
--- coefficients and a non-negative constant.
-monotoneIn :: Id -> ResourceTerm -> Bool
-monotoneIn x t = case t of
+-- | Whether the value of the term does not decrease when |x| is replaced by
+-- its upper bound v (sizes are natural numbers, as size measures have natural
+-- coefficients). binom(u, k) for k >= 2 is monotone only on the natural
+-- numbers, e.g. binom(1/2, 2) < binom(0, 2), so both u and v must have natural
+-- coefficients and a non-negative constant; then u and u[|x| -> v] are
+-- natural numbers.
+monotoneIn :: Id -> SizeExpr -> ResourceTerm -> Bool
+monotoneIn x v t = case t of
   RTSize _ -> True
   RTLog s -> coeffOf s >= 0
   RTBinom s 1 -> coeffOf s >= 0
-  RTBinom s _ -> natural s
-  RTProd ts -> all (\f -> monotoneIn x f && nonNeg f) (MSet.toList ts)
+  RTBinom s _ -> natural s && natural v
+  RTProd ts -> all (\f -> monotoneIn x v f && nonNeg f) (MSet.toList ts)
   RTPhi _ -> True
   RTId -> True
   where
