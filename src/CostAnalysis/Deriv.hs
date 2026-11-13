@@ -56,6 +56,12 @@ proveConst _ e@(Const name args) judgeType _ binder q q' = do
 
 
 proveIte :: Prove (Expr Positioned) Derivation
+proveIte tactic e@(Ite (Coin _) e1 e2) judgeType rctx binder q q'
+  | isCostFree judgeType = do
+  let [t1, t2] = subTactics 2 tactic
+  deriv1 <- proveExpr t1 e1 judgeType rctx binder q q'
+  deriv2 <- proveExpr t2 e2 judgeType rctx binder q q'
+  conclude R.IteCoin judgeType q q' [] e [deriv1, deriv2]
 proveIte tactic e@(Ite (Coin p) e1 e2) judgeType rctx binder q q' = do
   let [t1, t2] = subTactics 2 tactic
   q1 <- freshFrom q
