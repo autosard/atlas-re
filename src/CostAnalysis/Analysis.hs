@@ -13,6 +13,7 @@ import Control.Monad.RWS
 import Data.Map(Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
+import qualified Data.MultiSet as MSet
 
 import Lens.Micro.Platform
 
@@ -38,7 +39,7 @@ import Syntax.ResourceExpression
 import Syntax.ResourceExpression.Order (stratifiedWeights)
 import CostAnalysis.Constraint (sum)
 import CostAnalysis.Coeff (Coeff(Coeff), getCoeffs)
-import Control.Monad.Extra (whenM, filterM, forM_, forM)
+import Control.Monad.Extra (whenM, filterM, forM_, forM, when)
 import qualified Syntax.Measure (Relation(..))
 import Syntax.ResourceExpression.Inequality (sizeConstraints)
 
@@ -148,9 +149,25 @@ analyzeCost prog = do
   tLang .= fromConfig (templateConfig (prog^.pConfig))
   initCostSig prog
   constrainSig prog
-  whenM (view inferPotential) $ constrainPotMeasures prog
+  whenM (view inferPotential) $ do
+    checkAffineInPotentials prog
+    constrainPotMeasures prog
   
   analyzeProg Standard prog
+
+-- | Potential inference solves the constraints in two phases, which requires
+-- annotations to be affine in the potentials: unfolding an inferred measure in
+-- a product of potentials, e.g. pot(x) * pot(x), yields constraints of higher
+-- degree in the unknown measure coefficients.
+checkAffineInPotentials :: Program Positioned -> ProveMonad ()
+checkAffineInPotentials prog =
+  forM_ (M.toList (prog^.pSig)) $ \(fn, fs) ->
+    forM_ (fs^.costSig) $ \cs ->
+      when (any productWithPhi (M.keys (btCoeffs (csFrom cs)) ++ M.keys (btCoeffs (csTo cs)))) $
+        throwError $ ProofErr ("Potential inference requires annotations without products"
+                               ++ " of potentials, see function '" ++ show fn ++ "'.")
+  where productWithPhi (RTProd ts) = any (\t -> isPotential t || productWithPhi t) (MSet.toList ts)
+        productWithPhi _ = False
 
 -- | Inferred potential measures must be non-negative. By induction on values it
 -- suffices that the right-hand side of every equation is non-negative,
